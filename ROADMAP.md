@@ -1,31 +1,37 @@
 # Chrontainer Roadmap
 
-## Current Status: v0.1.0 (MVP)
+## Current Status: v0.2.0-dev (Multi-Host Support)
 ✅ Single Docker host support
 ✅ Basic web UI for container management
 ✅ Cron-based restart scheduling
 ✅ SQLite persistence
 ✅ Activity logs
 ✅ Deployed on Raspberry Pi 5
+✅ Multi-host Docker support
+✅ Discord notifications
+✅ Comprehensive documentation
 
 ---
 
 ## Phase 1: Core Features & Multi-Host Support (v0.2.0)
-**Priority: High | Timeline: 2-3 weeks**
+**Priority: High | Status: In Progress**
 
-### 1.1 Multi-Host Docker Support
-- [ ] Add docker hosts table (host_id, name, url, enabled)
-- [ ] Host management UI (add/edit/delete hosts)
-- [ ] Support TCP connections (`tcp://synology-ip:2376`)
-- [ ] Test connection button for each host
-- [ ] Aggregate containers view across all hosts
-- [ ] Filter containers by host in UI
-- [ ] Store host_id with schedules
+### 1.1 Multi-Host Docker Support ✅ COMPLETED
+- [x] Add docker hosts table (host_id, name, url, enabled)
+- [x] Host management UI (add/edit/delete hosts)
+- [x] Support TCP connections (`tcp://host:2375` via socket-proxy)
+- [x] Test connection button for each host
+- [x] Aggregate containers view across all hosts
+- [x] Show host badges in container list
+- [x] Store host_id with schedules
+- [x] Docker socket proxy setup documentation
+- [x] Security best practices documentation
 
-**Technical Notes:**
-- Use `docker.DockerClient(base_url='tcp://host:2376')` for remote hosts
-- Need to handle connection failures gracefully
-- Consider SSH tunnel support for secure connections
+**Implementation Notes:**
+- ✅ Used `DockerHostManager` class with connection caching
+- ✅ Socket-proxy required for remote hosts (security)
+- ✅ Graceful handling of connection failures
+- ⏳ SSH tunnel support - planned for future
 
 ### 1.2 Enhanced Actions
 - [ ] Start action scheduling (not just manual)
@@ -34,49 +40,66 @@
 - [ ] Container logs viewer in UI
 - [ ] Exec commands in containers (optional)
 
-### 1.3 Basic API
+### 1.3 Basic API (Partially Completed)
 - [ ] API authentication (API keys)
-- [ ] RESTful endpoints for schedules (CRUD)
-- [ ] RESTful endpoints for containers (list, actions)
+- [x] RESTful endpoints for schedules (CRUD)
+- [x] RESTful endpoints for containers (list, actions)
+- [x] RESTful endpoints for hosts management
+- [x] RESTful endpoints for settings
 - [ ] API documentation (Swagger/OpenAPI)
 - [ ] Webhook support for external triggers
+- [ ] API versioning (currently no /v1 prefix)
 
-**API Endpoints:**
+**Current API Endpoints:**
 ```
-GET    /api/v1/hosts
-POST   /api/v1/hosts
-GET    /api/v1/containers
-GET    /api/v1/schedules
-POST   /api/v1/schedules
-PUT    /api/v1/schedules/:id
-DELETE /api/v1/schedules/:id
-POST   /api/v1/containers/:id/restart
-POST   /api/v1/containers/:id/start
-POST   /api/v1/containers/:id/stop
+# Containers
+GET    /api/containers
+POST   /api/container/<id>/restart
+POST   /api/container/<id>/start
+POST   /api/container/<id>/stop
+
+# Schedules
+POST   /api/schedule
+DELETE /api/schedule/<id>
+POST   /api/schedule/<id>/toggle
+
+# Hosts
+GET    /api/hosts
+POST   /api/hosts
+DELETE /api/hosts/<id>
+POST   /api/hosts/<id>/test
+
+# Settings
+GET    /api/settings
+POST   /api/settings/discord
+POST   /api/settings/discord/test
 ```
+
+**TODO:**
+- Add API authentication layer
+- Add OpenAPI/Swagger documentation
+- Consider adding /api/v1 prefix for versioning
 
 ---
 
 ## Phase 2: Notifications & Authentication (v0.3.0)
-**Priority: High | Timeline: 1-2 weeks**
+**Priority: High | Status: Partially Completed**
 
-### 2.1 Discord Notifications
-- [ ] Add notification settings to UI
-- [ ] Discord webhook configuration per schedule (or global)
-- [ ] Rich embeds with container info, action, status
+### 2.1 Discord Notifications ✅ COMPLETED
+- [x] Add notification settings to UI
+- [x] Discord webhook configuration (global)
+- [x] Rich embeds with container info, action, status, color-coded
+- [x] Test notification button
+- [x] Notifications for manual and scheduled actions
+- [ ] Per-schedule webhook override (optional enhancement)
 - [ ] @mention support for failures
-- [ ] Test notification button
-- [ ] Notification templates (success, failure, warning)
+- [ ] Notification templates (currently hardcoded)
 
-**Discord Embed Example:**
-```
-✅ Schedule Executed
-Container: sonarr
-Action: restart
-Host: raspberry-pi
-Status: Success
-Time: 2026-01-16 03:00:00
-```
+**Implementation Notes:**
+- ✅ Settings page with webhook URL configuration
+- ✅ Color-coded embeds: blue (info), green (success), red (error)
+- ✅ Includes container name, action, host, timestamp
+- ✅ Integrated into all container actions (start, stop, restart)
 
 ### 2.2 Authentication
 - [ ] User accounts table (username, password_hash, role)
@@ -223,8 +246,8 @@ Time: 2026-01-16 03:00:00
 - [ ] Keyboard shortcuts
 - [ ] Container stats in tooltip
 - [ ] Copy schedule to clipboard
-- [ ] Example cron expressions in UI
-- [ ] Link to crontab.guru for help
+- [x] Example cron expressions in UI (in schedule modal)
+- [x] Link to crontab.guru for help (mentioned in UI)
 - [ ] Add filters and sorts to the table in web UI (similar to what dockpeek has)
 - [ ] Dark mode
 
