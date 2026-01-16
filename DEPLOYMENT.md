@@ -178,17 +178,85 @@ docker rmi chrontainer:latest
 rm -rf data/
 ```
 
+## Adding Remote Docker Hosts
+
+After deploying Chrontainer, you can add remote Docker hosts (Synology NAS, other servers) to manage all your containers from one dashboard.
+
+### Important: Security First
+
+⚠️ **NEVER expose the raw Docker socket to the network!** Always use docker-socket-proxy for remote hosts.
+
+### Quick Setup
+
+1. **On the remote host** (e.g., Synology NAS at 192.168.1.100):
+   ```bash
+   # Create docker-compose.yml for socket-proxy
+   mkdir -p /volume1/docker/socket-proxy
+   cd /volume1/docker/socket-proxy
+
+   # Create the file with the configuration below
+   docker-compose up -d
+   ```
+
+2. **Socket-proxy docker-compose.yml**:
+   ```yaml
+   version: '3.8'
+   services:
+     docker-proxy:
+       image: tecnativa/docker-socket-proxy
+       container_name: docker-socket-proxy
+       restart: unless-stopped
+       ports:
+         - "2375:2375"
+       volumes:
+         - /var/run/docker.sock:/var/run/docker.sock:ro
+       environment:
+         - CONTAINERS=1
+         - POST=1
+         - IMAGES=1
+         - INFO=1
+         - VERSION=1
+   ```
+
+3. **In Chrontainer**:
+   - Navigate to **http://your-chrontainer-ip:5000/hosts**
+   - Click **"+ Add New Host"**
+   - Enter name: `Synology NAS`
+   - Enter URL: `tcp://192.168.1.100:2375`
+   - Click **"Save"** and test connection
+
+### Complete Documentation
+
+See [REMOTE_HOSTS.md](REMOTE_HOSTS.md) for:
+- Detailed socket-proxy configuration
+- Security best practices
+- Firewall configuration
+- Troubleshooting connection issues
+- Example complete setups
+
+## Discord Notifications (Optional)
+
+Configure Discord notifications to get alerts when containers are restarted:
+
+1. In Discord: Server Settings → Integrations → Webhooks → New Webhook
+2. Copy the webhook URL
+3. In Chrontainer: Settings page → paste URL → Save
+4. Test with "Send Test Notification"
+
 ## Getting Help
 
 1. Check logs: `docker logs chrontainer`
 2. Review README.md for detailed docs
-3. Check Docker socket permissions
-4. Verify cron syntax at https://crontab.guru
+3. Review REMOTE_HOSTS.md for multi-host setup
+4. Check Docker socket permissions
+5. Verify cron syntax at https://crontab.guru
 
 ## Next Steps
 
 - [ ] Change SECRET_KEY in production
 - [ ] Set up regular backups of data/
+- [ ] Configure Discord notifications
+- [ ] Add remote Docker hosts (see REMOTE_HOSTS.md)
 - [ ] Configure reverse proxy with authentication (optional)
 - [ ] Create schedules for your containers
 - [ ] Monitor logs page regularly

@@ -7,6 +7,8 @@ A lightweight, web-based scheduler for automating Docker container restarts and 
 - ✅ **Visual Dashboard**: View all Docker containers at a glance
 - ⏰ **Cron Scheduling**: Schedule automatic container restarts with cron expressions
 - 🎛️ **Manual Control**: Start, stop, and restart containers from the web UI
+- 🌐 **Multi-Host Support**: Manage containers across multiple Docker hosts (Raspberry Pi, NAS, servers)
+- 🔔 **Discord Notifications**: Get notified when containers are restarted, started, or stopped
 - 📊 **Activity Logs**: Track all scheduled and manual actions
 - 🔄 **Enable/Disable Schedules**: Toggle schedules on/off without deleting them
 - 💾 **Persistent Storage**: SQLite database for schedules and logs
@@ -16,7 +18,8 @@ A lightweight, web-based scheduler for automating Docker container restarts and 
 
 - Automatically restart containers with known issues (PostgreSQL timeouts, nginx cache problems)
 - Schedule periodic container maintenance
-- Manage containers across multiple hosts (planned feature)
+- Manage containers across multiple hosts (Raspberry Pi, Synology NAS, remote servers)
+- Centralized dashboard for home lab Docker infrastructure
 - Avoid paid Portainer Business subscription
 
 ## Quick Start
@@ -99,6 +102,34 @@ Use the action buttons next to each container:
 - **Delete**: Remove schedules you no longer need
 - **View Logs**: Check the logs page for execution history
 
+### Adding Remote Docker Hosts
+
+Chrontainer supports managing containers across multiple Docker hosts (Synology NAS, remote servers, etc.).
+
+1. Navigate to the **Hosts** page from the navigation menu
+2. Click **"+ Add New Host"**
+3. Enter a name (e.g., "Synology NAS") and URL (e.g., `tcp://192.168.1.100:2375`)
+4. Click **"Save"** - Chrontainer will test the connection automatically
+
+⚠️ **Security Requirement**: For remote hosts, you **must** use [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) to securely expose the Docker API. Never expose the raw Docker socket directly to the network.
+
+📖 **Complete Setup Guide**: See [REMOTE_HOSTS.md](REMOTE_HOSTS.md) for detailed instructions on:
+- Setting up docker-socket-proxy (recommended method)
+- Configuring firewall rules
+- Security best practices
+- Troubleshooting connection issues
+
+Once added, all containers from remote hosts will appear on your dashboard with host badges, and you can schedule/manage them just like local containers.
+
+### Discord Notifications
+
+1. Navigate to **Settings** page
+2. Enter your Discord webhook URL
+3. Click **"Save Settings"**
+4. Test with **"Send Test Notification"**
+
+Chrontainer will send rich notifications with color-coded embeds when containers are restarted, started, or stopped (both manual and scheduled actions).
+
 ## Architecture
 
 ```
@@ -126,7 +157,7 @@ Use the action buttons next to each container:
 ## API Endpoints
 
 ### Containers
-- `GET /api/containers` - List all containers
+- `GET /api/containers` - List all containers (from all hosts)
 - `POST /api/container/<id>/restart` - Restart container
 - `POST /api/container/<id>/start` - Start container
 - `POST /api/container/<id>/stop` - Stop container
@@ -135,6 +166,17 @@ Use the action buttons next to each container:
 - `POST /api/schedule` - Create new schedule
 - `DELETE /api/schedule/<id>` - Delete schedule
 - `POST /api/schedule/<id>/toggle` - Enable/disable schedule
+
+### Docker Hosts
+- `GET /api/hosts` - List all Docker hosts
+- `POST /api/hosts` - Add new Docker host
+- `DELETE /api/hosts/<id>` - Delete Docker host
+- `POST /api/hosts/<id>/test` - Test host connection
+
+### Settings
+- `GET /api/settings` - Get current settings
+- `POST /api/settings/discord` - Update Discord webhook URL
+- `POST /api/settings/discord/test` - Send test notification
 
 ## Configuration
 
@@ -154,17 +196,20 @@ Use the action buttons next to each container:
 
 1. **Docker Socket Access**: Chrontainer requires access to the Docker socket, which provides full control over Docker. Only run this in trusted environments.
 
-2. **Secret Key**: Change the `SECRET_KEY` in production:
+2. **Remote Docker Hosts**: **NEVER** expose the Docker socket directly to the network. Always use [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) to create a secure, filtered API layer. See [REMOTE_HOSTS.md](REMOTE_HOSTS.md) for proper setup.
+
+3. **Secret Key**: Change the `SECRET_KEY` in production:
    ```bash
    SECRET_KEY=$(openssl rand -hex 32)
    ```
 
-3. **Network Exposure**: By default, Chrontainer is accessible to anyone on your network. Consider:
+4. **Network Exposure**: By default, Chrontainer is accessible to anyone on your network. Consider:
    - Running behind a reverse proxy with authentication
    - Using Docker networks to restrict access
    - Adding firewall rules
+   - Restricting remote host ports to trusted IPs only
 
-4. **Container Permissions**: Ensure the Chrontainer container runs with appropriate permissions.
+5. **Container Permissions**: Ensure the Chrontainer container runs with appropriate permissions.
 
 ## Troubleshooting
 
@@ -207,14 +252,19 @@ Use the action buttons next to each container:
 
 ## Roadmap
 
-- [ ] **Multi-host support**: Manage containers on remote Docker hosts
+### ✅ Completed
+- [x] **Multi-host support**: Manage containers on remote Docker hosts
+- [x] **Discord notifications**: Rich embeds for container actions
+
+### 🚧 Planned
 - [ ] **Authentication**: Basic auth or OAuth for web UI
-- [ ] **Notifications**: Slack/email alerts for failures
+- [ ] **Additional notifications**: Slack/email alerts
 - [ ] **Backup schedules**: Export/import schedule configurations
 - [ ] **Container logs**: View container logs from UI
 - [ ] **Advanced scheduling**: Support for one-time schedules, delays
 - [ ] **Health checks**: Monitor container health and auto-restart
 - [ ] **Dashboard stats**: Visualize uptime and restart patterns
+- [ ] **SSH tunnel support**: Connect to remote hosts via SSH
 
 ## Contributing
 

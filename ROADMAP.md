@@ -225,6 +225,8 @@ Time: 2026-01-16 03:00:00
 - [ ] Copy schedule to clipboard
 - [ ] Example cron expressions in UI
 - [ ] Link to crontab.guru for help
+- [ ] Add filters and sorts to the table in web UI (similar to what dockpeek has)
+- [ ] Dark mode
 
 ---
 
