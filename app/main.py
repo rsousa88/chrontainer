@@ -20,7 +20,7 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-i
 
 # Initialize Docker client
 try:
-    docker_client = docker.from_env()
+    docker_client = docker.DockerClient(base_url='unix://var/run/docker.sock')
     logger.info("Docker client initialized successfully")
 except Exception as e:
     logger.error(f"Failed to initialize Docker client: {e}")
