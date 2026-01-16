@@ -318,6 +318,7 @@
                 <a href="/">Dashboard</a>
                 <a href="/logs">Logs</a>
                 <a href="/settings">Settings</a>
+                <a href="/hosts">Hosts</a>
             </div>
         </div>
     </header>
@@ -333,6 +334,7 @@
                 <thead>
                     <tr>
                         <th>Name</th>
+                        <th>Host</th>
                         <th>Status</th>
                         <th>Image</th>
                         <th>Actions</th>
@@ -342,18 +344,19 @@
                     {% for container in containers %}
                     <tr>
                         <td><strong>{{ container.name }}</strong></td>
+                        <td><span style="background:#e8f4f8;padding:4px 8px;border-radius:4px;font-size:12px;">{{ container.host_name }}</span></td>
                         <td>
                             <span class="status {{ container.status }}">{{ container.status }}</span>
                         </td>
                         <td>{{ container.image }}</td>
                         <td>
                             {% if container.status == 'running' %}
-                            <button class="btn btn-warning btn-small" onclick="restartContainer('{{ container.id }}', '{{ container.name }}')">Restart</button>
-                            <button class="btn btn-danger btn-small" onclick="stopContainer('{{ container.id }}', '{{ container.name }}')">Stop</button>
+                            <button class="btn btn-warning btn-small" onclick="restartContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Restart</button>
+                            <button class="btn btn-danger btn-small" onclick="stopContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Stop</button>
                             {% else %}
-                            <button class="btn btn-success btn-small" onclick="startContainer('{{ container.id }}', '{{ container.name }}')">Start</button>
+                            <button class="btn btn-success btn-small" onclick="startContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Start</button>
                             {% endif %}
-                            <button class="btn btn-primary btn-small" onclick="openScheduleModal('{{ container.id }}', '{{ container.name }}')">Schedule</button>
+                            <button class="btn btn-primary btn-small" onclick="openScheduleModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Schedule</button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -419,7 +422,8 @@
             <form id="scheduleForm">
                 <input type="hidden" id="containerId" name="container_id">
                 <input type="hidden" id="containerName" name="container_name">
-                
+                <input type="hidden" id="hostId" name="host_id">
+
                 <div class="form-group">
                     <label>Container:</label>
                     <input type="text" id="displayContainerName" disabled>
@@ -464,24 +468,26 @@
             }, 5000);
         }
         
-        function openScheduleModal(containerId, containerName) {
+        function openScheduleModal(containerId, containerName, hostId) {
             document.getElementById('containerId').value = containerId;
             document.getElementById('containerName').value = containerName;
+            document.getElementById('hostId').value = hostId;
             document.getElementById('displayContainerName').value = containerName;
             document.getElementById('scheduleModal').style.display = 'block';
         }
-        
+
         function closeScheduleModal() {
             document.getElementById('scheduleModal').style.display = 'none';
             document.getElementById('scheduleForm').reset();
         }
-        
+
         document.getElementById('scheduleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const formData = {
                 container_id: document.getElementById('containerId').value,
                 container_name: document.getElementById('containerName').value,
+                host_id: parseInt(document.getElementById('hostId').value),
                 action: e.target.action.value,
                 cron_expression: e.target.cron_expression.value
             };
@@ -507,19 +513,19 @@
             }
         });
         
-        async function restartContainer(containerId, containerName) {
+        async function restartContainer(containerId, containerName, hostId) {
             if (!confirm(`Restart container ${containerName}?`)) return;
-            
+
             try {
                 const response = await fetch(`/api/container/${containerId}/restart`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name: containerName})
+                    body: JSON.stringify({name: containerName, host_id: hostId})
                 });
-                
+
                 const result = await response.json();
                 showAlert(result.message, result.success ? 'success' : 'error');
-                
+
                 if (result.success) {
                     setTimeout(() => location.reload(), 2000);
                 }
@@ -527,18 +533,18 @@
                 showAlert('Error: ' + error.message, 'error');
             }
         }
-        
-        async function startContainer(containerId, containerName) {
+
+        async function startContainer(containerId, containerName, hostId) {
             try {
                 const response = await fetch(`/api/container/${containerId}/start`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name: containerName})
+                    body: JSON.stringify({name: containerName, host_id: hostId})
                 });
-                
+
                 const result = await response.json();
                 showAlert(result.message, result.success ? 'success' : 'error');
-                
+
                 if (result.success) {
                     setTimeout(() => location.reload(), 2000);
                 }
@@ -546,20 +552,20 @@
                 showAlert('Error: ' + error.message, 'error');
             }
         }
-        
-        async function stopContainer(containerId, containerName) {
+
+        async function stopContainer(containerId, containerName, hostId) {
             if (!confirm(`Stop container ${containerName}?`)) return;
-            
+
             try {
                 const response = await fetch(`/api/container/${containerId}/stop`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name: containerName})
+                    body: JSON.stringify({name: containerName, host_id: hostId})
                 });
-                
+
                 const result = await response.json();
                 showAlert(result.message, result.success ? 'success' : 'error');
-                
+
                 if (result.success) {
                     setTimeout(() => location.reload(), 2000);
                 }

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker Hosts - Chrontainer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header { background: #2c3e50; color: white; padding: 20px 0; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        header h1 { font-size: 28px; font-weight: 600; }
+        .nav-links { margin-top: 10px; }
+        .nav-links a { color: #3498db; text-decoration: none; margin-right: 20px; font-size: 14px; }
+        .nav-links a:hover { color: #5dade2; }
+        .card { background: white; border-radius: 8px; padding: 25px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h2 { font-size: 20px; margin-bottom: 15px; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #34495e; color: white; padding: 12px; text-align: left; font-weight: 600; font-size: 14px; }
+        td { padding: 12px; border-bottom: 1px solid #ecf0f1; font-size: 14px; }
+        tr:hover { background: #f8f9fa; }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; transition: all 0.3s; margin-right: 5px; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-primary:hover { background: #2980b9; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover { background: #229954; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .status-badge.enabled { background: #d4edda; color: #155724; }
+        .status-badge.disabled { background: #f8d7da; color: #721c24; }
+        .alert { padding: 12px 15px; border-radius: 4px; margin-bottom: 20px; display: none; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 5% auto; padding: 30px; border-radius: 8px; max-width: 500px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; color: #555; }
+        .form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .form-group input:focus { outline: none; border-color: #3498db; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🐳 Chrontainer - Docker Hosts</h1>
+            <div class="nav-links">
+                <a href="/">Dashboard</a>
+                <a href="/logs">Logs</a>
+                <a href="/settings">Settings</a>
+                <a href="/hosts">Hosts</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="alert" class="alert"></div>
+
+        <div class="card">
+            <h2>Docker Hosts</h2>
+            <button class="btn btn-primary" onclick="showAddModal()" style="margin-bottom: 20px;">+ Add New Host</button>
+
+            <table id="hostsTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>URL</th>
+                        <th>Status</th>
+                        <th>Last Seen</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="hostsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add/Edit Host Modal -->
+    <div id="hostModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">Add Docker Host</h2>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="hostName" placeholder="Synology NAS">
+            </div>
+            <div class="form-group">
+                <label>URL</label>
+                <input type="text" id="hostUrl" placeholder="tcp://192.168.1.100:2375">
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="saveHost()">Save</button>
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let editingHostId = null;
+
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert alert-${type}`;
+            alert.style.display = 'block';
+            setTimeout(() => alert.style.display = 'none', 5000);
+        }
+
+        function showAddModal() {
+            editingHostId = null;
+            document.getElementById('modalTitle').textContent = 'Add Docker Host';
+            document.getElementById('hostName').value = '';
+            document.getElementById('hostUrl').value = '';
+            document.getElementById('hostModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('hostModal').style.display = 'none';
+        }
+
+        async function loadHosts() {
+            try {
+                const response = await fetch('/api/hosts');
+                const hosts = await response.json();
+
+                const tbody = document.getElementById('hostsBody');
+                tbody.innerHTML = '';
+
+                hosts.forEach(host => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${host.name}</td>
+                        <td><code>${host.url}</code></td>
+                        <td><span class="status-badge ${host.enabled ? 'enabled' : 'disabled'}">${host.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                        <td>${host.last_seen ? new Date(host.last_seen).toLocaleString() : 'Never'}</td>
+                        <td>
+                            <button class="btn btn-success" onclick="testHost(${host.id})">Test</button>
+                            ${host.id !== 1 ? `<button class="btn btn-danger" onclick="deleteHost(${host.id}, '${host.name}')">Delete</button>` : ''}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                showAlert('Error loading hosts: ' + error.message, 'error');
+            }
+        }
+
+        async function saveHost() {
+            const name = document.getElementById('hostName').value.trim();
+            const url = document.getElementById('hostUrl').value.trim();
+
+            if (!name || !url) {
+                showAlert('Please fill in all fields', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/hosts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, url })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    showAlert('Host added successfully!', 'success');
+                    closeModal();
+                    loadHosts();
+                } else {
+                    showAlert(data.error || 'Failed to add host', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function testHost(hostId) {
+            try {
+                const response = await fetch(`/api/hosts/${hostId}/test`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Connection successful!', 'success');
+                    loadHosts();
+                } else {
+                    showAlert('Connection failed: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteHost(hostId, hostName) {
+            if (!confirm(`Delete host "${hostName}"?`)) return;
+
+            try {
+                const response = await fetch(`/api/hosts/${hostId}`, { method: 'DELETE' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAlert('Host deleted', 'success');
+                    loadHosts();
+                } else {
+                    showAlert(data.error || 'Failed to delete host', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        loadHosts();
+    </script>
+</body>
+</html>
