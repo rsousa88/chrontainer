@@ -59,6 +59,13 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
     logger.info("Database initialized")
@@ -75,7 +82,8 @@ def restart_container(container_id, container_name, schedule_id=None):
         message = f"Container {container_name} restarted successfully"
         logger.info(message)
         log_action(schedule_id, container_name, 'restart', 'success', message)
-        
+        send_discord_notification(container_name, 'restart', 'success', message, schedule_id)
+
         # Update last_run in schedules
         if schedule_id:
             conn = get_db()
@@ -86,12 +94,13 @@ def restart_container(container_id, container_name, schedule_id=None):
             )
             conn.commit()
             conn.close()
-        
+
         return True, message
     except Exception as e:
         message = f"Failed to restart container {container_name}: {str(e)}"
         logger.error(message)
         log_action(schedule_id, container_name, 'restart', 'error', message)
+        send_discord_notification(container_name, 'restart', 'error', message, schedule_id)
         return False, message
 
 def start_container(container_id, container_name):
@@ -102,11 +111,13 @@ def start_container(container_id, container_name):
         message = f"Container {container_name} started successfully"
         logger.info(message)
         log_action(None, container_name, 'start', 'success', message)
+        send_discord_notification(container_name, 'start', 'success', message)
         return True, message
     except Exception as e:
         message = f"Failed to start container {container_name}: {str(e)}"
         logger.error(message)
         log_action(None, container_name, 'start', 'error', message)
+        send_discord_notification(container_name, 'start', 'error', message)
         return False, message
 
 def stop_container(container_id, container_name):
@@ -117,11 +128,13 @@ def stop_container(container_id, container_name):
         message = f"Container {container_name} stopped successfully"
         logger.info(message)
         log_action(None, container_name, 'stop', 'success', message)
+        send_discord_notification(container_name, 'stop', 'success', message)
         return True, message
     except Exception as e:
         message = f"Failed to stop container {container_name}: {str(e)}"
         logger.error(message)
         log_action(None, container_name, 'stop', 'error', message)
+        send_discord_notification(container_name, 'stop', 'error', message)
         return False, message
 
 def log_action(schedule_id, container_name, action, status, message):
@@ -137,6 +150,76 @@ def log_action(schedule_id, container_name, action, status, message):
         conn.close()
     except Exception as e:
         logger.error(f"Failed to log action: {e}")
+
+def get_setting(key, default=None):
+    """Get a setting value from the database"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else default
+    except Exception as e:
+        logger.error(f"Failed to get setting {key}: {e}")
+        return default
+
+def set_setting(key, value):
+    """Set a setting value in the database"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)',
+            (key, value, datetime.now())
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to set setting {key}: {e}")
+        return False
+
+def send_discord_notification(container_name, action, status, message, schedule_id=None):
+    """Send a Discord webhook notification"""
+    webhook_url = get_setting('discord_webhook_url')
+    if not webhook_url:
+        return  # No webhook configured, skip silently
+
+    try:
+        # Determine emoji and color based on status
+        if status == 'success':
+            emoji = '✅'
+            color = 0x00FF00  # Green
+        else:
+            emoji = '❌'
+            color = 0xFF0000  # Red
+
+        # Build Discord embed
+        embed = {
+            'title': f'{emoji} Container Action: {action.capitalize()}',
+            'description': message,
+            'color': color,
+            'fields': [
+                {'name': 'Container', 'value': container_name, 'inline': True},
+                {'name': 'Action', 'value': action.capitalize(), 'inline': True},
+                {'name': 'Status', 'value': status.capitalize(), 'inline': True},
+            ],
+            'timestamp': datetime.utcnow().isoformat(),
+            'footer': {'text': 'Chrontainer'}
+        }
+
+        if schedule_id:
+            embed['fields'].append({'name': 'Schedule ID', 'value': str(schedule_id), 'inline': True})
+
+        payload = {'embeds': [embed]}
+
+        import requests
+        response = requests.post(webhook_url, json=payload, timeout=10)
+        if response.status_code not in [200, 204]:
+            logger.warning(f"Discord webhook returned status {response.status_code}")
+    except Exception as e:
+        logger.error(f"Failed to send Discord notification: {e}")
 
 def load_schedules():
     """Load all enabled schedules from database and add to scheduler"""
@@ -370,6 +453,60 @@ def toggle_schedule(schedule_id):
         return jsonify({'success': True, 'enabled': bool(new_enabled)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get all settings"""
+    try:
+        webhook_url = get_setting('discord_webhook_url', '')
+        return jsonify({
+            'discord_webhook_url': webhook_url
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/discord', methods=['POST'])
+def update_discord_settings():
+    """Update Discord webhook settings"""
+    try:
+        data = request.json
+        webhook_url = data.get('webhook_url', '').strip()
+
+        if webhook_url and not webhook_url.startswith('https://discord.com/api/webhooks/'):
+            return jsonify({'error': 'Invalid Discord webhook URL'}), 400
+
+        set_setting('discord_webhook_url', webhook_url)
+        logger.info(f"Discord webhook URL updated")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Failed to update Discord settings: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/discord/test', methods=['POST'])
+def test_discord_webhook():
+    """Test Discord webhook"""
+    try:
+        webhook_url = get_setting('discord_webhook_url')
+        if not webhook_url:
+            return jsonify({'error': 'No Discord webhook URL configured'}), 400
+
+        # Send a test notification
+        send_discord_notification(
+            container_name='test-container',
+            action='test',
+            status='success',
+            message='This is a test notification from Chrontainer!'
+        )
+        return jsonify({'success': True, 'message': 'Test notification sent'})
+    except Exception as e:
+        logger.error(f"Failed to test Discord webhook: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/settings')
+def settings_page():
+    """Settings page"""
+    webhook_url = get_setting('discord_webhook_url', '')
+    return render_template('settings.html', discord_webhook_url=webhook_url)
 
 @app.route('/logs')
 def logs():
