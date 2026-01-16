@@ -33,12 +33,20 @@
 - ✅ Graceful handling of connection failures
 - ⏳ SSH tunnel support - planned for future
 
-### 1.2 Enhanced Actions
-- [ ] Start action scheduling (not just manual)
-- [ ] Stop action scheduling
-- [ ] Pause/unpause container actions
-- [ ] Container logs viewer in UI
-- [ ] Exec commands in containers (optional)
+### 1.2 Enhanced Actions ✅ COMPLETED
+- [x] Start action scheduling (not just manual)
+- [x] Stop action scheduling
+- [x] Pause/unpause container actions
+- [x] Pause/unpause manual buttons in UI
+- [x] Container logs viewer in UI with refresh and configurable tail
+- [ ] Exec commands in containers (deferred - security concerns)
+
+**Implementation Notes:**
+- ✅ All container actions (restart, start, stop, pause, unpause) support both manual and scheduled execution
+- ✅ Action selection dropdown in schedule modal
+- ✅ Logs viewer with dark theme, line count selection (50-1000), and refresh capability
+- ✅ Discord notifications for all actions
+- ⏳ Exec deferred due to security implications
 
 ### 1.3 Basic API (Partially Completed)
 - [ ] API authentication (API keys)

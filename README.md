@@ -5,9 +5,10 @@ A lightweight, web-based scheduler for automating Docker container restarts and 
 ## Features
 
 - ✅ **Visual Dashboard**: View all Docker containers at a glance
-- ⏰ **Cron Scheduling**: Schedule automatic container restarts with cron expressions
-- 🎛️ **Manual Control**: Start, stop, and restart containers from the web UI
+- ⏰ **Cron Scheduling**: Schedule automatic container actions (restart, start, stop, pause, unpause)
+- 🎛️ **Manual Control**: Start, stop, restart, pause, and unpause containers from the web UI
 - 🌐 **Multi-Host Support**: Manage containers across multiple Docker hosts (Raspberry Pi, NAS, servers)
+- 📋 **Container Logs**: View container logs directly from the UI with configurable tail and refresh
 - 🔔 **Discord Notifications**: Get notified when containers are restarted, started, or stopped
 - 📊 **Activity Logs**: Track all scheduled and manual actions
 - 🔄 **Enable/Disable Schedules**: Toggle schedules on/off without deleting them
@@ -161,6 +162,9 @@ Chrontainer will send rich notifications with color-coded embeds when containers
 - `POST /api/container/<id>/restart` - Restart container
 - `POST /api/container/<id>/start` - Start container
 - `POST /api/container/<id>/stop` - Stop container
+- `POST /api/container/<id>/pause` - Pause container
+- `POST /api/container/<id>/unpause` - Unpause container
+- `GET /api/container/<id>/logs` - Get container logs (supports tail, timestamps params)
 
 ### Schedules
 - `POST /api/schedule` - Create new schedule
