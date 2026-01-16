@@ -235,7 +235,7 @@ def restart_container(container_id, container_name, schedule_id=None, host_id=1)
         send_discord_notification(container_name, 'restart', 'error', message, schedule_id)
         return False, message
 
-def start_container(container_id, container_name, host_id=1):
+def start_container(container_id, container_name, schedule_id=None, host_id=1):
     """Start a Docker container"""
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -246,17 +246,29 @@ def start_container(container_id, container_name, host_id=1):
         container.start()
         message = f"Container {container_name} started successfully"
         logger.info(message)
-        log_action(None, container_name, 'start', 'success', message, host_id)
-        send_discord_notification(container_name, 'start', 'success', message)
+        log_action(schedule_id, container_name, 'start', 'success', message, host_id)
+        send_discord_notification(container_name, 'start', 'success', message, schedule_id)
+
+        # Update last_run in schedules
+        if schedule_id:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE schedules SET last_run = ? WHERE id = ?',
+                (datetime.now(), schedule_id)
+            )
+            conn.commit()
+            conn.close()
+
         return True, message
     except Exception as e:
         message = f"Failed to start container {container_name}: {str(e)}"
         logger.error(message)
-        log_action(None, container_name, 'start', 'error', message, host_id)
-        send_discord_notification(container_name, 'start', 'error', message)
+        log_action(schedule_id, container_name, 'start', 'error', message, host_id)
+        send_discord_notification(container_name, 'start', 'error', message, schedule_id)
         return False, message
 
-def stop_container(container_id, container_name, host_id=1):
+def stop_container(container_id, container_name, schedule_id=None, host_id=1):
     """Stop a Docker container"""
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -267,14 +279,92 @@ def stop_container(container_id, container_name, host_id=1):
         container.stop()
         message = f"Container {container_name} stopped successfully"
         logger.info(message)
-        log_action(None, container_name, 'stop', 'success', message, host_id)
-        send_discord_notification(container_name, 'stop', 'success', message)
+        log_action(schedule_id, container_name, 'stop', 'success', message, host_id)
+        send_discord_notification(container_name, 'stop', 'success', message, schedule_id)
+
+        # Update last_run in schedules
+        if schedule_id:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE schedules SET last_run = ? WHERE id = ?',
+                (datetime.now(), schedule_id)
+            )
+            conn.commit()
+            conn.close()
+
         return True, message
     except Exception as e:
         message = f"Failed to stop container {container_name}: {str(e)}"
         logger.error(message)
-        log_action(None, container_name, 'stop', 'error', message, host_id)
-        send_discord_notification(container_name, 'stop', 'error', message)
+        log_action(schedule_id, container_name, 'stop', 'error', message, host_id)
+        send_discord_notification(container_name, 'stop', 'error', message, schedule_id)
+        return False, message
+
+def pause_container(container_id, container_name, schedule_id=None, host_id=1):
+    """Pause a Docker container"""
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            raise Exception(f"Cannot connect to Docker host {host_id}")
+
+        container = docker_client.containers.get(container_id)
+        container.pause()
+        message = f"Container {container_name} paused successfully"
+        logger.info(message)
+        log_action(schedule_id, container_name, 'pause', 'success', message, host_id)
+        send_discord_notification(container_name, 'pause', 'success', message, schedule_id)
+
+        # Update last_run in schedules
+        if schedule_id:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE schedules SET last_run = ? WHERE id = ?',
+                (datetime.now(), schedule_id)
+            )
+            conn.commit()
+            conn.close()
+
+        return True, message
+    except Exception as e:
+        message = f"Failed to pause container {container_name}: {str(e)}"
+        logger.error(message)
+        log_action(schedule_id, container_name, 'pause', 'error', message, host_id)
+        send_discord_notification(container_name, 'pause', 'error', message, schedule_id)
+        return False, message
+
+def unpause_container(container_id, container_name, schedule_id=None, host_id=1):
+    """Unpause a Docker container"""
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            raise Exception(f"Cannot connect to Docker host {host_id}")
+
+        container = docker_client.containers.get(container_id)
+        container.unpause()
+        message = f"Container {container_name} unpaused successfully"
+        logger.info(message)
+        log_action(schedule_id, container_name, 'unpause', 'success', message, host_id)
+        send_discord_notification(container_name, 'unpause', 'success', message, schedule_id)
+
+        # Update last_run in schedules
+        if schedule_id:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE schedules SET last_run = ? WHERE id = ?',
+                (datetime.now(), schedule_id)
+            )
+            conn.commit()
+            conn.close()
+
+        return True, message
+    except Exception as e:
+        message = f"Failed to unpause container {container_name}: {str(e)}"
+        logger.error(message)
+        log_action(schedule_id, container_name, 'unpause', 'error', message, host_id)
+        send_discord_notification(container_name, 'unpause', 'error', message, schedule_id)
         return False, message
 
 def log_action(schedule_id, container_name, action, status, message, host_id=1):
@@ -386,15 +476,29 @@ def load_schedules():
                 day_of_week=parts[4]
             )
 
+            # Select the appropriate action function
             if action == 'restart':
-                scheduler.add_job(
-                    restart_container,
-                    trigger,
-                    args=[container_id, container_name, schedule_id, host_id],
-                    id=f"schedule_{schedule_id}",
-                    replace_existing=True
-                )
-                logger.info(f"Loaded schedule {schedule_id}: {container_name} - {cron_expr}")
+                action_func = restart_container
+            elif action == 'start':
+                action_func = start_container
+            elif action == 'stop':
+                action_func = stop_container
+            elif action == 'pause':
+                action_func = pause_container
+            elif action == 'unpause':
+                action_func = unpause_container
+            else:
+                logger.error(f"Unknown action '{action}' for schedule {schedule_id}")
+                continue
+
+            scheduler.add_job(
+                action_func,
+                trigger,
+                args=[container_id, container_name, schedule_id, host_id],
+                id=f"schedule_{schedule_id}",
+                replace_existing=True
+            )
+            logger.info(f"Loaded schedule {schedule_id}: {container_name} - {action} - {cron_expr}")
         except Exception as e:
             logger.error(f"Failed to load schedule {schedule_id}: {e}")
 
@@ -488,6 +592,24 @@ def api_stop_container(container_id):
     success, message = stop_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
+@app.route('/api/container/<container_id>/pause', methods=['POST'])
+def api_pause_container(container_id):
+    """API endpoint to pause a container"""
+    data = request.json
+    container_name = data.get('name', 'unknown')
+    host_id = data.get('host_id', 1)
+    success, message = pause_container(container_id, container_name, host_id=host_id)
+    return jsonify({'success': success, 'message': message})
+
+@app.route('/api/container/<container_id>/unpause', methods=['POST'])
+def api_unpause_container(container_id):
+    """API endpoint to unpause a container"""
+    data = request.json
+    container_name = data.get('name', 'unknown')
+    host_id = data.get('host_id', 1)
+    success, message = unpause_container(container_id, container_name, host_id=host_id)
+    return jsonify({'success': success, 'message': message})
+
 @app.route('/api/schedule', methods=['POST'])
 def add_schedule():
     """Add a new schedule"""
@@ -529,16 +651,29 @@ def add_schedule():
         conn.commit()
         conn.close()
 
-        # Add to scheduler
+        # Add to scheduler with the appropriate action function
+        if action == 'restart':
+            action_func = restart_container
+        elif action == 'start':
+            action_func = start_container
+        elif action == 'stop':
+            action_func = stop_container
+        elif action == 'pause':
+            action_func = pause_container
+        elif action == 'unpause':
+            action_func = unpause_container
+        else:
+            return jsonify({'error': f'Invalid action: {action}'}), 400
+
         scheduler.add_job(
-            restart_container,
+            action_func,
             trigger,
             args=[container_id, container_name, schedule_id, host_id],
             id=f"schedule_{schedule_id}",
             replace_existing=True
         )
 
-        logger.info(f"Added schedule {schedule_id}: {container_name} - {cron_expression}")
+        logger.info(f"Added schedule {schedule_id}: {container_name} - {action} - {cron_expression}")
         return jsonify({'success': True, 'schedule_id': schedule_id})
     except Exception as e:
         logger.error(f"Failed to add schedule: {e}")

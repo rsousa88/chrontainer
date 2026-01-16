@@ -353,6 +353,10 @@
                             {% if container.status == 'running' %}
                             <button class="btn btn-warning btn-small" onclick="restartContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Restart</button>
                             <button class="btn btn-danger btn-small" onclick="stopContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Stop</button>
+                            <button class="btn btn-secondary btn-small" onclick="pauseContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Pause</button>
+                            {% elif container.status == 'paused' %}
+                            <button class="btn btn-success btn-small" onclick="unpauseContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Unpause</button>
+                            <button class="btn btn-danger btn-small" onclick="stopContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Stop</button>
                             {% else %}
                             <button class="btn btn-success btn-small" onclick="startContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Start</button>
                             {% endif %}
@@ -417,7 +421,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <span class="close" onclick="closeScheduleModal()">&times;</span>
-                <h3>Schedule Container Restart</h3>
+                <h3>Schedule Container Action</h3>
             </div>
             <form id="scheduleForm">
                 <input type="hidden" id="containerId" name="container_id">
@@ -428,11 +432,15 @@
                     <label>Container:</label>
                     <input type="text" id="displayContainerName" disabled>
                 </div>
-                
+
                 <div class="form-group">
                     <label>Action:</label>
-                    <select name="action">
+                    <select name="action" id="actionSelect">
                         <option value="restart">Restart</option>
+                        <option value="start">Start</option>
+                        <option value="stop">Stop</option>
+                        <option value="pause">Pause</option>
+                        <option value="unpause">Unpause</option>
                     </select>
                 </div>
                 
@@ -573,7 +581,47 @@
                 showAlert('Error: ' + error.message, 'error');
             }
         }
-        
+
+        async function pauseContainer(containerId, containerName, hostId) {
+            if (!confirm(`Pause container ${containerName}?`)) return;
+
+            try {
+                const response = await fetch(`/api/container/${containerId}/pause`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: containerName, host_id: hostId})
+                });
+
+                const result = await response.json();
+                showAlert(result.message, result.success ? 'success' : 'error');
+
+                if (result.success) {
+                    setTimeout(() => location.reload(), 2000);
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function unpauseContainer(containerId, containerName, hostId) {
+            try {
+                const response = await fetch(`/api/container/${containerId}/unpause`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: containerName, host_id: hostId})
+                });
+
+                const result = await response.json();
+                showAlert(result.message, result.success ? 'success' : 'error');
+
+                if (result.success) {
+                    setTimeout(() => location.reload(), 2000);
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
         async function deleteSchedule(scheduleId) {
             if (!confirm('Delete this schedule?')) return;
             
