@@ -610,6 +610,36 @@ def api_unpause_container(container_id):
     success, message = unpause_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
+@app.route('/api/container/<container_id>/logs', methods=['GET'])
+def api_get_container_logs(container_id):
+    """API endpoint to get container logs"""
+    host_id = request.args.get('host_id', 1, type=int)
+    tail = request.args.get('tail', 100, type=int)  # Default to last 100 lines
+    timestamps = request.args.get('timestamps', 'true').lower() == 'true'
+
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            return jsonify({'error': f'Cannot connect to Docker host {host_id}'}), 500
+
+        container = docker_client.containers.get(container_id)
+        logs = container.logs(
+            tail=tail,
+            timestamps=timestamps,
+            stdout=True,
+            stderr=True
+        ).decode('utf-8')
+
+        return jsonify({
+            'success': True,
+            'logs': logs,
+            'container_id': container_id,
+            'container_name': container.name
+        })
+    except Exception as e:
+        logger.error(f"Failed to get logs for container {container_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/schedule', methods=['POST'])
 def add_schedule():
     """Add a new schedule"""

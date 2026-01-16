@@ -150,7 +150,17 @@
             background: #f39c12;
             color: white;
         }
-        
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
         .btn-small {
             padding: 4px 10px;
             font-size: 12px;
@@ -360,6 +370,7 @@
                             {% else %}
                             <button class="btn btn-success btn-small" onclick="startContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Start</button>
                             {% endif %}
+                            <button class="btn btn-info btn-small" onclick="openLogsModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Logs</button>
                             <button class="btn btn-primary btn-small" onclick="openScheduleModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Schedule</button>
                         </td>
                     </tr>
@@ -462,7 +473,32 @@
             </form>
         </div>
     </div>
-    
+
+    <!-- Logs Modal -->
+    <div id="logsModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <span class="close" onclick="closeLogsModal()">&times;</span>
+                <h3>Container Logs: <span id="logsContainerName"></span></h3>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="logLines" style="margin-right: 10px;">Lines:</label>
+                <select id="logLines" onchange="refreshLogs()" style="width: 100px; padding: 5px;">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                </select>
+                <button class="btn btn-primary btn-small" onclick="refreshLogs()" style="margin-left: 10px;">Refresh</button>
+            </div>
+            <pre id="logsContent" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow-y: auto; font-size: 12px; line-height: 1.4; font-family: 'Courier New', monospace;">Loading logs...</pre>
+            <div style="margin-top: 15px;">
+                <button type="button" class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         function showAlert(message, type) {
             const alertContainer = document.getElementById('alertContainer');
@@ -622,9 +658,60 @@
             }
         }
 
+        let currentLogsContainerId = null;
+        let currentLogsContainerName = null;
+        let currentLogsHostId = null;
+
+        function openLogsModal(containerId, containerName, hostId) {
+            currentLogsContainerId = containerId;
+            currentLogsContainerName = containerName;
+            currentLogsHostId = hostId;
+
+            document.getElementById('logsContainerName').textContent = containerName;
+            document.getElementById('logsModal').style.display = 'block';
+
+            // Load logs
+            fetchLogs(containerId, containerName, hostId);
+        }
+
+        function closeLogsModal() {
+            document.getElementById('logsModal').style.display = 'none';
+            currentLogsContainerId = null;
+            currentLogsContainerName = null;
+            currentLogsHostId = null;
+        }
+
+        function refreshLogs() {
+            if (currentLogsContainerId) {
+                fetchLogs(currentLogsContainerId, currentLogsContainerName, currentLogsHostId);
+            }
+        }
+
+        async function fetchLogs(containerId, containerName, hostId) {
+            const logsContent = document.getElementById('logsContent');
+            const tailLines = document.getElementById('logLines').value;
+
+            logsContent.textContent = 'Loading logs...';
+
+            try {
+                const response = await fetch(`/api/container/${containerId}/logs?host_id=${hostId}&tail=${tailLines}&timestamps=true`);
+                const result = await response.json();
+
+                if (result.success) {
+                    logsContent.textContent = result.logs || 'No logs available';
+                    // Auto-scroll to bottom
+                    logsContent.scrollTop = logsContent.scrollHeight;
+                } else {
+                    logsContent.textContent = `Error: ${result.error}`;
+                }
+            } catch (error) {
+                logsContent.textContent = `Error fetching logs: ${error.message}`;
+            }
+        }
+
         async function deleteSchedule(scheduleId) {
             if (!confirm('Delete this schedule?')) return;
-            
+
             try {
                 const response = await fetch(`/api/schedule/${scheduleId}`, {
                     method: 'DELETE'
