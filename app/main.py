@@ -514,11 +514,22 @@ def index():
             try:
                 containers = docker_client.containers.list(all=True)
                 for container in containers:
+                    # Try to get the best image name
+                    if container.image.tags:
+                        image_name = container.image.tags[0]
+                    else:
+                        # Fallback to image name from Config if available
+                        try:
+                            image_name = container.attrs['Config']['Image']
+                        except:
+                            # Last resort: use short image ID
+                            image_name = container.image.short_id.replace('sha256:', '')[:12]
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
                         'status': container.status,
-                        'image': container.image.tags[0] if container.image.tags else 'unknown',
+                        'image': image_name,
                         'created': container.attrs['Created'],
                         'host_id': host_id,
                         'host_name': host_name
@@ -551,11 +562,22 @@ def get_containers():
             try:
                 containers = docker_client.containers.list(all=True)
                 for container in containers:
+                    # Try to get the best image name
+                    if container.image.tags:
+                        image_name = container.image.tags[0]
+                    else:
+                        # Fallback to image name from Config if available
+                        try:
+                            image_name = container.attrs['Config']['Image']
+                        except:
+                            # Last resort: use short image ID
+                            image_name = container.image.short_id.replace('sha256:', '')[:12]
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
                         'status': container.status,
-                        'image': container.image.tags[0] if container.image.tags else 'unknown',
+                        'image': image_name,
                         'host_id': host_id,
                         'host_name': host_name
                     })

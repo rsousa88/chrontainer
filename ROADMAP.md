@@ -248,11 +248,11 @@ POST   /api/settings/discord/test
 ---
 
 ## Quick Wins (Can be done anytime)
-- [ ] Favicon and branding
+- [x] Favicon and branding
 - [ ] Better error messages
-- [ ] Loading indicators in UI
+- [x] Loading indicators in UI
 - [ ] Keyboard shortcuts
-- [ ] Container stats in tooltip
+- [x] Container stats in tooltip
 - [ ] Copy schedule to clipboard
 - [x] Example cron expressions in UI (in schedule modal)
 - [x] Link to crontab.guru for help (mentioned in UI)
@@ -274,10 +274,10 @@ POST   /api/settings/discord/test
 ---
 
 ## Issues/Improvements
-- [ ] [UI/UX] Increase the width of the logs modal
-- [ ] [UI/UX] After opening the logs modal, the scroll is still being done in the main body. The logs control should be automatically selected so the scroll can work without having to click in it
-- [ ] [UI/UX] Clicking outside of the logs modal should close it
-- [ ] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Some examples of containers affected by this issue: mqtt, speedtest, rabbitmq, portainer-ce, pgadmin, n8n, grafana and baserow
+- [x] [UI/UX] Increase the width of the logs modal (900px → 1200px)
+- [x] [UI/UX] After opening the logs modal, the scroll is still being done in the main body. The logs control should be automatically selected so the scroll can work without having to click in it (auto-focus added)
+- [x] [UI/UX] Clicking outside of the logs modal should close it (backdrop click handler added)
+- [x] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Fixed with fallback logic: tags → Config.Image → short image ID
 
 ---
 
