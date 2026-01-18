@@ -470,7 +470,11 @@
                 <select id="filterStack" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
                     <option value="">All Stacks</option>
                 </select>
+                <select id="filterTag" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
+                    <option value="">All Tags</option>
+                </select>
                 <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 16px;">Clear Filters</button>
+                <button class="btn btn-primary" onclick="openManageTagsModal()" style="padding: 8px 16px;">Manage Tags</button>
             </div>
             <table id="containersTable">
                 <thead>
@@ -478,7 +482,9 @@
                         <th onclick="sortTable('name')" style="cursor: pointer;">Name <span id="sort-name"></span></th>
                         <th onclick="sortTable('host')" style="cursor: pointer;">Host <span id="sort-host"></span></th>
                         <th onclick="sortTable('stack')" style="cursor: pointer;">Stack <span id="sort-stack"></span></th>
+                        <th>Tags</th>
                         <th onclick="sortTable('ip')" style="cursor: pointer;">IP Address <span id="sort-ip"></span></th>
+                        <th>Web UI</th>
                         <th onclick="sortTable('status')" style="cursor: pointer;">Status <span id="sort-status"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
                         <th>Actions</th>
@@ -486,7 +492,7 @@
                 </thead>
                 <tbody>
                     {% for container in containers %}
-                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image }}" data-ip="{{ container.ip_addresses }}">
+                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}">
                         <td>
                             <div class="tooltip-container">
                                 <strong>{{ container.name }}</strong>
@@ -500,11 +506,40 @@
                         </td>
                         <td><span style="background:#e8f4f8;padding:4px 8px;border-radius:4px;font-size:12px;">{{ container.host_name }}</span></td>
                         <td><span style="background:#f0e8ff;padding:4px 8px;border-radius:4px;font-size:12px;color:#5a3d7a;">{{ container.stack }}</span></td>
+                        <td>
+                            <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
+                                {% for tag in container.tags %}
+                                <span style="background: {{ tag.color }}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">{{ tag.name }}</span>
+                                {% endfor %}
+                                <button class="btn btn-secondary btn-small" onclick="openTagModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" style="padding: 2px 6px; font-size: 11px;">+ Tag</button>
+                            </div>
+                        </td>
                         <td><span style="font-family: monospace; font-size: 12px; color: #555;">{{ container.ip_addresses }}</span></td>
+                        <td>
+                            {% if container.webui_url %}
+                            <a href="{{ container.webui_url }}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 18px;" title="Open Web UI">🌐</a>
+                            {% endif %}
+                            <button class="btn btn-secondary btn-small" onclick="openWebUIModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }}, '{{ container.webui_url or '' }}')" style="padding: 2px 6px; font-size: 11px;">{% if container.webui_url %}Edit{% else %}Set{% endif %}</button>
+                        </td>
                         <td>
                             <span class="status {{ container.status }}">{{ container.status }}</span>
                         </td>
-                        <td>{{ container.image }}</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span>{{ container.image }}</span>
+                                {% if container.image_links.registry %}
+                                <a href="{{ container.image_links.registry }}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 14px;" title="Registry">📦</a>
+                                {% endif %}
+                                {% if container.image_links.github %}
+                                <a href="{{ container.image_links.github }}" target="_blank" style="color: #333; text-decoration: none; font-size: 14px;" title="GitHub">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 192.168.1.100.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 192.168.1.100 1.21 1.87.87 192.168.1.100-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 192.168.1.100-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 192.168.1.100.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 192.168.1.100.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .192.168.1.100.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+                                </a>
+                                {% endif %}
+                                {% if container.image_links.docs %}
+                                <a href="{{ container.image_links.docs }}" target="_blank" style="color: #27ae60; text-decoration: none; font-size: 14px;" title="Docs">📚</a>
+                                {% endif %}
+                            </div>
+                        </td>
                         <td>
                             {% if container.status == 'running' %}
                             <button class="btn btn-warning btn-small" onclick="restartContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Restart</button>
@@ -643,6 +678,76 @@
             </div>
             <div style="margin-top: 15px;">
                 <button type="button" class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Management Modal -->
+    <div id="manageTagsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeManageTagsModal()">&times;</span>
+                <h3>Manage Tags</h3>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <h4>Create New Tag</h4>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <input type="text" id="newTagName" placeholder="Tag name" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <input type="color" id="newTagColor" value="#3498db" style="padding: 4px; border: 1px solid #ddd; border-radius: 4px; width: 60px;">
+                    <button class="btn btn-primary" onclick="createTag()">Create</button>
+                </div>
+            </div>
+            <div>
+                <h4>Existing Tags</h4>
+                <div id="tagsList" style="margin-top: 10px;"></div>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeManageTagsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Tag to Container Modal -->
+    <div id="tagModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeTagModal()">&times;</span>
+                <h3>Manage Tags: <span id="tagContainerName"></span></h3>
+            </div>
+            <input type="hidden" id="tagContainerId">
+            <input type="hidden" id="tagHostId">
+            <div style="margin-bottom: 20px;">
+                <h4>Current Tags</h4>
+                <div id="currentTags" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px;"></div>
+            </div>
+            <div>
+                <h4>Add Tag</h4>
+                <select id="availableTags" style="width: 100%; padding: 8px; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;"></select>
+                <button class="btn btn-primary" onclick="addTagToContainer()" style="margin-top: 10px;">Add Tag</button>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeTagModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Web UI URL Modal -->
+    <div id="webUIModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeWebUIModal()">&times;</span>
+                <h3>Set Web UI URL: <span id="webUIContainerName"></span></h3>
+            </div>
+            <input type="hidden" id="webUIContainerId">
+            <input type="hidden" id="webUIHostId">
+            <div style="margin-bottom: 20px;">
+                <label>Web UI URL:</label>
+                <input type="text" id="webUIUrl" placeholder="https://example.com:8080" style="width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                <small style="color: #7f8c8d; margin-top: 5px; display: block;">Leave empty to remove the URL</small>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="saveWebUIUrl()">Save</button>
+                <button class="btn btn-secondary" onclick="closeWebUIModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -991,6 +1096,7 @@
             const statusFilter = document.getElementById('filterStatus').value.toLowerCase();
             const hostFilter = document.getElementById('filterHost').value;
             const stackFilter = document.getElementById('filterStack').value;
+            const tagFilter = document.getElementById('filterTag').value;
 
             const table = document.getElementById('containersTable');
             if (!table) return;
@@ -1002,13 +1108,15 @@
                 const status = row.dataset.status || '';
                 const host = row.dataset.host || '';
                 const stack = row.dataset.stack || '';
+                const tags = row.dataset.tags || '';
 
                 const matchesName = !nameFilter || name.includes(nameFilter);
                 const matchesStatus = !statusFilter || status === statusFilter;
                 const matchesHost = !hostFilter || host === hostFilter;
                 const matchesStack = !stackFilter || stack === stackFilter;
+                const matchesTag = !tagFilter || tags.split(',').includes(tagFilter);
 
-                if (matchesName && matchesStatus && matchesHost && matchesStack) {
+                if (matchesName && matchesStatus && matchesHost && matchesStack && matchesTag) {
                     row.style.display = '';
                 } else {
                     row.style.display = 'none';
@@ -1021,6 +1129,7 @@
             document.getElementById('filterStatus').value = '';
             document.getElementById('filterHost').value = '';
             document.getElementById('filterStack').value = '';
+            document.getElementById('filterTag').value = '';
             filterContainers();
         }
 
@@ -1060,9 +1169,256 @@
             }
         }
 
+        // Tag Management Functions
+        let allTags = [];
+
+        async function loadAllTags() {
+            try {
+                const response = await fetch('/api/tags');
+                allTags = await response.json();
+                return allTags;
+            } catch (error) {
+                showAlert('Error loading tags: ' + error.message, 'error');
+                return [];
+            }
+        }
+
+        async function openManageTagsModal() {
+            await loadAllTags();
+            document.getElementById('manageTagsModal').style.display = 'block';
+            renderTagsList();
+        }
+
+        function closeManageTagsModal() {
+            document.getElementById('manageTagsModal').style.display = 'none';
+        }
+
+        function renderTagsList() {
+            const tagsList = document.getElementById('tagsList');
+            tagsList.innerHTML = '';
+
+            if (allTags.length === 0) {
+                tagsList.innerHTML = '<p style="color: #7f8c8d;">No tags created yet</p>';
+                return;
+            }
+
+            allTags.forEach(tag => {
+                const tagDiv = document.createElement('div');
+                tagDiv.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;';
+                tagDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="background: ${tag.color}; color: white; padding: 4px 12px; border-radius: 10px; font-size: 12px;">${tag.name}</span>
+                    </div>
+                    <button class="btn btn-danger btn-small" onclick="deleteTag(${tag.id})">Delete</button>
+                `;
+                tagsList.appendChild(tagDiv);
+            });
+        }
+
+        async function createTag() {
+            const name = document.getElementById('newTagName').value.trim();
+            const color = document.getElementById('newTagColor').value;
+
+            if (!name) {
+                showAlert('Please enter a tag name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, color })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    showAlert('Tag created successfully!', 'success');
+                    document.getElementById('newTagName').value = '';
+                    await loadAllTags();
+                    renderTagsList();
+                    populateTagFilter();
+                } else {
+                    showAlert(data.error || 'Failed to create tag', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteTag(tagId) {
+            if (!confirm('Delete this tag? It will be removed from all containers.')) return;
+
+            try {
+                const response = await fetch(`/api/tags/${tagId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    showAlert('Tag deleted', 'success');
+                    await loadAllTags();
+                    renderTagsList();
+                    populateTagFilter();
+                    location.reload(); // Reload to update container tags
+                } else {
+                    showAlert('Failed to delete tag', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Container Tag Functions
+        async function openTagModal(containerId, containerName, hostId) {
+            document.getElementById('tagContainerId').value = containerId;
+            document.getElementById('tagContainerName').textContent = containerName;
+            document.getElementById('tagHostId').value = hostId;
+            document.getElementById('tagModal').style.display = 'block';
+
+            await loadAllTags();
+            await loadContainerTags(containerId, hostId);
+        }
+
+        function closeTagModal() {
+            document.getElementById('tagModal').style.display = 'none';
+        }
+
+        async function loadContainerTags(containerId, hostId) {
+            try {
+                const response = await fetch(`/api/containers/${containerId}/${hostId}/tags`);
+                const tags = await response.json();
+
+                const currentTagsDiv = document.getElementById('currentTags');
+                currentTagsDiv.innerHTML = '';
+
+                if (tags.length === 0) {
+                    currentTagsDiv.innerHTML = '<p style="color: #7f8c8d;">No tags assigned</p>';
+                } else {
+                    tags.forEach(tag => {
+                        const tagSpan = document.createElement('span');
+                        tagSpan.style.cssText = `background: ${tag.color}; color: white; padding: 4px 10px; border-radius: 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;`;
+                        tagSpan.innerHTML = `
+                            ${tag.name}
+                            <span onclick="removeTagFromContainer(${tag.id})" style="cursor: pointer; font-weight: bold;">&times;</span>
+                        `;
+                        currentTagsDiv.appendChild(tagSpan);
+                    });
+                }
+
+                // Populate available tags dropdown
+                const availableTagsSelect = document.getElementById('availableTags');
+                availableTagsSelect.innerHTML = '<option value="">Select a tag</option>';
+                const assignedTagIds = tags.map(t => t.id);
+                allTags.filter(t => !assignedTagIds.includes(t.id)).forEach(tag => {
+                    const option = document.createElement('option');
+                    option.value = tag.id;
+                    option.textContent = tag.name;
+                    availableTagsSelect.appendChild(option);
+                });
+            } catch (error) {
+                showAlert('Error loading tags: ' + error.message, 'error');
+            }
+        }
+
+        async function addTagToContainer() {
+            const containerId = document.getElementById('tagContainerId').value;
+            const hostId = document.getElementById('tagHostId').value;
+            const tagId = document.getElementById('availableTags').value;
+
+            if (!tagId) {
+                showAlert('Please select a tag', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/containers/${containerId}/${hostId}/tags`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tag_id: tagId })
+                });
+
+                if (response.ok) {
+                    showAlert('Tag added!', 'success');
+                    await loadContainerTags(containerId, hostId);
+                    location.reload(); // Reload to update table
+                } else {
+                    showAlert('Failed to add tag', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function removeTagFromContainer(tagId) {
+            const containerId = document.getElementById('tagContainerId').value;
+            const hostId = document.getElementById('tagHostId').value;
+
+            try {
+                const response = await fetch(`/api/containers/${containerId}/${hostId}/tags/${tagId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showAlert('Tag removed!', 'success');
+                    await loadContainerTags(containerId, hostId);
+                    location.reload(); // Reload to update table
+                } else {
+                    showAlert('Failed to remove tag', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Web UI URL Functions
+        function openWebUIModal(containerId, containerName, hostId, currentUrl) {
+            document.getElementById('webUIContainerId').value = containerId;
+            document.getElementById('webUIContainerName').textContent = containerName;
+            document.getElementById('webUIHostId').value = hostId;
+            document.getElementById('webUIUrl').value = currentUrl || '';
+            document.getElementById('webUIModal').style.display = 'block';
+        }
+
+        function closeWebUIModal() {
+            document.getElementById('webUIModal').style.display = 'none';
+        }
+
+        async function saveWebUIUrl() {
+            const containerId = document.getElementById('webUIContainerId').value;
+            const hostId = document.getElementById('webUIHostId').value;
+            const url = document.getElementById('webUIUrl').value.trim();
+
+            try {
+                const response = await fetch(`/api/containers/${containerId}/${hostId}/webui`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+
+                if (response.ok) {
+                    showAlert(url ? 'Web UI URL saved!' : 'Web UI URL removed!', 'success');
+                    closeWebUIModal();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert('Failed to save Web UI URL', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        function populateTagFilter() {
+            const tagSelect = document.getElementById('filterTag');
+            tagSelect.innerHTML = '<option value="">All Tags</option>';
+            allTags.forEach(tag => {
+                const option = document.createElement('option');
+                option.value = tag.name;
+                option.textContent = tag.name;
+                tagSelect.appendChild(option);
+            });
+        }
+
         // Initialize filters on page load
         document.addEventListener('DOMContentLoaded', function() {
             populateFilterDropdowns();
+            loadAllTags().then(() => populateTagFilter());
         });
     </script>
 </body>
