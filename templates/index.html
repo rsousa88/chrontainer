@@ -426,20 +426,39 @@
         <div class="section">
             <h2>Docker Containers</h2>
             {% if containers %}
-            <table>
+            <!-- Filter Bar -->
+            <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="filterName" placeholder="Filter by name..." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; flex: 1; min-width: 200px;" onkeyup="filterContainers()">
+                <select id="filterStatus" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
+                    <option value="">All Statuses</option>
+                    <option value="running">Running</option>
+                    <option value="exited">Exited</option>
+                    <option value="paused">Paused</option>
+                    <option value="restarting">Restarting</option>
+                </select>
+                <select id="filterHost" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
+                    <option value="">All Hosts</option>
+                </select>
+                <select id="filterStack" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
+                    <option value="">All Stacks</option>
+                </select>
+                <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 16px;">Clear Filters</button>
+            </div>
+            <table id="containersTable">
                 <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Host</th>
+                        <th onclick="sortTable('name')" style="cursor: pointer;">Name <span id="sort-name"></span></th>
+                        <th onclick="sortTable('host')" style="cursor: pointer;">Host <span id="sort-host"></span></th>
+                        <th onclick="sortTable('stack')" style="cursor: pointer;">Stack <span id="sort-stack"></span></th>
                         <th>IP Address</th>
-                        <th>Status</th>
-                        <th>Image</th>
+                        <th onclick="sortTable('status')" style="cursor: pointer;">Status <span id="sort-status"></span></th>
+                        <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for container in containers %}
-                    <tr>
+                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image }}">
                         <td>
                             <div class="tooltip-container">
                                 <strong>{{ container.name }}</strong>
@@ -452,6 +471,7 @@
                             </div>
                         </td>
                         <td><span style="background:#e8f4f8;padding:4px 8px;border-radius:4px;font-size:12px;">{{ container.host_name }}</span></td>
+                        <td><span style="background:#f0e8ff;padding:4px 8px;border-radius:4px;font-size:12px;color:#5a3d7a;">{{ container.stack }}</span></td>
                         <td><span style="font-family: monospace; font-size: 12px; color: #555;">{{ container.ip_addresses }}</span></td>
                         <td>
                             <span class="status {{ container.status }}">{{ container.status }}</span>
@@ -875,6 +895,122 @@
                 closeScheduleModal();
             }
         }
+
+        // Filter and Sort functionality
+        let currentSort = { column: null, direction: 'asc' };
+
+        function populateFilterDropdowns() {
+            const table = document.getElementById('containersTable');
+            if (!table) return;
+
+            const rows = table.querySelectorAll('tbody tr');
+            const hosts = new Set();
+            const stacks = new Set();
+
+            rows.forEach(row => {
+                const host = row.dataset.host;
+                const stack = row.dataset.stack;
+                if (host && host !== 'N/A') hosts.add(host);
+                if (stack && stack !== 'N/A') stacks.add(stack);
+            });
+
+            // Populate host filter
+            const hostSelect = document.getElementById('filterHost');
+            hosts.forEach(host => {
+                const option = document.createElement('option');
+                option.value = host;
+                option.textContent = host;
+                hostSelect.appendChild(option);
+            });
+
+            // Populate stack filter
+            const stackSelect = document.getElementById('filterStack');
+            stacks.forEach(stack => {
+                const option = document.createElement('option');
+                option.value = stack;
+                option.textContent = stack;
+                stackSelect.appendChild(option);
+            });
+        }
+
+        function filterContainers() {
+            const nameFilter = document.getElementById('filterName').value.toLowerCase();
+            const statusFilter = document.getElementById('filterStatus').value.toLowerCase();
+            const hostFilter = document.getElementById('filterHost').value;
+            const stackFilter = document.getElementById('filterStack').value;
+
+            const table = document.getElementById('containersTable');
+            if (!table) return;
+
+            const rows = table.querySelectorAll('tbody tr');
+
+            rows.forEach(row => {
+                const name = row.dataset.name || '';
+                const status = row.dataset.status || '';
+                const host = row.dataset.host || '';
+                const stack = row.dataset.stack || '';
+
+                const matchesName = !nameFilter || name.includes(nameFilter);
+                const matchesStatus = !statusFilter || status === statusFilter;
+                const matchesHost = !hostFilter || host === hostFilter;
+                const matchesStack = !stackFilter || stack === stackFilter;
+
+                if (matchesName && matchesStatus && matchesHost && matchesStack) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        function clearFilters() {
+            document.getElementById('filterName').value = '';
+            document.getElementById('filterStatus').value = '';
+            document.getElementById('filterHost').value = '';
+            document.getElementById('filterStack').value = '';
+            filterContainers();
+        }
+
+        function sortTable(column) {
+            const table = document.getElementById('containersTable');
+            if (!table) return;
+
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            // Toggle sort direction
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            // Sort rows
+            rows.sort((a, b) => {
+                const aVal = (a.dataset[column] || '').toLowerCase();
+                const bVal = (b.dataset[column] || '').toLowerCase();
+
+                if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            // Re-append sorted rows
+            rows.forEach(row => tbody.appendChild(row));
+
+            // Update sort indicators
+            document.querySelectorAll('[id^="sort-"]').forEach(span => span.textContent = '');
+            const indicator = document.getElementById(`sort-${column}`);
+            if (indicator) {
+                indicator.textContent = currentSort.direction === 'asc' ? '▲' : '▼';
+            }
+        }
+
+        // Initialize filters on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            populateFilterDropdowns();
+        });
     </script>
 </body>
 </html>

@@ -277,9 +277,9 @@ POST   /api/settings/discord/test
 
 ## Issues/Improvements
 - [x] [UI/UX] Increase the width of the logs modal (900px → 1200px)
-- [ ] [UI/UX] Increase the width of the logs modal even more (80% or 90% of total width)
+- [x] [UI/UX] Increase the width of the logs modal even more (80% or 90% of total width)
 - [x] [UI/UX] After opening the logs modal, the scroll is still being done in the main body. The logs control should be automatically selected so the scroll can work without having to click in it (auto-focus added)
-  - [ ] UPDATE: This is not fixed yet, the focus is still not being applied to the logs modal content and scroll is only working in the logs content after a click
+  - [x] UPDATE: This is not fixed yet, the focus is still not being applied to the logs modal content and scroll is only working in the logs content after a click
 - [x] [UI/UX] Clicking outside of the logs modal should close it (backdrop click handler added)
 - [x] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Fixed with fallback logic: tags → Config.Image → short image ID
 

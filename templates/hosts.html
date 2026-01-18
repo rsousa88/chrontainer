@@ -116,6 +116,14 @@
             document.getElementById('hostModal').style.display = 'block';
         }
 
+        function showEditModal(hostId, hostName, hostUrl) {
+            editingHostId = hostId;
+            document.getElementById('modalTitle').textContent = 'Edit Docker Host';
+            document.getElementById('hostName').value = hostName;
+            document.getElementById('hostUrl').value = hostUrl;
+            document.getElementById('hostModal').style.display = 'block';
+        }
+
         function closeModal() {
             document.getElementById('hostModal').style.display = 'none';
         }
@@ -136,6 +144,7 @@
                         <td><span class="status-badge ${host.enabled ? 'enabled' : 'disabled'}">${host.enabled ? 'Enabled' : 'Disabled'}</span></td>
                         <td>${host.last_seen ? new Date(host.last_seen).toLocaleString() : 'Never'}</td>
                         <td>
+                            <button class="btn btn-primary" onclick="showEditModal(${host.id}, '${host.name}', '${host.url}')">Edit</button>
                             <button class="btn btn-success" onclick="testHost(${host.id})">Test</button>
                             ${host.id !== 1 ? `<button class="btn btn-danger" onclick="deleteHost(${host.id}, '${host.name}')">Delete</button>` : ''}
                         </td>
@@ -157,19 +166,23 @@
             }
 
             try {
-                const response = await fetch('/api/hosts', {
-                    method: 'POST',
+                const isEdit = editingHostId !== null;
+                const apiUrl = isEdit ? `/api/hosts/${editingHostId}` : '/api/hosts';
+                const method = isEdit ? 'PUT' : 'POST';
+
+                const response = await fetch(apiUrl, {
+                    method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, url })
                 });
 
                 const data = await response.json();
                 if (response.ok) {
-                    showAlert('Host added successfully!', 'success');
+                    showAlert(isEdit ? 'Host updated successfully!' : 'Host added successfully!', 'success');
                     closeModal();
                     loadHosts();
                 } else {
-                    showAlert(data.error || 'Failed to add host', 'error');
+                    showAlert(data.error || `Failed to ${isEdit ? 'update' : 'add'} host`, 'error');
                 }
             } catch (error) {
                 showAlert('Error: ' + error.message, 'error');

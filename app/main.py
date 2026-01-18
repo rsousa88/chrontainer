@@ -538,6 +538,16 @@ def index():
                     except:
                         pass
 
+                    # Extract stack/compose project name from labels
+                    stack_name = 'N/A'
+                    try:
+                        labels = container.attrs.get('Config', {}).get('Labels', {})
+                        # Docker Compose adds this label
+                        if 'com.docker.compose.project' in labels:
+                            stack_name = labels['com.docker.compose.project']
+                    except:
+                        pass
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
@@ -546,7 +556,8 @@ def index():
                         'created': container.attrs['Created'],
                         'host_id': host_id,
                         'host_name': host_name,
-                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A'
+                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
+                        'stack': stack_name
                     })
             except Exception as e:
                 logger.error(f"Error getting containers from host {host_name}: {e}")
@@ -597,6 +608,16 @@ def get_containers():
                     except:
                         pass
 
+                    # Extract stack/compose project name from labels
+                    stack_name = 'N/A'
+                    try:
+                        labels = container.attrs.get('Config', {}).get('Labels', {})
+                        # Docker Compose adds this label
+                        if 'com.docker.compose.project' in labels:
+                            stack_name = labels['com.docker.compose.project']
+                    except:
+                        pass
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
@@ -604,7 +625,8 @@ def get_containers():
                         'image': image_name,
                         'host_id': host_id,
                         'host_name': host_name,
-                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A'
+                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
+                        'stack': stack_name
                     })
             except Exception as e:
                 logger.error(f"Error getting containers from host {host_name}: {e}")
