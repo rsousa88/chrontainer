@@ -14,6 +14,57 @@ import logging
 # Version
 VERSION = "0.2.0"
 
+# Helper function to generate image registry and documentation links
+def get_image_links(image_name):
+    """Generate registry, GitHub, and docs links from image name"""
+    links = {'registry': None, 'github': None, 'docs': None}
+
+    if not image_name or image_name == 'unknown':
+        return links
+
+    try:
+        # Parse image name (registry/namespace/repo:tag or namespace/repo:tag or repo:tag)
+        parts = image_name.split('/')
+        tag_split = parts[-1].split(':')
+        repo = tag_split[0]
+
+        # Determine registry and namespace
+        if len(parts) >= 3:  # registry/namespace/repo
+            registry = parts[0]
+            namespace = parts[1]
+        elif len(parts) == 2:  # namespace/repo (Docker Hub default)
+            registry = 'docker.io'
+            namespace = parts[0]
+        else:  # repo only (official Docker Hub image)
+            registry = 'docker.io'
+            namespace = 'library'
+
+        # Generate registry link
+        if registry == 'docker.io':
+            if namespace == 'library':
+                links['registry'] = f'https://hub.docker.com/_/{repo}'
+            else:
+                links['registry'] = f'https://hub.docker.com/r/{namespace}/{repo}'
+        elif registry == 'ghcr.io':
+            links['registry'] = f'https://github.com/{namespace}/{repo}/pkgs/container/{repo}'
+        elif registry == 'gcr.io':
+            links['registry'] = f'https://gcr.io/{namespace}/{repo}'
+
+        # Generate GitHub link for known publishers
+        linuxserver_images = ['plex', 'sonarr', 'radarr', 'jellyfin', 'homeassistant', 'nginx', 'swag']
+        if namespace == 'linuxserver':
+            links['github'] = f'https://github.com/linuxserver/docker-{repo}'
+            links['docs'] = f'https://docs.linuxserver.io/images/docker-{repo}'
+        elif namespace in ['jellyfin', 'homeassistant', 'grafana', 'prom']:
+            links['github'] = f'https://github.com/{namespace}/{repo}'
+        elif registry == 'ghcr.io':
+            links['github'] = f'https://github.com/{namespace}/{repo}'
+
+    except Exception as e:
+        logger.debug(f"Failed to parse image name {image_name}: {e}")
+
+    return links
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -174,6 +225,44 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Create tags table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            color TEXT DEFAULT '#3498db',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Create container_tags table (many-to-many relationship)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS container_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            container_id TEXT NOT NULL,
+            host_id INTEGER NOT NULL,
+            tag_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (host_id) REFERENCES hosts(id),
+            FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+            UNIQUE(container_id, host_id, tag_id)
+        )
+    ''')
+
+    # Create container_webui_urls table for manual Web UI URLs
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS container_webui_urls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            container_id TEXT NOT NULL,
+            host_id INTEGER NOT NULL,
+            url TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (host_id) REFERENCES hosts(id),
+            UNIQUE(container_id, host_id)
         )
     ''')
 
@@ -540,11 +629,15 @@ def index():
 
                     # Extract stack/compose project name from labels
                     stack_name = 'N/A'
+                    webui_url_from_label = None
                     try:
                         labels = container.attrs.get('Config', {}).get('Labels', {})
                         # Docker Compose adds this label
                         if 'com.docker.compose.project' in labels:
                             stack_name = labels['com.docker.compose.project']
+                        # Check for webui URL in labels
+                        if 'chrontainer.webui.url' in labels:
+                            webui_url_from_label = labels['chrontainer.webui.url']
                     except:
                         pass
 
@@ -557,14 +650,45 @@ def index():
                         'host_id': host_id,
                         'host_name': host_name,
                         'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
-                        'stack': stack_name
+                        'stack': stack_name,
+                        'webui_url_label': webui_url_from_label
                     })
             except Exception as e:
                 logger.error(f"Error getting containers from host {host_name}: {e}")
 
-        # Get schedules with host info
+        # Load tags and manual webui URLs for all containers
         conn = get_db()
         cursor = conn.cursor()
+
+        # Get all tags for containers
+        tags_map = {}  # Key: (container_id, host_id), Value: list of tags
+        cursor.execute('''
+            SELECT ct.container_id, ct.host_id, t.id, t.name, t.color
+            FROM container_tags ct
+            JOIN tags t ON ct.tag_id = t.id
+        ''')
+        for row in cursor.fetchall():
+            key = (row[0], row[1])
+            if key not in tags_map:
+                tags_map[key] = []
+            tags_map[key].append({'id': row[2], 'name': row[3], 'color': row[4]})
+
+        # Get all manual webui URLs
+        webui_map = {}  # Key: (container_id, host_id), Value: url
+        cursor.execute('SELECT container_id, host_id, url FROM container_webui_urls')
+        for row in cursor.fetchall():
+            webui_map[(row[0], row[1])] = row[2]
+
+        # Attach tags, webui URLs, and image links to containers
+        for container in container_list:
+            key = (container['id'], container['host_id'])
+            container['tags'] = tags_map.get(key, [])
+            # Manual URL takes precedence over label URL
+            container['webui_url'] = webui_map.get(key) or container.get('webui_url_label')
+            # Generate image registry/GitHub/docs links
+            container['image_links'] = get_image_links(container['image'])
+
+        # Get schedules with host info
         cursor.execute('''
             SELECT s.id, s.container_name, s.action, s.cron_expression, s.enabled, s.last_run, h.name
             FROM schedules s
@@ -608,13 +732,17 @@ def get_containers():
                     except:
                         pass
 
-                    # Extract stack/compose project name from labels
+                    # Extract stack/compose project name and webui URL from labels
                     stack_name = 'N/A'
+                    webui_url_from_label = None
                     try:
                         labels = container.attrs.get('Config', {}).get('Labels', {})
                         # Docker Compose adds this label
                         if 'com.docker.compose.project' in labels:
                             stack_name = labels['com.docker.compose.project']
+                        # Check for webui URL in labels
+                        if 'chrontainer.webui.url' in labels:
+                            webui_url_from_label = labels['chrontainer.webui.url']
                     except:
                         pass
 
@@ -626,10 +754,44 @@ def get_containers():
                         'host_id': host_id,
                         'host_name': host_name,
                         'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
-                        'stack': stack_name
+                        'stack': stack_name,
+                        'webui_url_label': webui_url_from_label
                     })
             except Exception as e:
                 logger.error(f"Error getting containers from host {host_name}: {e}")
+
+        # Load tags and manual webui URLs
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get all tags for containers
+        tags_map = {}
+        cursor.execute('''
+            SELECT ct.container_id, ct.host_id, t.id, t.name, t.color
+            FROM container_tags ct
+            JOIN tags t ON ct.tag_id = t.id
+        ''')
+        for row in cursor.fetchall():
+            key = (row[0], row[1])
+            if key not in tags_map:
+                tags_map[key] = []
+            tags_map[key].append({'id': row[2], 'name': row[3], 'color': row[4]})
+
+        # Get all manual webui URLs
+        webui_map = {}
+        cursor.execute('SELECT container_id, host_id, url FROM container_webui_urls')
+        for row in cursor.fetchall():
+            webui_map[(row[0], row[1])] = row[2]
+
+        conn.close()
+
+        # Attach tags, webui URLs, and image links to containers
+        for container in container_list:
+            key = (container['id'], container['host_id'])
+            container['tags'] = tags_map.get(key, [])
+            container['webui_url'] = webui_map.get(key) or container.get('webui_url_label')
+            container['image_links'] = get_image_links(container['image'])
+
         return jsonify(container_list)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1053,6 +1215,160 @@ def test_host_connection(host_id):
             conn.close()
 
         return jsonify({'success': success, 'message': message})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ===== Tags API =====
+
+@app.route('/api/tags', methods=['GET'])
+def get_tags():
+    """Get all tags"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name, color FROM tags ORDER BY name')
+        tags = [{'id': row[0], 'name': row[1], 'color': row[2]} for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(tags)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tags', methods=['POST'])
+def create_tag():
+    """Create a new tag"""
+    try:
+        data = request.json
+        name = data.get('name', '').strip()
+        color = data.get('color', '#3498db').strip()
+
+        if not name:
+            return jsonify({'error': 'Tag name is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO tags (name, color) VALUES (?, ?)', (name, color))
+        tag_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'id': tag_id, 'name': name, 'color': color})
+    except sqlite3.IntegrityError:
+        return jsonify({'error': 'Tag already exists'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tags/<int:tag_id>', methods=['DELETE'])
+def delete_tag(tag_id):
+    """Delete a tag"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM tags WHERE id = ?', (tag_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/containers/<container_id>/<int:host_id>/tags', methods=['GET'])
+def get_container_tags(container_id, host_id):
+    """Get tags for a specific container"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT t.id, t.name, t.color
+            FROM tags t
+            JOIN container_tags ct ON t.id = ct.tag_id
+            WHERE ct.container_id = ? AND ct.host_id = ?
+        ''', (container_id, host_id))
+        tags = [{'id': row[0], 'name': row[1], 'color': row[2]} for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(tags)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/containers/<container_id>/<int:host_id>/tags', methods=['POST'])
+def add_container_tag(container_id, host_id):
+    """Add a tag to a container"""
+    try:
+        data = request.json
+        tag_id = data.get('tag_id')
+
+        if not tag_id:
+            return jsonify({'error': 'Tag ID is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            'INSERT OR IGNORE INTO container_tags (container_id, host_id, tag_id) VALUES (?, ?, ?)',
+            (container_id, host_id, tag_id)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/containers/<container_id>/<int:host_id>/tags/<int:tag_id>', methods=['DELETE'])
+def remove_container_tag(container_id, host_id, tag_id):
+    """Remove a tag from a container"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            'DELETE FROM container_tags WHERE container_id = ? AND host_id = ? AND tag_id = ?',
+            (container_id, host_id, tag_id)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/containers/<container_id>/<int:host_id>/webui', methods=['GET'])
+def get_container_webui(container_id, host_id):
+    """Get Web UI URL for a container"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT url FROM container_webui_urls WHERE container_id = ? AND host_id = ?',
+            (container_id, host_id)
+        )
+        result = cursor.fetchone()
+        conn.close()
+        return jsonify({'url': result[0] if result else None})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/containers/<container_id>/<int:host_id>/webui', methods=['POST'])
+def set_container_webui(container_id, host_id):
+    """Set Web UI URL for a container"""
+    try:
+        data = request.json
+        url = data.get('url', '').strip()
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        if url:
+            # Insert or update
+            cursor.execute('''
+                INSERT INTO container_webui_urls (container_id, host_id, url, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(container_id, host_id) DO UPDATE SET url = ?, updated_at = ?
+            ''', (container_id, host_id, url, datetime.now(), url, datetime.now()))
+        else:
+            # Delete if URL is empty
+            cursor.execute(
+                'DELETE FROM container_webui_urls WHERE container_id = ? AND host_id = ?',
+                (container_id, host_id)
+            )
+
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

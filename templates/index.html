@@ -478,7 +478,7 @@
                         <th onclick="sortTable('name')" style="cursor: pointer;">Name <span id="sort-name"></span></th>
                         <th onclick="sortTable('host')" style="cursor: pointer;">Host <span id="sort-host"></span></th>
                         <th onclick="sortTable('stack')" style="cursor: pointer;">Stack <span id="sort-stack"></span></th>
-                        <th>IP Address</th>
+                        <th onclick="sortTable('ip')" style="cursor: pointer;">IP Address <span id="sort-ip"></span></th>
                         <th onclick="sortTable('status')" style="cursor: pointer;">Status <span id="sort-status"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
                         <th>Actions</th>
@@ -486,7 +486,7 @@
                 </thead>
                 <tbody>
                     {% for container in containers %}
-                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image }}">
+                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image }}" data-ip="{{ container.ip_addresses }}">
                         <td>
                             <div class="tooltip-container">
                                 <strong>{{ container.name }}</strong>
