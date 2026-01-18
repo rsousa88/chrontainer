@@ -11,6 +11,9 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 import logging
 
+# Version
+VERSION = "0.2.0"
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -525,6 +528,16 @@ def index():
                             # Last resort: use short image ID
                             image_name = container.image.short_id.replace('sha256:', '')[:12]
 
+                    # Extract IP addresses from all networks
+                    ip_addresses = []
+                    try:
+                        networks = container.attrs['NetworkSettings']['Networks']
+                        for network_name, network_info in networks.items():
+                            if network_info.get('IPAddress'):
+                                ip_addresses.append(network_info['IPAddress'])
+                    except:
+                        pass
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
@@ -532,7 +545,8 @@ def index():
                         'image': image_name,
                         'created': container.attrs['Created'],
                         'host_id': host_id,
-                        'host_name': host_name
+                        'host_name': host_name,
+                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A'
                     })
             except Exception as e:
                 logger.error(f"Error getting containers from host {host_name}: {e}")
@@ -548,7 +562,7 @@ def index():
         schedules = cursor.fetchall()
         conn.close()
 
-        return render_template('index.html', containers=container_list, schedules=schedules)
+        return render_template('index.html', containers=container_list, schedules=schedules, version=VERSION)
     except Exception as e:
         logger.error(f"Error loading dashboard: {e}")
         return render_template('error.html', error=str(e))
@@ -573,13 +587,24 @@ def get_containers():
                             # Last resort: use short image ID
                             image_name = container.image.short_id.replace('sha256:', '')[:12]
 
+                    # Extract IP addresses from all networks
+                    ip_addresses = []
+                    try:
+                        networks = container.attrs['NetworkSettings']['Networks']
+                        for network_name, network_info in networks.items():
+                            if network_info.get('IPAddress'):
+                                ip_addresses.append(network_info['IPAddress'])
+                    except:
+                        pass
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
                         'status': container.status,
                         'image': image_name,
                         'host_id': host_id,
-                        'host_name': host_name
+                        'host_name': host_name,
+                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A'
                     })
             except Exception as e:
                 logger.error(f"Error getting containers from host {host_name}: {e}")
@@ -1013,12 +1038,12 @@ def test_host_connection(host_id):
 def settings_page():
     """Settings page"""
     webhook_url = get_setting('discord_webhook_url', '')
-    return render_template('settings.html', discord_webhook_url=webhook_url)
+    return render_template('settings.html', discord_webhook_url=webhook_url, version=VERSION)
 
 @app.route('/hosts')
 def hosts_page():
     """Hosts management page"""
-    return render_template('hosts.html')
+    return render_template('hosts.html', version=VERSION)
 
 @app.route('/logs')
 def logs():
@@ -1028,7 +1053,7 @@ def logs():
     cursor.execute('SELECT * FROM logs ORDER BY timestamp DESC LIMIT 100')
     logs = cursor.fetchall()
     conn.close()
-    return render_template('logs.html', logs=logs)
+    return render_template('logs.html', logs=logs, version=VERSION)
 
 if __name__ == '__main__':
     # Create data directory if it doesn't exist

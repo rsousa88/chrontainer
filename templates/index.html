@@ -203,6 +203,15 @@
             height: 100%;
             background: rgba(0,0,0,0.5);
             z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .modal.open {
+            display: block;
+        }
+
+        body.modal-open {
+            overflow: hidden;
         }
         
         .modal-content {
@@ -400,7 +409,7 @@
 <body>
     <header>
         <div class="container">
-            <h1>🐳 Chrontainer</h1>
+            <h1>🐳 Chrontainer <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
                 <a href="/logs">Logs</a>
@@ -422,6 +431,7 @@
                     <tr>
                         <th>Name</th>
                         <th>Host</th>
+                        <th>IP Address</th>
                         <th>Status</th>
                         <th>Image</th>
                         <th>Actions</th>
@@ -442,6 +452,7 @@
                             </div>
                         </td>
                         <td><span style="background:#e8f4f8;padding:4px 8px;border-radius:4px;font-size:12px;">{{ container.host_name }}</span></td>
+                        <td><span style="font-family: monospace; font-size: 12px; color: #555;">{{ container.ip_addresses }}</span></td>
                         <td>
                             <span class="status {{ container.status }}">{{ container.status }}</span>
                         </td>
@@ -563,7 +574,7 @@
 
     <!-- Logs Modal -->
     <div id="logsModal" class="modal" onclick="closeLogsModalOnOutsideClick(event)">
-        <div class="modal-content" style="max-width: 1200px;">
+        <div class="modal-content" style="max-width: 85%; width: 85%;">
             <div class="modal-header">
                 <span class="close" onclick="closeLogsModal()">&times;</span>
                 <h3>Container Logs: <span id="logsContainerName"></span></h3>
@@ -579,7 +590,9 @@
                 </select>
                 <button class="btn btn-primary btn-small" onclick="refreshLogs()" style="margin-left: 10px;">Refresh</button>
             </div>
-            <pre id="logsContent" tabindex="0" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow-y: auto; font-size: 12px; line-height: 1.4; font-family: 'Courier New', monospace; outline: none;">Loading logs...</pre>
+            <div id="logsWrapper" tabindex="0" style="max-height: 500px; overflow-y: auto; background: #1e1e1e; border-radius: 4px; outline: 2px solid transparent; transition: outline 0.2s;" onmouseenter="this.style.outline='2px solid #3498db'" onmouseleave="this.style.outline='2px solid transparent'">
+                <pre id="logsContent" style="background: transparent; color: #d4d4d4; padding: 15px; margin: 0; font-size: 12px; line-height: 1.4; font-family: 'Courier New', monospace;">Loading logs...</pre>
+            </div>
             <div style="margin-top: 15px;">
                 <button type="button" class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
             </div>
@@ -765,19 +778,24 @@
             currentLogsHostId = hostId;
 
             document.getElementById('logsContainerName').textContent = containerName;
-            document.getElementById('logsModal').style.display = 'block';
+            const modal = document.getElementById('logsModal');
+            modal.style.display = 'block';
+            document.body.classList.add('modal-open');
 
             // Load logs
             fetchLogs(containerId, containerName, hostId);
 
-            // Auto-focus the logs content for immediate scroll control
+            // Auto-focus the logs wrapper for immediate scroll control
             setTimeout(() => {
-                document.getElementById('logsContent').focus();
-            }, 100);
+                const logsWrapper = document.getElementById('logsWrapper');
+                logsWrapper.focus();
+                logsWrapper.scrollTop = logsWrapper.scrollHeight;
+            }, 200);
         }
 
         function closeLogsModal() {
             document.getElementById('logsModal').style.display = 'none';
+            document.body.classList.remove('modal-open');
             currentLogsContainerId = null;
             currentLogsContainerName = null;
             currentLogsHostId = null;
@@ -798,6 +816,7 @@
 
         async function fetchLogs(containerId, containerName, hostId) {
             const logsContent = document.getElementById('logsContent');
+            const logsWrapper = document.getElementById('logsWrapper');
             const tailLines = document.getElementById('logLines').value;
 
             logsContent.textContent = 'Loading logs...';
@@ -808,8 +827,10 @@
 
                 if (result.success) {
                     logsContent.textContent = result.logs || 'No logs available';
-                    // Auto-scroll to bottom
-                    logsContent.scrollTop = logsContent.scrollHeight;
+                    // Auto-scroll wrapper to bottom
+                    setTimeout(() => {
+                        logsWrapper.scrollTop = logsWrapper.scrollHeight;
+                    }, 50);
                 } else {
                     logsContent.textContent = `Error: ${result.error}`;
                 }
