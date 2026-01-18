@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chrontainer - Docker Container Scheduler</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%232c3e50' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='70' font-size='70' text-anchor='middle' fill='%233498db'%3E🐳%3C/text%3E%3C/svg%3E">
     <style>
         * {
             margin: 0;
@@ -254,7 +255,13 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
-        
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
         .cron-helper {
             background: #f8f9fa;
             padding: 15px;
@@ -318,6 +325,76 @@
         input:checked + .slider:before {
             transform: translateX(26px);
         }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 5px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Tooltip styles */
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .tooltip-text {
+            visibility: hidden;
+            width: 280px;
+            background-color: #2c3e50;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -140px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            line-height: 1.5;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #2c3e50 transparent transparent transparent;
+        }
+
+        .tooltip-label {
+            font-weight: 600;
+            color: #3498db;
+        }
     </style>
 </head>
 <body>
@@ -353,7 +430,17 @@
                 <tbody>
                     {% for container in containers %}
                     <tr>
-                        <td><strong>{{ container.name }}</strong></td>
+                        <td>
+                            <div class="tooltip-container">
+                                <strong>{{ container.name }}</strong>
+                                <span class="tooltip-text">
+                                    <div><span class="tooltip-label">ID:</span> {{ container.id }}</div>
+                                    <div><span class="tooltip-label">Image:</span> {{ container.image }}</div>
+                                    <div><span class="tooltip-label">Status:</span> {{ container.status }}</div>
+                                    <div><span class="tooltip-label">Created:</span> {{ container.created[:19].replace('T', ' ') }}</div>
+                                </span>
+                            </div>
+                        </td>
                         <td><span style="background:#e8f4f8;padding:4px 8px;border-radius:4px;font-size:12px;">{{ container.host_name }}</span></td>
                         <td>
                             <span class="status {{ container.status }}">{{ container.status }}</span>
@@ -475,8 +562,8 @@
     </div>
 
     <!-- Logs Modal -->
-    <div id="logsModal" class="modal">
-        <div class="modal-content" style="max-width: 900px;">
+    <div id="logsModal" class="modal" onclick="closeLogsModalOnOutsideClick(event)">
+        <div class="modal-content" style="max-width: 1200px;">
             <div class="modal-header">
                 <span class="close" onclick="closeLogsModal()">&times;</span>
                 <h3>Container Logs: <span id="logsContainerName"></span></h3>
@@ -492,7 +579,7 @@
                 </select>
                 <button class="btn btn-primary btn-small" onclick="refreshLogs()" style="margin-left: 10px;">Refresh</button>
             </div>
-            <pre id="logsContent" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow-y: auto; font-size: 12px; line-height: 1.4; font-family: 'Courier New', monospace;">Loading logs...</pre>
+            <pre id="logsContent" tabindex="0" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow-y: auto; font-size: 12px; line-height: 1.4; font-family: 'Courier New', monospace; outline: none;">Loading logs...</pre>
             <div style="margin-top: 15px;">
                 <button type="button" class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
             </div>
@@ -504,9 +591,9 @@
             const alertContainer = document.getElementById('alertContainer');
             const alert = document.createElement('div');
             alert.className = `alert alert-${type}`;
-            alert.textContent = message;
+            alert.innerHTML = message; // Use innerHTML to support spinner HTML
             alertContainer.appendChild(alert);
-            
+
             setTimeout(() => {
                 alert.remove();
             }, 5000);
@@ -560,6 +647,8 @@
         async function restartContainer(containerId, containerName, hostId) {
             if (!confirm(`Restart container ${containerName}?`)) return;
 
+            showAlert('<span class="spinner"></span> Restarting container...', 'info');
+
             try {
                 const response = await fetch(`/api/container/${containerId}/restart`, {
                     method: 'POST',
@@ -579,6 +668,8 @@
         }
 
         async function startContainer(containerId, containerName, hostId) {
+            showAlert('<span class="spinner"></span> Starting container...', 'info');
+
             try {
                 const response = await fetch(`/api/container/${containerId}/start`, {
                     method: 'POST',
@@ -599,6 +690,8 @@
 
         async function stopContainer(containerId, containerName, hostId) {
             if (!confirm(`Stop container ${containerName}?`)) return;
+
+            showAlert('<span class="spinner"></span> Stopping container...', 'info');
 
             try {
                 const response = await fetch(`/api/container/${containerId}/stop`, {
@@ -621,6 +714,8 @@
         async function pauseContainer(containerId, containerName, hostId) {
             if (!confirm(`Pause container ${containerName}?`)) return;
 
+            showAlert('<span class="spinner"></span> Pausing container...', 'info');
+
             try {
                 const response = await fetch(`/api/container/${containerId}/pause`, {
                     method: 'POST',
@@ -640,6 +735,8 @@
         }
 
         async function unpauseContainer(containerId, containerName, hostId) {
+            showAlert('<span class="spinner"></span> Unpausing container...', 'info');
+
             try {
                 const response = await fetch(`/api/container/${containerId}/unpause`, {
                     method: 'POST',
@@ -672,6 +769,11 @@
 
             // Load logs
             fetchLogs(containerId, containerName, hostId);
+
+            // Auto-focus the logs content for immediate scroll control
+            setTimeout(() => {
+                document.getElementById('logsContent').focus();
+            }, 100);
         }
 
         function closeLogsModal() {
@@ -679,6 +781,13 @@
             currentLogsContainerId = null;
             currentLogsContainerName = null;
             currentLogsHostId = null;
+        }
+
+        function closeLogsModalOnOutsideClick(event) {
+            // Close modal if clicking on the background (not the content)
+            if (event.target.id === 'logsModal') {
+                closeLogsModal();
+            }
         }
 
         function refreshLogs() {

@@ -256,8 +256,28 @@ POST   /api/settings/discord/test
 - [ ] Copy schedule to clipboard
 - [x] Example cron expressions in UI (in schedule modal)
 - [x] Link to crontab.guru for help (mentioned in UI)
-- [ ] Add filters and sorts to the table in web UI (similar to what dockpeek has)
-- [ ] Dark mode
+
+---
+
+## Additional features to consider
+- [ ] [UI/UX] Add filters and sorts to the table in web UI (similar to what dockpeek has)
+- [ ] [UI/UX] Dark mode
+- [ ] [Updates] Be able to check for updates to containers and directly update them from the web UI (similar to dockpeek)
+- [ ] [Hosts] Ability to edit hosts
+- [ ] [UI/UX] Ability to add tags to containers and then allow filtering by tag
+- [ ] [UI/UX] Add column to dashboard table that show the name of the stack that a container belongs to
+- [ ] [UI/UX] Ability to add a web UI URL to each container in the table, so users can quickly open the container interface from the dashboard
+- [ ] [UI/UX] Add links to registry and github/code and/or docs next to each image (like dockpeek)
+- [ ] [Monitoring] Host metrics dashboard page
+- [ ] [Monitoring] If possible, include resource usage from each container (not sure if this data is provided through the docker API but it would be awesome to have at least the RAM usage in real-time or near real-time)
+
+---
+
+## Issues/Improvements
+- [ ] [UI/UX] Increase the width of the logs modal
+- [ ] [UI/UX] After opening the logs modal, the scroll is still being done in the main body. The logs control should be automatically selected so the scroll can work without having to click in it
+- [ ] [UI/UX] Clicking outside of the logs modal should close it
+- [ ] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Some examples of containers affected by this issue: mqtt, speedtest, rabbitmq, portainer-ce, pgadmin, n8n, grafana and baserow
 
 ---
 
