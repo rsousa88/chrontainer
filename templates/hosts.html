@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Docker Hosts - Chrontainer</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%232c3e50' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='70' font-size='70' text-anchor='middle' fill='%233498db'%3E🐳%3C/text%3E%3C/svg%3E">
     <style>
@@ -101,6 +102,10 @@
     <script>
         let editingHostId = null;
 
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
         function showAlert(message, type) {
             const alert = document.getElementById('alert');
             alert.textContent = message;
@@ -173,7 +178,7 @@
 
                 const response = await fetch(apiUrl, {
                     method: method,
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                     body: JSON.stringify({ name, url })
                 });
 
@@ -192,7 +197,7 @@
 
         async function testHost(hostId) {
             try {
-                const response = await fetch(`/api/hosts/${hostId}/test`, { method: 'POST' });
+                const response = await fetch(`/api/hosts/${hostId}/test`, { method: 'POST', headers: { 'X-CSRFToken': getCsrfToken() } });
                 const data = await response.json();
 
                 if (data.success) {
@@ -210,7 +215,7 @@
             if (!confirm(`Delete host "${hostName}"?`)) return;
 
             try {
-                const response = await fetch(`/api/hosts/${hostId}`, { method: 'DELETE' });
+                const response = await fetch(`/api/hosts/${hostId}`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrfToken() } });
                 const data = await response.json();
 
                 if (response.ok) {

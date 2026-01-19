@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Chrontainer - Docker Container Scheduler</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%232c3e50' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='70' font-size='70' text-anchor='middle' fill='%233498db'%3E🐳%3C/text%3E%3C/svg%3E">
     <style>
@@ -1079,6 +1080,11 @@
     </div>
 
     <script>
+        // CSRF Token helper
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
         // Dark Mode functionality
         function toggleDarkMode() {
             const body = document.body;
@@ -1143,7 +1149,7 @@
             try {
                 const response = await fetch('/api/schedule', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
                     body: JSON.stringify(formData)
                 });
                 
@@ -1169,7 +1175,7 @@
             try {
                 const response = await fetch(`/api/container/${containerId}/restart`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
                     body: JSON.stringify({name: containerName, host_id: hostId})
                 });
 
@@ -1190,7 +1196,7 @@
             try {
                 const response = await fetch(`/api/container/${containerId}/start`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
                     body: JSON.stringify({name: containerName, host_id: hostId})
                 });
 
@@ -1213,7 +1219,7 @@
             try {
                 const response = await fetch(`/api/container/${containerId}/stop`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
                     body: JSON.stringify({name: containerName, host_id: hostId})
                 });
 
@@ -1236,7 +1242,7 @@
             try {
                 const response = await fetch(`/api/container/${containerId}/pause`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
                     body: JSON.stringify({name: containerName, host_id: hostId})
                 });
 
@@ -1257,7 +1263,7 @@
             try {
                 const response = await fetch(`/api/container/${containerId}/unpause`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
                     body: JSON.stringify({name: containerName, host_id: hostId})
                 });
 
@@ -1309,7 +1315,7 @@
             try {
                 const response = await fetch(`/api/container/${containerId}/update`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
                     body: JSON.stringify({name: containerName, host_id: hostId})
                 });
 
@@ -1441,7 +1447,8 @@
 
             try {
                 const response = await fetch(`/api/schedule/${scheduleId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: {'X-CSRFToken': getCsrfToken()}
                 });
                 
                 const result = await response.json();
@@ -1455,7 +1462,8 @@
         async function toggleSchedule(scheduleId) {
             try {
                 const response = await fetch(`/api/schedule/${scheduleId}/toggle`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {'X-CSRFToken': getCsrfToken()}
                 });
 
                 const result = await response.json();
@@ -1699,7 +1707,7 @@
             try {
                 const response = await fetch('/api/tags', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                     body: JSON.stringify({ name, color })
                 });
 
@@ -1722,7 +1730,7 @@
             if (!confirm('Delete this tag? It will be removed from all containers.')) return;
 
             try {
-                const response = await fetch(`/api/tags/${tagId}`, { method: 'DELETE' });
+                const response = await fetch(`/api/tags/${tagId}`, { method: 'DELETE', headers: {'X-CSRFToken': getCsrfToken()} });
                 if (response.ok) {
                     showAlert('Tag deleted', 'success');
                     await loadAllTags();
@@ -1802,7 +1810,7 @@
             try {
                 const response = await fetch(`/api/containers/${containerId}/${hostId}/tags`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                     body: JSON.stringify({ tag_id: tagId })
                 });
 
@@ -1824,7 +1832,8 @@
 
             try {
                 const response = await fetch(`/api/containers/${containerId}/${hostId}/tags/${tagId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: {'X-CSRFToken': getCsrfToken()}
                 });
 
                 if (response.ok) {
@@ -1860,7 +1869,7 @@
             try {
                 const response = await fetch(`/api/containers/${containerId}/${hostId}/webui`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                     body: JSON.stringify({ url })
                 });
 

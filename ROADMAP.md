@@ -296,35 +296,34 @@ POST   /api/settings/discord/test
 
 ---
 
-## Issues & Improvements
-- [x] [UI/UX] Add filters and sorts to the table in web UI (similar to what dockpeek has)
-- [x] [UI/UX] Dark mode
-- [x] [Feature] Be able to check for updates to containers and directly update them from the web UI (similar to dockpeek)
-- [x] [Hosts] Ability to edit hosts
-- [x] [UI/UX] Ability to add tags to containers and then allow filtering by tag
-- [x] [UI/UX] Add column to dashboard table that show the name of the stack that a container belongs to
-- [x] [UI/UX] Ability to add a web UI URL to each container in the table, so users can quickly open the container interface from the dashboard
-- [x] [UI/UX] Add links to registry and github/code and/or docs next to each image (like dockpeek)
-- [ ] [Monitoring] Host metrics dashboard page
-- [ ] [Monitoring] If possible, include resource usage from each container (not sure if this data is provided through the docker API but it would be awesome to have at least the RAM usage in real-time or near real-time)
-- [x] [UI/UX] Include a version label in the UI
-- [x] [UI/UX] If possible, add the IP address of each container in a new column in the table
-- [x] [UI/UX] Make the UI responsive by adjusting to 3 screen sizes (Desktop, Tablet and Smartphone)
-- [x] [UI/UX] Increase the width of the logs modal (900px → 1200px)
-- [x] [UI/UX] Increase the width of the logs modal even more (80% or 90% of total width)
-- [x] [UI/UX] After opening the logs modal, the scroll is still being done in the main body. The logs control should be automatically selected so the scroll can work without having to click in it (auto-focus added)
-  - [x] UPDATE: This is not fixed yet, the focus is still not being applied to the logs modal content and scroll is only working in the logs content after a click
-- [x] [UI/UX] Clicking outside of the logs modal should close it (backdrop click handler added)
-- [x] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Fixed with fallback logic: tags → Config.Image → short image ID
-- [x] [UI/UX] IP address sorting should be numeric (192.168.1.100 before 192.168.1.100)
-- [x] [Bug] Copy function is throwing an error: "Failed to copy to clipboard: Cannot read properties of undefined (reading 'writeText')". Fixed with fallback to document.execCommand('copy') for HTTP contexts.
-- [x] [Feature] Ability to schedule an update (new scheduler action)
-- [x] [Feature] Ability to check for updates on all containers (Check All Updates button)
-- [x] [Feature] Show containers current version (image name shown in table)
-- [x] [Feature] Show new version if update available (check for updates + update button)
-- [x] [Feature] Add Users settings to allow username and password update (User Settings page)
+## High Priority Bugs
+- [x] [Bug] Error while changing password: Error changing password: Unexpected token '<', "<!doctype "... is not valid JSON (Fixed: added CSRF tokens to all AJAX requests)
+- [ ] [Bug] Error while trying to set a URL for a container
+
+## Immediate Improvements
+- [x] [...] (removed already implemented items from this list)
+- [ ] [Feature] Show containers current version. I want to see the actual version (e.g. v2.3.7) and not the tag (e.g. latest)
+- [ ] [Feature] Show new version if update available (check for updates + update button). I want to see the actual version (e.g. v2.3.7) and not the tag (e.g. latest)
+- [ ] [Feature] Remove the tag from the image (e.g. SOME_IMAGE:latest -> SOME_IMAGE)
+- [ ] [Feature] Add Users settings to allow username and password update. Settings should be unified in a single page (Users shouldn't be a separate navigation). Use tabs in the settings page or similar
 - [ ] [Feature] Ability to select multiple containers and apply actions to the selection (applicable actions only)
 - [ ] [Dev] Add another sample docker-compose file to create the container but connect to a macvlan network and using a static IP address
+- [ ] [UI/UX] Replace common 'Actions' column by a common set of buttons on top. The buttons will execute for all selected containers. This assumes that the selection of containers feature is already implemented. Logs action is the exception as it doesn't make much sense to be applied to multiple containers at once. Keep the Logs and the Check (update) buttons in the table, but make them smaller and integrated similar to the link to docker hub and github. This would be especially important in smaller screens, to minimize the amount of horizontal scrolling. As an alternative add a dropdown with all quick actions
+- [ ] [UI/UX] Set Tags and Web UI buttons can also be made smaller and similar to the previous buttons. Let's call these Quick Actions and group all these buttons in a single column with just an icon and a tooltip. This would be especially important in smaller screens, to minimize the amount of horizontal scrolling. As an alternative add a dropdown with all quick actions
+- [ ] [UI/UX] I haven't seen any container with status unhealthy. If you're not showing these additional status yet, implement it
+
+## Low Priority Improvements
+- [ ] [Monitoring] Host metrics dashboard page
+- [ ] [Monitoring] If possible, include resource usage from each container (not sure if this data is provided through the docker API but it would be awesome to have at least the RAM usage in real-time or near real-time)
+
+## Evolutions (long term, after stabilization of core features)
+- [ ] The app could evolve into a full-featured container management app (inspired in Portainer but leaner, better and easier to use and with responsive UI):
+  - [ ] 1. list/create/update/delete stacks/projects/another term?, using docker compose directly in the app
+  - [ ] 2. list/create/update/delete containers (container page with all details, including a compose file automatically maintained by the system based on the details of the container, even for containers created without compose)
+  - [ ] 3. list/create/update/delete networks (including macvlan's for supported hosts)
+  - [ ] 4. list/delete images
+  - [ ] 5. list/delete volumes
+  - [ ] 6. quickly delete unused stacks, containers, images and volumes (prune action?)
 
 ---
 
