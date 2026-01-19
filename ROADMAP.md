@@ -310,6 +310,7 @@ POST   /api/settings/discord/test
 - [x] [Dev] Add another sample docker-compose file to create the container but connect to a macvlan network and using a static IP address
 - [x] [UI/UX] Replace common 'Actions' column by a common set of buttons on top. The buttons will execute for all selected containers. This assumes that the selection of containers feature is already implemented. Logs action is the exception as it doesn't make much sense to be applied to multiple containers at once. Keep the Logs and the Check (update) buttons in the table, but make them smaller and integrated similar to the link to docker hub and github. This would be especially important in smaller screens, to minimize the amount of horizontal scrolling. As an alternative add a dropdown with all quick actions
 - [x] [UI/UX] Set Tags and Web UI buttons can also be made smaller and similar to the previous buttons. Let's call these Quick Actions and group all these buttons in a single column with just an icon and a tooltip. This would be especially important in smaller screens, to minimize the amount of horizontal scrolling. As an alternative add a dropdown with all quick actions
+- [x] [UI/UX] Standardize tooltips so the app uses the fast, custom tooltip system consistently
 - [x] [UI/UX] I haven't seen any container with status unhealthy. If you're not showing these additional status yet, implement it
 
 ## Low Priority Improvements
