@@ -1,0 +1,48 @@
+# Systemd service file for Chrontainer
+# Copy this file to /etc/systemd/system/chrontainer.service
+# Then run: sudo systemctl daemon-reload && sudo systemctl enable chrontainer && sudo systemctl start chrontainer
+
+[Unit]
+Description=Chrontainer - Docker Container Scheduler
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=notify
+User=root
+Group=root
+WorkingDirectory=/opt/chrontainer
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=-/opt/chrontainer/.env
+
+# Create data directory
+ExecStartPre=/bin/mkdir -p /data
+
+# Start Gunicorn
+ExecStart=/usr/local/bin/gunicorn -c /opt/chrontainer/gunicorn.conf.py wsgi:application
+
+# Restart policy
+Restart=always
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=chrontainer
+
+[Install]
+WantedBy=multi-user.target

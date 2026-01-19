@@ -5,11 +5,23 @@ Main Flask application
 import os
 import docker
 import sqlite3
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+import bcrypt
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_wtf.csrf import CSRFProtect
+from flask_talisman import Talisman
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 import logging
+from functools import wraps
+from dotenv import load_dotenv
+import re
+
+# Load environment variables
+load_dotenv()
 
 # Version
 VERSION = "0.2.0"
@@ -66,11 +78,164 @@ def get_image_links(image_name):
     return links
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(
+    level=getattr(logging, log_level),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
+# Database path configuration
+DATABASE_PATH = os.environ.get('DATABASE_PATH', '/data/chrontainer.db')
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Security Configuration
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    logger.warning("SECRET_KEY not set! Using insecure default. Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'")
+    SECRET_KEY = 'dev-secret-key-change-in-production'
+
+app.config['SECRET_KEY'] = SECRET_KEY
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+app.config['SESSION_COOKIE_HTTPONLY'] = os.environ.get('SESSION_COOKIE_HTTPONLY', 'true').lower() == 'true'
+app.config['SESSION_COOKIE_SAMESITE'] = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
+
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access this page.'
+
+# CSRF Protection
+csrf = CSRFProtect(app)
+
+# Security Headers (Talisman)
+# Only enforce HTTPS if explicitly enabled (for reverse proxy setups)
+force_https = os.environ.get('FORCE_HTTPS', 'false').lower() == 'true'
+if force_https:
+    Talisman(app,
+        force_https=True,
+        strict_transport_security=True,
+        content_security_policy={
+            'default-src': "'self'",
+            'script-src': ["'self'", "'unsafe-inline'"],  # Allow inline scripts for modals
+            'style-src': ["'self'", "'unsafe-inline'"],   # Allow inline styles
+            'img-src': ["'self'", "data:", "https:"],     # Allow data URIs and external images
+        }
+    )
+else:
+    # Set security headers without forcing HTTPS (for development or reverse proxy)
+    @app.after_request
+    def set_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        return response
+
+# Rate Limiting
+rate_limit_per_minute = os.environ.get('RATE_LIMIT_PER_MINUTE', '60')
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[f"{rate_limit_per_minute} per minute"],
+    storage_uri="memory://"
+)
+
+# User model for Flask-Login
+class User(UserMixin):
+    def __init__(self, id, username, role):
+        self.id = id
+        self.username = username
+        self.role = role
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Load user by ID for Flask-Login"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, username, role FROM users WHERE id = ?', (user_id,))
+        user_data = cursor.fetchone()
+        conn.close()
+
+        if user_data:
+            return User(id=user_data[0], username=user_data[1], role=user_data[2])
+        return None
+    except Exception as e:
+        logger.error(f"Error loading user: {e}")
+        return None
+
+# Role-based access control decorator
+def admin_required(f):
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if current_user.role != 'admin':
+            flash('You need administrator privileges to access this page.', 'error')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Input Validation Functions
+def validate_container_id(container_id):
+    """Validate container ID format (12 or 64 hex chars)"""
+    if not container_id:
+        return False, "Container ID is required"
+    if not re.match(r'^[a-f0-9]{12}$|^[a-f0-9]{64}$', container_id):
+        return False, "Invalid container ID format"
+    return True, None
+
+def validate_container_name(name):
+    """Validate container name (Docker naming rules)"""
+    if not name:
+        return False, "Container name is required"
+    if len(name) > 255:
+        return False, "Container name is too long (max 255 characters)"
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$', name):
+        return False, "Container name contains invalid characters"
+    return True, None
+
+def validate_cron_expression(cron_expr):
+    """Validate cron expression format"""
+    if not cron_expr:
+        return False, "Cron expression is required"
+    parts = cron_expr.strip().split()
+    if len(parts) != 5:
+        return False, "Invalid cron expression format. Must be 5 fields: minute hour day month day_of_week"
+    # Additional validation is done by CronTrigger
+    return True, None
+
+def validate_url(url, schemes=['http', 'https']):
+    """Validate URL format"""
+    if not url:
+        return False, "URL is required"
+    if len(url) > 2048:
+        return False, "URL is too long"
+    # Basic URL pattern check
+    pattern = r'^(https?|unix|tcp)://[^\s]+'
+    if not re.match(pattern, url):
+        return False, "Invalid URL format"
+    return True, None
+
+def validate_webhook_url(url):
+    """Validate Discord webhook URL"""
+    if not url:
+        return True, None  # Empty is allowed (disables webhook)
+    if not url.startswith('https://discord.com/api/webhooks/'):
+        return False, "Invalid Discord webhook URL. Must start with https://discord.com/api/webhooks/"
+    return validate_url(url)
+
+def sanitize_string(value, max_length=255):
+    """Sanitize string input"""
+    if not value:
+        return ""
+    # Remove null bytes and control characters
+    value = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', str(value))
+    # Truncate to max length
+    return value[:max_length].strip()
 
 # Docker client manager for multi-host support
 class DockerHostManager:
@@ -88,7 +253,7 @@ class DockerHostManager:
 
         # Get host info from database
         try:
-            conn = sqlite3.connect('/data/chrontainer.db')
+            conn = sqlite3.connect(DATABASE_PATH)
             cursor = conn.cursor()
             cursor.execute('SELECT id, name, url, enabled FROM hosts WHERE id = ?', (host_id,))
             host = cursor.fetchone()
@@ -109,7 +274,7 @@ class DockerHostManager:
             self.last_check[host_id] = datetime.now()
 
             # Update last_seen in database
-            conn = sqlite3.connect('/data/chrontainer.db')
+            conn = sqlite3.connect(DATABASE_PATH)
             cursor = conn.cursor()
             cursor.execute('UPDATE hosts SET last_seen = ? WHERE id = ?', (datetime.now(), host_id))
             conn.commit()
@@ -128,7 +293,7 @@ class DockerHostManager:
     def get_all_clients(self):
         """Get all enabled Docker clients with their host info"""
         try:
-            conn = sqlite3.connect('/data/chrontainer.db')
+            conn = sqlite3.connect(DATABASE_PATH)
             cursor = conn.cursor()
             cursor.execute('SELECT id, name, url FROM hosts WHERE enabled = 1')
             hosts = cursor.fetchall()
@@ -267,7 +432,7 @@ scheduler.start()
 # Database initialization
 def init_db():
     """Initialize SQLite database"""
-    conn = sqlite3.connect('/data/chrontainer.db')
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
     # Create hosts table
@@ -361,11 +526,35 @@ def init_db():
         )
     ''')
 
+    # Create users table for authentication
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP
+        )
+    ''')
+
     # Insert default local host if not exists
     cursor.execute('''
         INSERT OR IGNORE INTO hosts (id, name, url, enabled, last_seen)
         VALUES (1, 'Local', 'unix://var/run/docker.sock', 1, ?)
     ''', (datetime.now(),))
+
+    # Create default admin user if no users exist
+    cursor.execute('SELECT COUNT(*) FROM users')
+    user_count = cursor.fetchone()[0]
+    if user_count == 0:
+        default_password = 'admin'  # CHANGE THIS ON FIRST LOGIN!
+        password_hash = bcrypt.hashpw(default_password.encode('utf-8'), bcrypt.gensalt())
+        cursor.execute('''
+            INSERT INTO users (username, password_hash, role)
+            VALUES (?, ?, ?)
+        ''', ('admin', password_hash.decode('utf-8'), 'admin'))
+        logger.info("Created default admin user (username: admin, password: admin) - PLEASE CHANGE THE PASSWORD!")
 
     # Migration: Add host_id column to existing schedules if needed
     cursor.execute("PRAGMA table_info(schedules)")
@@ -387,7 +576,7 @@ def init_db():
 
 def get_db():
     """Get database connection"""
-    return sqlite3.connect('/data/chrontainer.db')
+    return sqlite3.connect(DATABASE_PATH)
 
 def restart_container(container_id, container_name, schedule_id=None, host_id=1):
     """Restart a Docker container"""
@@ -691,6 +880,7 @@ def load_schedules():
 
 # Routes
 @app.route('/')
+@login_required
 def index():
     """Main dashboard"""
     try:
@@ -1012,28 +1202,38 @@ def api_get_container_logs(container_id):
         return jsonify({'error': 'Failed to retrieve container logs. Please try again.'}), 500
 
 @app.route('/api/schedule', methods=['POST'])
+@login_required
 def add_schedule():
     """Add a new schedule"""
     data = request.json
-    container_id = data.get('container_id')
-    container_name = data.get('container_name')
-    action = data.get('action', 'restart')
-    cron_expression = data.get('cron_expression')
+    container_id = sanitize_string(data.get('container_id', ''), max_length=64)
+    container_name = sanitize_string(data.get('container_name', ''), max_length=255)
+    action = sanitize_string(data.get('action', 'restart'), max_length=20)
+    cron_expression = sanitize_string(data.get('cron_expression', ''), max_length=50)
     host_id = data.get('host_id', 1)
 
-    if not container_id:
-        return jsonify({'error': 'Container ID is required'}), 400
-    if not container_name:
-        return jsonify({'error': 'Container name is required'}), 400
-    if not cron_expression:
-        return jsonify({'error': 'Cron expression is required'}), 400
+    # Validate container ID
+    valid, error = validate_container_id(container_id)
+    if not valid:
+        return jsonify({'error': error}), 400
+
+    # Validate container name
+    valid, error = validate_container_name(container_name)
+    if not valid:
+        return jsonify({'error': error}), 400
+
+    # Validate action
+    if action not in ['restart', 'start', 'stop', 'pause', 'unpause']:
+        return jsonify({'error': 'Invalid action. Must be one of: restart, start, stop, pause, unpause'}), 400
 
     # Validate cron expression
+    valid, error = validate_cron_expression(cron_expression)
+    if not valid:
+        return jsonify({'error': error}), 400
+
+    # Test cron expression parsing
     try:
         parts = cron_expression.split()
-        if len(parts) != 5:
-            return jsonify({'error': 'Invalid cron expression format. Must be 5 fields: minute hour day month day_of_week (example: "0 2 * * *" for 2 AM daily)'}), 400
-
         trigger = CronTrigger(
             minute=parts[0],
             hour=parts[1],
@@ -1169,14 +1369,17 @@ def get_settings():
         return jsonify({'error': 'Failed to load settings. Please check the database connection.'}), 500
 
 @app.route('/api/settings/discord', methods=['POST'])
+@login_required
 def update_discord_settings():
     """Update Discord webhook settings"""
     try:
         data = request.json
-        webhook_url = data.get('webhook_url', '').strip()
+        webhook_url = sanitize_string(data.get('webhook_url', ''), max_length=2048).strip()
 
-        if webhook_url and not webhook_url.startswith('https://discord.com/api/webhooks/'):
-            return jsonify({'error': 'Invalid Discord webhook URL. It should start with "https://discord.com/api/webhooks/". You can create one in Discord Server Settings > Integrations > Webhooks.'}), 400
+        # Validate webhook URL
+        valid, error = validate_webhook_url(webhook_url)
+        if not valid:
+            return jsonify({'error': error}), 400
 
         set_setting('discord_webhook_url', webhook_url)
         logger.info(f"Discord webhook URL updated")
@@ -1231,16 +1434,23 @@ def get_hosts():
         return jsonify({'error': 'Failed to load Docker hosts. Please check the database connection.'}), 500
 
 @app.route('/api/hosts', methods=['POST'])
+@login_required
 def add_host():
     """Add a new Docker host"""
     try:
         data = request.json
-        name = data.get('name', '').strip()
-        url = data.get('url', '').strip()
+        name = sanitize_string(data.get('name', ''), max_length=100).strip()
+        url = sanitize_string(data.get('url', ''), max_length=500).strip()
 
-        if not name:
+        # Validate name
+        if not name or len(name) < 1:
             return jsonify({'error': 'Host name is required'}), 400
-        if not url:
+        if len(name) > 100:
+            return jsonify({'error': 'Host name is too long (max 100 characters)'}), 400
+
+        # Validate URL
+        valid, error = validate_url(url)
+        if not valid:
             return jsonify({'error': 'Host URL is required (e.g., tcp://192.168.1.100:2375 or unix:///var/run/docker.sock)'}), 400
 
         # Test connection first
@@ -1541,17 +1751,20 @@ def set_container_webui(container_id, host_id):
         return jsonify({'error': 'Failed to save Web UI URL. Please try again.'}), 500
 
 @app.route('/settings')
+@login_required
 def settings_page():
     """Settings page"""
     webhook_url = get_setting('discord_webhook_url', '')
     return render_template('settings.html', discord_webhook_url=webhook_url, version=VERSION)
 
 @app.route('/hosts')
+@login_required
 def hosts_page():
     """Hosts management page"""
     return render_template('hosts.html', version=VERSION)
 
 @app.route('/logs')
+@login_required
 def logs():
     """View logs page"""
     conn = get_db()
@@ -1560,6 +1773,64 @@ def logs():
     logs = cursor.fetchall()
     conn.close()
     return render_template('logs.html', logs=logs, version=VERSION)
+
+@app.route('/login', methods=['GET', 'POST'])
+@csrf.exempt  # Login page doesn't have CSRF token yet
+@limiter.limit("10 per minute")  # Stricter rate limit for login to prevent brute force
+def login():
+    """Login page"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        username = sanitize_string(request.form.get('username', ''), max_length=50).strip()
+        password = request.form.get('password', '')
+
+        if not username or not password:
+            flash('Please enter both username and password', 'error')
+            return render_template('login.html', version=VERSION)
+
+        # Get user from database
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, username, password_hash, role FROM users WHERE username = ?', (username,))
+            user_data = cursor.fetchone()
+
+            if user_data and bcrypt.checkpw(password.encode('utf-8'), user_data[2].encode('utf-8')):
+                # Update last login
+                cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', (datetime.now(), user_data[0]))
+                conn.commit()
+                conn.close()
+
+                # Create user object and log in
+                user = User(id=user_data[0], username=user_data[1], role=user_data[3])
+                login_user(user)
+                logger.info(f"User {username} logged in")
+
+                next_page = request.args.get('next')
+                return redirect(next_page) if next_page else redirect(url_for('index'))
+            else:
+                conn.close()
+                flash('Invalid username or password', 'error')
+                return render_template('login.html', version=VERSION)
+
+        except Exception as e:
+            logger.error(f"Login error: {e}")
+            flash('An error occurred during login', 'error')
+            return render_template('login.html', version=VERSION)
+
+    return render_template('login.html', version=VERSION)
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Logout"""
+    username = current_user.username
+    logout_user()
+    logger.info(f"User {username} logged out")
+    flash('You have been logged out', 'success')
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     # Create data directory if it doesn't exist

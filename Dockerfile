@@ -17,8 +17,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
-COPY app/ /app/
+COPY app/ /app/app/
 COPY templates/ /app/templates/
+COPY wsgi.py /app/
+COPY gunicorn.conf.py /app/
 
 # Create data directory
 RUN mkdir -p /data
@@ -29,6 +31,7 @@ EXPOSE 5000
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5000
+ENV LOG_LEVEL=INFO
 
-# Run the application
-CMD ["python", "main.py"]
+# Run the application with Gunicorn
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:application"]

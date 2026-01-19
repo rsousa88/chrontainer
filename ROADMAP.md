@@ -178,25 +178,39 @@ POST   /api/settings/discord/test
 ---
 
 ## Phase 4: Production Hardening (v1.0.0)
-**Priority: High | Timeline: 1 week**
+**Priority: High | Status: In Progress**
 
-### 4.1 Security
+### 4.1 Security ✅ COMPLETED
 - [x] Generate secure SECRET_KEY
-- [ ] Environment-based configuration
-- [ ] HTTPS support (reverse proxy ready)
-- [ ] Rate limiting on API endpoints
-- [ ] Input validation and sanitization
-- [ ] SQL injection prevention (parameterized queries)
-- [ ] CSRF protection
-- [ ] Security headers
+- [x] Environment-based configuration (.env support)
+- [x] HTTPS support (reverse proxy ready via Flask-Talisman)
+- [x] Rate limiting on API endpoints (Flask-Limiter)
+- [x] Input validation and sanitization (comprehensive validators)
+- [x] SQL injection prevention (parameterized queries)
+- [x] CSRF protection (Flask-WTF)
+- [x] Security headers (X-Frame-Options, X-Content-Type-Options, etc.)
 
-### 4.2 Deployment
-- [ ] Production WSGI server (Gunicorn/uWSGI)
-- [ ] Nginx/Caddy reverse proxy config examples
-- [ ] SSL/TLS certificate setup guide
-- [ ] Docker Compose production template
-- [ ] Environment variable documentation
-- [ ] Systemd service file (non-Docker deployment)
+### 4.2 Deployment ✅ COMPLETED
+- [x] Production WSGI server (Gunicorn)
+- [x] Nginx/Caddy reverse proxy config examples
+- [x] SSL/TLS certificate setup guide
+- [x] Docker Compose production template
+- [x] Environment variable documentation (.env.example)
+- [x] Systemd service file (non-Docker deployment)
+
+**Implementation Notes:**
+- ✅ Gunicorn WSGI server with automatic worker scaling
+- ✅ Environment-based configuration with python-dotenv
+- ✅ CSRF protection via Flask-WTF on all POST endpoints
+- ✅ Flask-Talisman for HTTPS enforcement (optional)
+- ✅ Flask-Limiter for rate limiting (60/min global, 10/min login)
+- ✅ Comprehensive input validation (container IDs, names, URLs, cron)
+- ✅ Security headers (X-Frame-Options, X-Content-Type-Options, etc.)
+- ✅ Sanitization of all user inputs (remove control chars, length limits)
+- ✅ Login endpoint rate limited to prevent brute force
+- ✅ All sensitive endpoints require authentication
+- ✅ Complete production deployment documentation
+- ✅ Security best practices guide
 
 ### 4.3 Database & Backup
 - [ ] Database migration system (Alembic)
@@ -275,7 +289,7 @@ POST   /api/settings/discord/test
 
 ---
 
-## Additional features to consider
+## Issues & Improvements
 - [x] [UI/UX] Add filters and sorts to the table in web UI (similar to what dockpeek has)
 - [x] [UI/UX] Dark mode
 - [x] [Feature] Be able to check for updates to containers and directly update them from the web UI (similar to dockpeek)
@@ -289,11 +303,6 @@ POST   /api/settings/discord/test
 - [x] [UI/UX] Include a version label in the UI
 - [x] [UI/UX] If possible, add the IP address of each container in a new column in the table
 - [x] [UI/UX] Make the UI responsive by adjusting to 3 screen sizes (Desktop, Tablet and Smartphone)
-- [ ] [Feature] Ability to schedule an update
-
----
-
-## Issues/Improvements
 - [x] [UI/UX] Increase the width of the logs modal (900px → 1200px)
 - [x] [UI/UX] Increase the width of the logs modal even more (80% or 90% of total width)
 - [x] [UI/UX] After opening the logs modal, the scroll is still being done in the main body. The logs control should be automatically selected so the scroll can work without having to click in it (auto-focus added)
@@ -302,6 +311,13 @@ POST   /api/settings/discord/test
 - [x] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Fixed with fallback logic: tags → Config.Image → short image ID
 - [x] [UI/UX] IP address sorting should be numeric (192.168.1.100 before 192.168.1.100)
 - [x] [Bug] Copy function is throwing an error: "Failed to copy to clipboard: Cannot read properties of undefined (reading 'writeText')". Fixed with fallback to document.execCommand('copy') for HTTP contexts.
+- [ ] [Feature] Ability to schedule an update (new scheduler action)
+- [ ] [Feature] Ability to check for updates on all containers (not only one by one)
+- [ ] [Feature] Show containers current
+- [ ] [Feature] Show new version if update available
+- [ ] [Feature] Add Users settings to allow username and password update
+- [ ] [Feature] Ability to select multiple containers and apply actions to the selection (applicable actions only)
+- [ ] [Dev] Add another sample docker-compose file to create the container but connect to a macvlan network and using a static IP address
 
 ---
 
