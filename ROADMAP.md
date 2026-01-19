@@ -1,6 +1,6 @@
 # Chrontainer Roadmap
 
-## Current Status: v0.2.0 (Production Ready)
+## Current Status: v0.3.0 (In Progress)
 ✅ Single Docker host support
 ✅ Basic web UI for container management
 ✅ Cron-based scheduling (restart, start, stop, pause, unpause)

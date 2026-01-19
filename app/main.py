@@ -24,7 +24,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):

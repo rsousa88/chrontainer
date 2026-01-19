@@ -68,12 +68,16 @@
         
         .nav-links {
             margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
         }
         
         .nav-links a {
             color: #3498db;
             text-decoration: none;
-            margin-right: 20px;
+            margin-right: 14px;
             font-size: 14px;
         }
         
@@ -238,6 +242,11 @@
             margin-left: 4px;
         }
 
+        td.quick-actions {
+            white-space: nowrap;
+            min-width: 120px;
+        }
+
         .cpu-value, .memory-value {
             font-family: monospace;
             font-size: 0.85em;
@@ -257,6 +266,30 @@
             align-items: center;
             gap: 6px;
             flex-wrap: wrap;
+        }
+
+        .quick-actions {
+            flex-wrap: nowrap;
+        }
+
+        .quick-actions .tooltip-container {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .system-clock {
+            margin-left: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #bcd7ef;
+        }
+
+        .auto-refresh-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #555;
         }
 
         .status-cell {
@@ -821,6 +854,7 @@
                 </span>
                 <button id="darkModeToggle" onclick="toggleDarkMode()" style="background: none; border: 1px solid #3498db; color: #3498db; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 4px;">🌙 Dark</button>
                 <a href="/logout" style="background: #e74c3c; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; margin-left: 4px; display: inline-block;">🚪 Logout</a>
+                <span id="systemClock" class="system-clock"></span>
             </div>
         </div>
     </header>
@@ -856,6 +890,15 @@
                 <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 16px;">Clear Filters</button>
                 <button class="btn btn-primary" onclick="openManageTagsModal()" style="padding: 8px 16px;">Manage Tags</button>
                 <button class="btn btn-info" onclick="checkAllUpdates()" id="checkAllUpdatesBtn" style="padding: 8px 16px;">Check All Updates</button>
+                <label class="auto-refresh-control">
+                    Auto-refresh
+                    <select id="autoRefreshSelect" onchange="updateAutoRefresh()">
+                        <option value="0">Off</option>
+                        <option value="10">10s</option>
+                        <option value="30">30s</option>
+                        <option value="60">60s</option>
+                    </select>
+                </label>
             </div>
             <div style="margin-bottom: 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
@@ -886,7 +929,7 @@
                         <th onclick="sortTable('memory')" style="cursor: pointer; width: 80px;">Memory <span id="sort-memory"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
                         <th>Version</th>
-                        <th>Quick Actions</th>
+                        <th style="width: 140px;">Quick Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1348,6 +1391,9 @@
                 fetchContainerStats();
                 setInterval(fetchContainerStats, 10000);
             }
+
+            startSystemClock();
+            initAutoRefresh();
         });
 
         function showAlert(message, type) {
@@ -1375,9 +1421,16 @@
 
         function fetchContainerStats() {
             fetch('/api/containers/stats', {
-                headers: { 'X-CSRFToken': getCsrfToken() }
+                headers: { 'X-CSRFToken': getCsrfToken() },
+                credentials: 'same-origin'
             })
-            .then(response => response.json())
+            .then(response => {
+                const contentType = response.headers.get('content-type') || '';
+                if (!response.ok || !contentType.includes('application/json')) {
+                    throw new Error('Stats request failed');
+                }
+                return response.json();
+            })
             .then(data => {
                 document.querySelectorAll('.stats-cell').forEach(cell => {
                     const containerId = cell.dataset.containerId;
@@ -1416,6 +1469,49 @@
                 });
             })
             .catch(err => console.error('Failed to fetch stats:', err));
+        }
+
+        let autoRefreshTimer = null;
+
+        function updateSystemClock() {
+            const clock = document.getElementById('systemClock');
+            if (!clock) return;
+            const now = new Date();
+            clock.textContent = now.toLocaleTimeString();
+        }
+
+        function startSystemClock() {
+            updateSystemClock();
+            setInterval(updateSystemClock, 1000);
+        }
+
+        function applyAutoRefreshInterval(seconds) {
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+            if (Number.isFinite(seconds) && seconds > 0) {
+                autoRefreshTimer = setInterval(() => {
+                    window.location.reload();
+                }, seconds * 1000);
+            }
+        }
+
+        function initAutoRefresh() {
+            const select = document.getElementById('autoRefreshSelect');
+            if (!select) return;
+            const stored = localStorage.getItem('autoRefreshSeconds');
+            const seconds = stored ? parseInt(stored, 10) : 10;
+            select.value = Number.isFinite(seconds) ? String(seconds) : '10';
+            applyAutoRefreshInterval(parseInt(select.value, 10));
+        }
+
+        function updateAutoRefresh() {
+            const select = document.getElementById('autoRefreshSelect');
+            if (!select) return;
+            const seconds = parseInt(select.value, 10);
+            localStorage.setItem('autoRefreshSeconds', Number.isFinite(seconds) ? String(seconds) : '0');
+            applyAutoRefreshInterval(Number.isFinite(seconds) ? seconds : 0);
         }
 
         function toggleScheduleType() {

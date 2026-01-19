@@ -35,7 +35,9 @@ chrontainer/
 ├── gunicorn.conf.py         # Gunicorn configuration
 ├── Dockerfile               # Container build instructions
 ├── docker-compose.yml       # Easy deployment configuration
+├── docker-compose.ghcr.yml  # Deployment using GHCR image (latest tag)
 ├── docker-compose.macvlan.yml # Deployment with macvlan + static IP (example)
+├── docker-compose.macvlan.ghcr.yml # GHCR image on macvlan (example)
 ├── requirements.txt         # Python dependencies
 ├── pytest.ini               # pytest configuration
 ├── alembic.ini              # Alembic configuration
@@ -98,6 +100,16 @@ chrontainer/
 - Persistent data storage
 - Environment configuration
 
+### `docker-compose.ghcr.yml`
+- Deploy using the GHCR image (latest tag)
+- Same volume and environment setup as the default compose
+
+### `docker-compose.macvlan.yml`
+- Static IP deployment with macvlan networking
+
+### `docker-compose.macvlan.ghcr.yml`
+- GHCR image deployment on macvlan network
+
 ### `Dockerfile`
 - Multi-architecture support (ARM64 + AMD64)
 - Minimal Python 3.11 base
@@ -123,6 +135,8 @@ chrontainer/
 - container_name: TEXT
 - action: TEXT (restart/start/stop/pause/unpause)
 - cron_expression: TEXT (5-part cron)
+- one_time: INTEGER (0 or 1)
+- run_at: TIMESTAMP (for one-time schedules)
 - enabled: INTEGER (0 or 1)
 - created_at: TIMESTAMP
 - last_run: TIMESTAMP
