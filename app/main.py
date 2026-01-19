@@ -851,7 +851,7 @@ def api_get_container_logs(container_id):
     try:
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
-            return jsonify({'error': f'Cannot connect to Docker host {host_id}'}), 500
+            return jsonify({'error': f'Cannot connect to Docker host (ID: {host_id}). Please check the host connection in Settings > Hosts.'}), 500
 
         container = docker_client.containers.get(container_id)
         logs = container.logs(
@@ -867,9 +867,15 @@ def api_get_container_logs(container_id):
             'container_id': container_id,
             'container_name': container.name
         })
+    except docker.errors.NotFound:
+        logger.error(f"Container {container_id} not found on host {host_id}")
+        return jsonify({'error': f'Container not found. It may have been removed.'}), 404
+    except docker.errors.APIError as e:
+        logger.error(f"Docker API error getting logs for {container_id}: {e}")
+        return jsonify({'error': 'Failed to retrieve container logs. The container may not be running or accessible.'}), 500
     except Exception as e:
         logger.error(f"Failed to get logs for container {container_id}: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to retrieve container logs. Please try again.'}), 500
 
 @app.route('/api/schedule', methods=['POST'])
 def add_schedule():
@@ -881,14 +887,18 @@ def add_schedule():
     cron_expression = data.get('cron_expression')
     host_id = data.get('host_id', 1)
 
-    if not all([container_id, container_name, cron_expression]):
-        return jsonify({'error': 'Missing required fields'}), 400
+    if not container_id:
+        return jsonify({'error': 'Container ID is required'}), 400
+    if not container_name:
+        return jsonify({'error': 'Container name is required'}), 400
+    if not cron_expression:
+        return jsonify({'error': 'Cron expression is required'}), 400
 
     # Validate cron expression
     try:
         parts = cron_expression.split()
         if len(parts) != 5:
-            return jsonify({'error': 'Invalid cron expression. Must be: minute hour day month day_of_week'}), 400
+            return jsonify({'error': 'Invalid cron expression format. Must be 5 fields: minute hour day month day_of_week (example: "0 2 * * *" for 2 AM daily)'}), 400
 
         trigger = CronTrigger(
             minute=parts[0],
@@ -897,8 +907,10 @@ def add_schedule():
             month=parts[3],
             day_of_week=parts[4]
         )
+    except ValueError as e:
+        return jsonify({'error': f'Invalid cron expression values. Please check your cron syntax. Common patterns: "0 2 * * *" (2 AM daily), "*/15 * * * *" (every 15 min)'}), 400
     except Exception as e:
-        return jsonify({'error': f'Invalid cron expression: {str(e)}'}), 400
+        return jsonify({'error': 'Failed to parse cron expression. Please verify your syntax using a tool like crontab.guru'}), 400
 
     # Save to database
     try:
@@ -938,7 +950,7 @@ def add_schedule():
         return jsonify({'success': True, 'schedule_id': schedule_id})
     except Exception as e:
         logger.error(f"Failed to add schedule: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to create schedule. Please check the logs for details.'}), 500
 
 @app.route('/api/schedule/<int:schedule_id>', methods=['DELETE'])
 def delete_schedule(schedule_id):
@@ -961,7 +973,7 @@ def delete_schedule(schedule_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to delete schedule: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to delete schedule. It may have already been removed.'}), 500
 
 @app.route('/api/schedule/<int:schedule_id>/toggle', methods=['POST'])
 def toggle_schedule(schedule_id):
@@ -1007,7 +1019,8 @@ def toggle_schedule(schedule_id):
 
         return jsonify({'success': True, 'enabled': bool(new_enabled)})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to toggle schedule {schedule_id}: {e}")
+        return jsonify({'error': 'Failed to toggle schedule. Please refresh the page and try again.'}), 500
 
 @app.route('/api/settings', methods=['GET'])
 def get_settings():
@@ -1018,7 +1031,8 @@ def get_settings():
             'discord_webhook_url': webhook_url
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to get settings: {e}")
+        return jsonify({'error': 'Failed to load settings. Please check the database connection.'}), 500
 
 @app.route('/api/settings/discord', methods=['POST'])
 def update_discord_settings():
@@ -1028,14 +1042,14 @@ def update_discord_settings():
         webhook_url = data.get('webhook_url', '').strip()
 
         if webhook_url and not webhook_url.startswith('https://discord.com/api/webhooks/'):
-            return jsonify({'error': 'Invalid Discord webhook URL'}), 400
+            return jsonify({'error': 'Invalid Discord webhook URL. It should start with "https://discord.com/api/webhooks/". You can create one in Discord Server Settings > Integrations > Webhooks.'}), 400
 
         set_setting('discord_webhook_url', webhook_url)
         logger.info(f"Discord webhook URL updated")
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to update Discord settings: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to save Discord webhook settings. Please try again.'}), 500
 
 @app.route('/api/settings/discord/test', methods=['POST'])
 def test_discord_webhook():
@@ -1043,7 +1057,7 @@ def test_discord_webhook():
     try:
         webhook_url = get_setting('discord_webhook_url')
         if not webhook_url:
-            return jsonify({'error': 'No Discord webhook URL configured'}), 400
+            return jsonify({'error': 'No Discord webhook URL configured. Please add a webhook URL in the settings first.'}), 400
 
         # Send a test notification
         send_discord_notification(
@@ -1055,7 +1069,7 @@ def test_discord_webhook():
         return jsonify({'success': True, 'message': 'Test notification sent'})
     except Exception as e:
         logger.error(f"Failed to test Discord webhook: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to send test notification. Please check your webhook URL and network connection.'}), 500
 
 @app.route('/api/hosts', methods=['GET'])
 def get_hosts():
@@ -1079,7 +1093,8 @@ def get_hosts():
             })
         return jsonify(host_list)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to get hosts: {e}")
+        return jsonify({'error': 'Failed to load Docker hosts. Please check the database connection.'}), 500
 
 @app.route('/api/hosts', methods=['POST'])
 def add_host():
@@ -1089,13 +1104,15 @@ def add_host():
         name = data.get('name', '').strip()
         url = data.get('url', '').strip()
 
-        if not name or not url:
-            return jsonify({'error': 'Name and URL are required'}), 400
+        if not name:
+            return jsonify({'error': 'Host name is required'}), 400
+        if not url:
+            return jsonify({'error': 'Host URL is required (e.g., tcp://192.168.1.100:2375 or unix:///var/run/docker.sock)'}), 400
 
         # Test connection first
         success, message = docker_manager.test_connection(url)
         if not success:
-            return jsonify({'error': f'Connection test failed: {message}'}), 400
+            return jsonify({'error': f'Connection test failed: {message}. Please ensure the Docker host is running and accessible, and that you have set up a socket-proxy for remote hosts.'}), 400
 
         conn = get_db()
         cursor = conn.cursor()
@@ -1109,9 +1126,12 @@ def add_host():
 
         logger.info(f"Added new host: {name} ({url})")
         return jsonify({'success': True, 'host_id': host_id})
+    except sqlite3.IntegrityError:
+        logger.error(f"Duplicate host: {name} or {url}")
+        return jsonify({'error': f'A host with this name or URL already exists'}), 400
     except Exception as e:
         logger.error(f"Failed to add host: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to add Docker host. Please try again.'}), 500
 
 @app.route('/api/hosts/<int:host_id>', methods=['PUT'])
 def update_host(host_id):
@@ -1122,24 +1142,30 @@ def update_host(host_id):
         url = data.get('url', '').strip()
         enabled = data.get('enabled', True)
 
-        if not name or not url:
-            return jsonify({'error': 'Name and URL are required'}), 400
+        if not name:
+            return jsonify({'error': 'Host name is required'}), 400
+        if not url:
+            return jsonify({'error': 'Host URL is required'}), 400
 
         # Don't allow disabling the local host
         if host_id == 1 and not enabled:
-            return jsonify({'error': 'Cannot disable the local host'}), 400
+            return jsonify({'error': 'Cannot disable the local Docker host (ID: 1). This host is required for Chrontainer to function.'}), 400
 
         # Test connection if URL changed
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('SELECT url FROM hosts WHERE id = ?', (host_id,))
-        current_url = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        if not result:
+            conn.close()
+            return jsonify({'error': f'Host with ID {host_id} not found'}), 404
+        current_url = result[0]
         conn.close()
 
         if url != current_url:
             success, message = docker_manager.test_connection(url)
             if not success:
-                return jsonify({'error': f'Connection test failed: {message}'}), 400
+                return jsonify({'error': f'Connection test failed: {message}. Please verify the Docker host URL and network connectivity.'}), 400
 
         conn = get_db()
         cursor = conn.cursor()
@@ -1157,7 +1183,7 @@ def update_host(host_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to update host: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to update Docker host. Please try again.'}), 500
 
 @app.route('/api/hosts/<int:host_id>', methods=['DELETE'])
 def delete_host(host_id):
@@ -1165,7 +1191,7 @@ def delete_host(host_id):
     try:
         # Don't allow deleting the local host
         if host_id == 1:
-            return jsonify({'error': 'Cannot delete the local host'}), 400
+            return jsonify({'error': 'Cannot delete the local Docker host (ID: 1). This host is required for Chrontainer to function.'}), 400
 
         conn = get_db()
         cursor = conn.cursor()
@@ -1175,7 +1201,7 @@ def delete_host(host_id):
         count = cursor.fetchone()[0]
         if count > 0:
             conn.close()
-            return jsonify({'error': f'Cannot delete host with {count} active schedules'}), 400
+            return jsonify({'error': f'Cannot delete host with {count} active schedule(s). Please delete or move the schedules first.'}), 400
 
         cursor.execute('DELETE FROM hosts WHERE id = ?', (host_id,))
         conn.commit()
@@ -1188,7 +1214,7 @@ def delete_host(host_id):
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to delete host: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to delete Docker host. Please try again.'}), 500
 
 @app.route('/api/hosts/<int:host_id>/test', methods=['POST'])
 def test_host_connection(host_id):
@@ -1231,7 +1257,8 @@ def get_tags():
         conn.close()
         return jsonify(tags)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to get tags: {e}")
+        return jsonify({'error': 'Failed to load tags. Please check the database connection.'}), 500
 
 @app.route('/api/tags', methods=['POST'])
 def create_tag():
@@ -1253,9 +1280,10 @@ def create_tag():
 
         return jsonify({'success': True, 'id': tag_id, 'name': name, 'color': color})
     except sqlite3.IntegrityError:
-        return jsonify({'error': 'Tag already exists'}), 400
+        return jsonify({'error': f'A tag named "{name}" already exists'}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to create tag: {e}")
+        return jsonify({'error': 'Failed to create tag. Please try again.'}), 500
 
 @app.route('/api/tags/<int:tag_id>', methods=['DELETE'])
 def delete_tag(tag_id):
@@ -1268,7 +1296,8 @@ def delete_tag(tag_id):
         conn.close()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to delete tag: {e}")
+        return jsonify({'error': 'Failed to delete tag. Please try again.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/tags', methods=['GET'])
 def get_container_tags(container_id, host_id):
@@ -1286,7 +1315,8 @@ def get_container_tags(container_id, host_id):
         conn.close()
         return jsonify(tags)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to get container tags: {e}")
+        return jsonify({'error': 'Failed to load container tags.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/tags', methods=['POST'])
 def add_container_tag(container_id, host_id):
@@ -1296,7 +1326,7 @@ def add_container_tag(container_id, host_id):
         tag_id = data.get('tag_id')
 
         if not tag_id:
-            return jsonify({'error': 'Tag ID is required'}), 400
+            return jsonify({'error': 'Tag ID is required. Please select a tag to add.'}), 400
 
         conn = get_db()
         cursor = conn.cursor()
@@ -1308,7 +1338,8 @@ def add_container_tag(container_id, host_id):
         conn.close()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to add container tag: {e}")
+        return jsonify({'error': 'Failed to add tag to container. Please try again.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/tags/<int:tag_id>', methods=['DELETE'])
 def remove_container_tag(container_id, host_id, tag_id):
@@ -1324,7 +1355,8 @@ def remove_container_tag(container_id, host_id, tag_id):
         conn.close()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to remove container tag: {e}")
+        return jsonify({'error': 'Failed to remove tag from container. Please try again.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/webui', methods=['GET'])
 def get_container_webui(container_id, host_id):
@@ -1340,7 +1372,8 @@ def get_container_webui(container_id, host_id):
         conn.close()
         return jsonify({'url': result[0] if result else None})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to get container Web UI URL: {e}")
+        return jsonify({'error': 'Failed to load Web UI URL.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/webui', methods=['POST'])
 def set_container_webui(container_id, host_id):
@@ -1370,7 +1403,8 @@ def set_container_webui(container_id, host_id):
         conn.close()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to set container Web UI URL: {e}")
+        return jsonify({'error': 'Failed to save Web UI URL. Please try again.'}), 500
 
 @app.route('/settings')
 def settings_page():
