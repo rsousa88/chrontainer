@@ -88,7 +88,7 @@ logger = logging.getLogger(__name__)
 # Database path configuration
 DATABASE_PATH = os.environ.get('DATABASE_PATH', '/data/chrontainer.db')
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates')
 
 # Security Configuration
 SECRET_KEY = os.environ.get('SECRET_KEY')
