@@ -1420,7 +1420,13 @@
             element.className = className;
         }
 
+        let statsInFlight = false;
+
         function fetchContainerStats() {
+            if (statsInFlight) {
+                return;
+            }
+            statsInFlight = true;
             fetch('/api/containers/stats', {
                 headers: { 'X-CSRFToken': getCsrfToken() },
                 credentials: 'include'
@@ -1472,6 +1478,9 @@
             .catch(err => {
                 console.error('Failed to fetch stats:', err);
                 fetchContainerStatsFallback();
+            })
+            .finally(() => {
+                statsInFlight = false;
             });
         }
 
@@ -1550,7 +1559,9 @@
             }
             if (Number.isFinite(seconds) && seconds > 0) {
                 autoRefreshTimer = setInterval(() => {
-                    window.location.reload();
+                    if (!statsInFlight) {
+                        window.location.reload();
+                    }
                 }, seconds * 1000);
             }
         }
@@ -1559,8 +1570,8 @@
             const select = document.getElementById('autoRefreshSelect');
             if (!select) return;
             const stored = localStorage.getItem('autoRefreshSeconds');
-            const seconds = stored ? parseInt(stored, 10) : 10;
-            select.value = Number.isFinite(seconds) ? String(seconds) : '10';
+            const seconds = stored ? parseInt(stored, 10) : 30;
+            select.value = Number.isFinite(seconds) ? String(seconds) : '30';
             applyAutoRefreshInterval(parseInt(select.value, 10));
         }
 
