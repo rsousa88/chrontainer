@@ -48,7 +48,8 @@
         }
         
         .container {
-            max-width: 1400px;
+            max-width: 90%;
+            width: 90%;
             margin: 0 auto;
             padding: 20px;
         }
@@ -244,7 +245,7 @@
 
         td.quick-actions {
             white-space: nowrap;
-            min-width: 120px;
+            min-width: 160px;
         }
 
         .cpu-value, .memory-value {
@@ -1422,7 +1423,7 @@
         function fetchContainerStats() {
             fetch('/api/containers/stats', {
                 headers: { 'X-CSRFToken': getCsrfToken() },
-                credentials: 'same-origin'
+                credentials: 'include'
             })
             .then(response => {
                 const contentType = response.headers.get('content-type') || '';
@@ -1468,10 +1469,67 @@
                     }
                 });
             })
-            .catch(err => console.error('Failed to fetch stats:', err));
+            .catch(err => {
+                console.error('Failed to fetch stats:', err);
+                fetchContainerStatsFallback();
+            });
         }
 
         let autoRefreshTimer = null;
+
+        function fetchContainerStatsFallback() {
+            const rows = document.querySelectorAll('tr[data-host]');
+            rows.forEach(row => {
+                const containerId = row.querySelector('.container-select')?.dataset?.id;
+                const hostId = row.querySelector('.container-select')?.dataset?.hostId;
+                if (!containerId || !hostId) return;
+
+                fetch(`/api/container/${containerId}/stats?host_id=${hostId}`, {
+                    headers: { 'X-CSRFToken': getCsrfToken() },
+                    credentials: 'include'
+                })
+                .then(response => {
+                    const contentType = response.headers.get('content-type') || '';
+                    if (!response.ok || !contentType.includes('application/json')) {
+                        throw new Error('Fallback stats request failed');
+                    }
+                    return response.json();
+                })
+                .then(stats => {
+                    const cpuCell = row.querySelector('.cpu-value');
+                    const memCell = row.querySelector('.memory-value');
+
+                    if (cpuCell) {
+                        if (stats && stats.cpu_percent !== null) {
+                            cpuCell.textContent = `${stats.cpu_percent}%`;
+                            updateStatClass(cpuCell, 'cpu-value', stats.cpu_percent);
+                            row.dataset.cpu = stats.cpu_percent;
+                        } else {
+                            cpuCell.textContent = '-';
+                            updateStatClass(cpuCell, 'cpu-value', 0);
+                            row.dataset.cpu = 0;
+                        }
+                    }
+
+                    if (memCell) {
+                        if (stats && stats.memory_mb !== null) {
+                            const memValue = stats.memory_mb;
+                            const memStr = memValue > 1024
+                                ? `${(memValue / 1024).toFixed(1)} GB`
+                                : `${memValue.toFixed(0)} MB`;
+                            memCell.textContent = memStr;
+                            updateStatClass(memCell, 'memory-value', stats.memory_percent);
+                            row.dataset.memory = memValue;
+                        } else {
+                            memCell.textContent = '-';
+                            updateStatClass(memCell, 'memory-value', 0);
+                            row.dataset.memory = 0;
+                        }
+                    }
+                })
+                .catch(error => console.error('Fallback stats error:', error));
+            });
+        }
 
         function updateSystemClock() {
             const clock = document.getElementById('systemClock');
