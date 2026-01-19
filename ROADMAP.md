@@ -65,6 +65,9 @@ GET    /api/containers
 POST   /api/container/<id>/restart
 POST   /api/container/<id>/start
 POST   /api/container/<id>/stop
+POST   /api/container/<id>/pause
+POST   /api/container/<id>/unpause
+GET    /api/container/<id>/<host_id>/logs
 
 # Schedules
 POST   /api/schedule
@@ -74,8 +77,21 @@ POST   /api/schedule/<id>/toggle
 # Hosts
 GET    /api/hosts
 POST   /api/hosts
+PUT    /api/hosts/<id>
 DELETE /api/hosts/<id>
 POST   /api/hosts/<id>/test
+
+# Tags
+GET    /api/tags
+POST   /api/tags
+DELETE /api/tags/<id>
+GET    /api/containers/<id>/<host_id>/tags
+POST   /api/containers/<id>/<host_id>/tags
+DELETE /api/containers/<id>/<host_id>/tags/<tag_id>
+
+# Web UI URLs
+GET    /api/containers/<id>/<host_id>/webui
+POST   /api/containers/<id>/<host_id>/webui
 
 # Settings
 GET    /api/settings
@@ -147,8 +163,8 @@ POST   /api/settings/discord/test
 - [ ] Statistics page (schedules run, success rate, etc.)
 - [ ] Container uptime charts
 - [ ] Recent activity feed
-- [ ] Search/filter containers
-- [ ] Dark mode toggle
+- [x] Search/filter containers (name, status, host, stack, tags)
+- [x] Dark mode toggle
 - [ ] Mobile responsive design
 
 ### 3.3 Advanced Scheduling
@@ -218,7 +234,7 @@ POST   /api/settings/discord/test
 
 ### 5.3 UI/UX Enhancements
 - [ ] Drag-and-drop schedule builder
-- [ ] Container grouping/tagging
+- [x] Container grouping/tagging (custom tags with colors)
 - [ ] Bulk operations
 - [ ] Schedule templates library
 - [ ] Import/export schedules
@@ -260,18 +276,19 @@ POST   /api/settings/discord/test
 ---
 
 ## Additional features to consider
-- [ ] [UI/UX] Add filters and sorts to the table in web UI (similar to what dockpeek has)
-- [ ] [UI/UX] Dark mode
+- [x] [UI/UX] Add filters and sorts to the table in web UI (similar to what dockpeek has)
+- [x] [UI/UX] Dark mode
 - [ ] [Updates] Be able to check for updates to containers and directly update them from the web UI (similar to dockpeek)
-- [ ] [Hosts] Ability to edit hosts
-- [ ] [UI/UX] Ability to add tags to containers and then allow filtering by tag
-- [ ] [UI/UX] Add column to dashboard table that show the name of the stack that a container belongs to
-- [ ] [UI/UX] Ability to add a web UI URL to each container in the table, so users can quickly open the container interface from the dashboard
-- [ ] [UI/UX] Add links to registry and github/code and/or docs next to each image (like dockpeek)
+- [x] [Hosts] Ability to edit hosts
+- [x] [UI/UX] Ability to add tags to containers and then allow filtering by tag
+- [x] [UI/UX] Add column to dashboard table that show the name of the stack that a container belongs to
+- [x] [UI/UX] Ability to add a web UI URL to each container in the table, so users can quickly open the container interface from the dashboard
+- [x] [UI/UX] Add links to registry and github/code and/or docs next to each image (like dockpeek)
 - [ ] [Monitoring] Host metrics dashboard page
 - [ ] [Monitoring] If possible, include resource usage from each container (not sure if this data is provided through the docker API but it would be awesome to have at least the RAM usage in real-time or near real-time)
-- [ ] [UI/UX] Include a version label in the UI
-- [ ] If possible, add the IP address of each container in a new column in the table
+- [x] [UI/UX] Include a version label in the UI
+- [x] [UI/UX] If possible, add the IP address of each container in a new column in the table
+- [ ] [UI/UX] Make the UI responsive by adjusting to 3 screen sizes (Desktop, Tablet and Smartphone)
 
 ---
 
@@ -282,6 +299,54 @@ POST   /api/settings/discord/test
   - [x] UPDATE: This is not fixed yet, the focus is still not being applied to the logs modal content and scroll is only working in the logs content after a click
 - [x] [UI/UX] Clicking outside of the logs modal should close it (backdrop click handler added)
 - [x] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Fixed with fallback logic: tags → Config.Image → short image ID
+- [x] [UI/UX] IP address sorting should be numeric (192.168.1.100 before 192.168.1.100)
+
+---
+
+## Recent Additions (v0.2.0)
+
+### Custom Tags System ✅
+- Create/delete global tags with custom colors
+- Assign multiple tags to containers
+- Tag filtering in table
+- Color-coded tag badges
+- Database: `tags` and `container_tags` tables
+
+### Web UI URLs ✅
+- Set custom Web UI URL per container
+- Auto-read from Docker label (`chrontainer.webui.url`)
+- Manual URLs take precedence over labels
+- Globe icon (🌐) for quick access
+- Opens in new tab
+- Database: `container_webui_urls` table
+
+### Image Registry & Documentation Links ✅
+- Auto-generated links from image names
+- Registry links (Docker Hub, ghcr.io, gcr.io)
+- GitHub links for known publishers
+- Documentation links (linuxserver, etc.)
+- Icons: 📦 (registry), GitHub logo, 📚 (docs)
+
+### Enhanced Table & Filtering ✅
+- Stack column (Docker Compose project name)
+- IP Address column with numeric sorting
+- Tags column with inline badges
+- Web UI column with quick links
+- Filter by: name, status, host, stack, tags
+- Sort by: name, host, stack, IP, status, image
+- Clear filters button
+- Manage Tags button
+
+### Dark Mode ✅
+- Toggle button in header (🌙/☀️)
+- CSS variables for theme consistency
+- LocalStorage persistence
+- Smooth transitions
+
+### Host Management Improvements ✅
+- Edit host functionality
+- PUT /api/hosts/<id> endpoint
+- Connection test before saving changes
 
 ---
 
