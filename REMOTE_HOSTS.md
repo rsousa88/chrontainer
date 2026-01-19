@@ -49,7 +49,7 @@ services:
       - BUILD=0           # Disable build
       - COMMIT=0          # Disable commit
       - CONFIGS=0         # Disable configs
-      - DISTRIBUTION=0    # Disable distribution
+      - DISTRIBUTION=1    # Required for update checks (registry digest lookup)
       - EXEC=0            # Disable exec
       - IMAGES=1          # Allow reading images
       - INFO=1            # Allow info

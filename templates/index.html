@@ -724,7 +724,7 @@
             <h2>Docker Containers</h2>
             {% if containers %}
             <!-- Filter Bar -->
-            <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <div style="margin-bottom: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                 <input type="text" id="filterName" placeholder="Filter by name..." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; flex: 1; min-width: 200px;" onkeyup="filterContainers()">
                 <select id="filterStatus" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
                     <option value="">All Statuses</option>
@@ -746,10 +746,24 @@
                 <button class="btn btn-primary" onclick="openManageTagsModal()" style="padding: 8px 16px;">Manage Tags</button>
                 <button class="btn btn-info" onclick="checkAllUpdates()" id="checkAllUpdatesBtn" style="padding: 8px 16px;">Check All Updates</button>
             </div>
+            <div style="margin-bottom: 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)">
+                    Select all
+                </label>
+                <span id="selectedCount" style="font-size: 13px; color: #555;">0 selected</span>
+                <button class="btn btn-warning btn-small" onclick="bulkAction('restart')" id="bulk-restart" disabled>Restart</button>
+                <button class="btn btn-danger btn-small" onclick="bulkAction('stop')" id="bulk-stop" disabled>Stop</button>
+                <button class="btn btn-success btn-small" onclick="bulkAction('start')" id="bulk-start" disabled>Start</button>
+                <button class="btn btn-secondary btn-small" onclick="bulkAction('pause')" id="bulk-pause" disabled>Pause</button>
+                <button class="btn btn-secondary btn-small" onclick="bulkAction('unpause')" id="bulk-unpause" disabled>Unpause</button>
+                <button class="btn btn-success btn-small" onclick="bulkAction('update')" id="bulk-update" disabled>Update</button>
+            </div>
             <div class="table-container">
             <table id="containersTable">
                 <thead>
                     <tr>
+                        <th style="width: 36px;"></th>
                         <th onclick="sortTable('name')" style="cursor: pointer;">Name <span id="sort-name"></span></th>
                         <th onclick="sortTable('host')" style="cursor: pointer;">Host <span id="sort-host"></span></th>
                         <th onclick="sortTable('stack')" style="cursor: pointer;">Stack <span id="sort-stack"></span></th>
@@ -765,7 +779,10 @@
                 </thead>
                 <tbody>
                     {% for container in containers %}
-                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}">
+                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image_display }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}">
+                        <td>
+                            <input type="checkbox" class="container-select" data-id="{{ container.id }}" data-name="{{ container.name }}" data-host-id="{{ container.host_id }}" data-status="{{ container.status }}" onchange="updateSelectionState()">
+                        </td>
                         <td>
                             <div class="tooltip-container">
                                 <strong>{{ container.name }}</strong>
@@ -800,7 +817,7 @@
                         </td>
                         <td>
                             <div style="display: flex; align-items: center; gap: 6px;">
-                                <span>{{ container.image }}</span>
+                                <span title="{{ container.image }}">{{ container.image_display }}</span>
                                 {% if container.image_links.registry %}
                                 <a href="{{ container.image_links.registry }}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 14px;" title="Registry">📦</a>
                                 {% endif %}
@@ -1636,6 +1653,121 @@
             filterContainers();
         }
 
+        function getSelectedContainers() {
+            const checkboxes = document.querySelectorAll('.container-select:checked');
+            return Array.from(checkboxes).map(cb => ({
+                id: cb.dataset.id,
+                name: cb.dataset.name,
+                hostId: parseInt(cb.dataset.hostId, 10),
+                status: cb.dataset.status
+            }));
+        }
+
+        function updateSelectionState() {
+            const checkboxes = document.querySelectorAll('.container-select');
+            const selected = getSelectedContainers();
+            const selectedCount = document.getElementById('selectedCount');
+            selectedCount.textContent = `${selected.length} selected`;
+
+            const visibleCheckboxes = Array.from(checkboxes).filter(cb => {
+                const row = cb.closest('tr');
+                return row && row.style.display !== 'none';
+            });
+            const allVisibleChecked = visibleCheckboxes.length > 0 && visibleCheckboxes.every(cb => cb.checked);
+            const selectAll = document.getElementById('selectAllCheckbox');
+            if (selectAll) {
+                selectAll.checked = allVisibleChecked;
+                selectAll.indeterminate = !allVisibleChecked && selected.length > 0;
+            }
+
+            const disable = selected.length === 0;
+            ['bulk-restart', 'bulk-stop', 'bulk-start', 'bulk-pause', 'bulk-unpause', 'bulk-update'].forEach(id => {
+                const button = document.getElementById(id);
+                if (button) {
+                    button.disabled = disable;
+                }
+            });
+        }
+
+        function toggleSelectAll(source) {
+            const checkboxes = document.querySelectorAll('.container-select');
+            checkboxes.forEach(cb => {
+                const row = cb.closest('tr');
+                if (row && row.style.display !== 'none') {
+                    cb.checked = source.checked;
+                }
+            });
+            updateSelectionState();
+        }
+
+        function isActionApplicable(status, action) {
+            if (action === 'restart') return status === 'running';
+            if (action === 'stop') return status === 'running' || status === 'paused';
+            if (action === 'start') return status !== 'running';
+            if (action === 'pause') return status === 'running';
+            if (action === 'unpause') return status === 'paused';
+            if (action === 'update') return true;
+            return false;
+        }
+
+        async function bulkAction(action) {
+            const selected = getSelectedContainers();
+            const applicable = selected.filter(c => isActionApplicable(c.status, action));
+
+            if (selected.length === 0) {
+                showAlert('Select at least one container.', 'info');
+                return;
+            }
+
+            if (applicable.length === 0) {
+                showAlert('No selected containers support this action.', 'info');
+                return;
+            }
+
+            if (!confirm(`Apply "${action}" to ${applicable.length} container(s)?`)) {
+                return;
+            }
+
+            showAlert(`<span class="spinner"></span> Applying ${action} to ${applicable.length} containers...`, 'info');
+
+            const endpointMap = {
+                restart: 'restart',
+                stop: 'stop',
+                start: 'start',
+                pause: 'pause',
+                unpause: 'unpause',
+                update: 'update'
+            };
+
+            const results = await Promise.allSettled(applicable.map(container => {
+                return fetch(`/api/container/${container.id}/${endpointMap[action]}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                    body: JSON.stringify({name: container.name, host_id: container.hostId})
+                }).then(response => response.json().then(body => ({ok: response.ok, body})));
+            }));
+
+            let successCount = 0;
+            let errorCount = 0;
+            results.forEach(result => {
+                if (result.status === 'fulfilled' && result.value.ok && result.value.body.success !== false) {
+                    successCount += 1;
+                } else {
+                    errorCount += 1;
+                }
+            });
+
+            if (errorCount === 0) {
+                showAlert(`Bulk action complete: ${successCount} succeeded.`, 'success');
+            } else {
+                showAlert(`Bulk action complete: ${successCount} succeeded, ${errorCount} failed.`, 'error');
+            }
+
+            if (successCount > 0) {
+                setTimeout(() => location.reload(), 2000);
+            }
+        }
+
         function sortTable(column) {
             const table = document.getElementById('containersTable');
             if (!table) return;
@@ -2015,6 +2147,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             populateFilterDropdowns();
             loadAllTags().then(() => populateTagFilter());
+            updateSelectionState();
         });
     </script>
 </body>

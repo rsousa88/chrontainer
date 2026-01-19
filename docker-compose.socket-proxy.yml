@@ -41,7 +41,7 @@ services:
       - BUILD=0           # No image building
       - COMMIT=0          # No container commits
       - CONFIGS=0         # No configs
-      - DISTRIBUTION=0    # No distribution
+      - DISTRIBUTION=1    # Required for update checks (registry digest lookup)
       - EXEC=0            # No exec into containers
       - NETWORKS=0        # No network management (optional, enable if needed)
       - NODES=0           # No swarm nodes

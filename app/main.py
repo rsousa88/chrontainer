@@ -87,6 +87,23 @@ NON_VERSION_TAGS = {
 }
 VERSION_TAG_RE = re.compile(r'^v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*$')
 
+def strip_image_tag(image_name):
+    """Return image name without tag or digest for display."""
+    if not image_name:
+        return image_name
+
+    base = image_name.split('@', 1)[0]
+    parts = base.rsplit('/', 1)
+    if len(parts) == 2:
+        prefix, last = parts
+    else:
+        prefix, last = '', parts[0]
+
+    if ':' in last:
+        last = last.split(':', 1)[0]
+
+    return f"{prefix}/{last}" if prefix else last
+
 def get_image_version(container, image_name):
     """Best-effort version from image labels, falling back to version-like tags."""
     labels = {}
@@ -410,7 +427,10 @@ def check_for_update(container, client):
 
         except docker.errors.APIError as e:
             # Handle rate limits, authentication errors, etc.
-            return False, None, None, f"Registry error: {str(e)}"
+            message = str(e)
+            if 'distribution' in message and 'Forbidden' in message:
+                return False, None, None, "Registry error: socket-proxy forbids distribution endpoint. Enable DISTRIBUTION=1."
+            return False, None, None, f"Registry error: {message}"
 
     except Exception as e:
         logger.error(f"Error checking for update: {e}")
@@ -1001,6 +1021,7 @@ def index():
                     except:
                         pass
 
+                    image_display = strip_image_tag(image_name)
                     image_version, version_source = get_image_version(container, image_name)
 
                     container_list.append({
@@ -1009,6 +1030,7 @@ def index():
                         'status': container.status,
                         'health': health_status,
                         'image': image_name,
+                        'image_display': image_display,
                         'image_version': image_version,
                         'image_version_source': version_source,
                         'created': container.attrs['Created'],
@@ -1111,6 +1133,7 @@ def get_containers():
                     except:
                         pass
 
+                    image_display = strip_image_tag(image_name)
                     image_version, version_source = get_image_version(container, image_name)
 
                     container_list.append({
@@ -1118,6 +1141,7 @@ def get_containers():
                         'name': container.name,
                         'status': container.status,
                         'image': image_name,
+                        'image_display': image_display,
                         'image_version': image_version,
                         'image_version_source': version_source,
                         'host_id': host_id,
