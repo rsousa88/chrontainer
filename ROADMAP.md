@@ -1,6 +1,6 @@
 # Chrontainer Roadmap
 
-## Current Status: v0.3.0 (Released)
+## Current Status: v0.4.0 (In Progress)
 ✅ Single Docker host support
 ✅ Basic web UI for container management
 ✅ Cron-based scheduling (restart, start, stop, pause, unpause)
@@ -1612,38 +1612,38 @@ class TestMetricsPage:
 ## Summary Checklist for Developer
 
 ### Feature 1: API Key Authentication
-- [ ] Create migration `003_add_api_keys.py` with api_keys + webhooks tables
-- [ ] Update `init_db()` with CREATE TABLE for api_keys
-- [ ] Add `generate_api_key()`, `hash_api_key()`, `verify_api_key()` utilities
-- [ ] Add `@api_key_or_login_required` decorator
-- [ ] Add `/api/keys` endpoints (GET, POST, DELETE)
-- [ ] Update existing API endpoints to use new decorator (list in spec)
-- [ ] Add permission checks in write endpoints
-- [ ] Add "API Keys" tab to settings page
-- [ ] Add JavaScript for key management
-- [ ] Add tests in `tests/test_api_keys.py`
+- [x] Create migration `003_add_api_keys.py` with api_keys + webhooks tables
+- [x] Update `init_db()` with CREATE TABLE for api_keys
+- [x] Add `generate_api_key()`, `hash_api_key()`, `verify_api_key()` utilities
+- [x] Add `@api_key_or_login_required` decorator
+- [x] Add `/api/keys` endpoints (GET, POST, DELETE)
+- [x] Update existing API endpoints to use new decorator (list in spec)
+- [x] Add permission checks in write endpoints
+- [x] Add "API Keys" tab to settings page
+- [x] Add JavaScript for key management
+- [x] Add tests in `tests/test_api_keys.py`
 
 ### Feature 2: Webhook Triggers
-- [ ] Add webhooks table to migration (or separate migration)
-- [ ] Update `init_db()` with CREATE TABLE for webhooks
-- [ ] Add `/webhook/<token>` trigger endpoint (no auth)
-- [ ] Add `/api/webhooks` management endpoints (GET, POST, DELETE, toggle)
-- [ ] Add "Webhooks" tab to settings page
-- [ ] Add JavaScript for webhook management
-- [ ] Add tests in `tests/test_webhooks.py`
+- [x] Add webhooks table to migration (or separate migration)
+- [x] Update `init_db()` with CREATE TABLE for webhooks
+- [x] Add `/webhook/<token>` trigger endpoint (no auth)
+- [x] Add `/api/webhooks` management endpoints (GET, POST, DELETE, toggle)
+- [x] Add "Webhooks" tab to settings page
+- [x] Add JavaScript for webhook management
+- [x] Add tests in `tests/test_webhooks.py`
 
 ### Feature 3: Host Metrics Dashboard
-- [ ] Add `/api/hosts/<id>/metrics` endpoint
-- [ ] Add `/api/hosts/metrics` bulk endpoint
-- [ ] Create `templates/metrics.html` page
-- [ ] Add `/metrics` route
-- [ ] Add link to metrics in dashboard header
-- [ ] Add tests in `tests/test_host_metrics.py`
+- [x] Add `/api/hosts/<id>/metrics` endpoint
+- [x] Add `/api/hosts/metrics` bulk endpoint
+- [x] Create `templates/metrics.html` page
+- [x] Add `/metrics` route
+- [x] Add link to metrics in dashboard header
+- [x] Add tests in `tests/test_host_metrics.py`
 
 ### Final Steps
-- [ ] Bump VERSION to "0.4.0" in main.py
-- [ ] Run `pytest tests/ -v` - all tests must pass
-- [ ] Update ROADMAP.md to mark features complete
+- [x] Bump VERSION to "0.4.0" in main.py
+- [x] Run `pytest tests/ -v` - all tests must pass
+- [x] Update ROADMAP.md to mark features complete
 - [ ] Update TRACKING_LOG.md with commit hashes
 - [ ] Commit with descriptive message
 - [ ] Push to GitHub (will trigger CI and release v0.4.0)

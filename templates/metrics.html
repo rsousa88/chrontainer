@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>Host Metrics - Chrontainer</title>
+    <style>
+        :root {
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+            --text-color: #2c3e50;
+            --border-color: #e1e8ed;
+            --primary-color: #3498db;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+        }
+
+        body.dark-mode {
+            --bg-color: #1a1a2e;
+            --card-bg: #16213e;
+            --text-color: #eee;
+            --border-color: #333;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 { font-size: 1.5em; }
+
+        .hosts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .host-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .host-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .host-name { font-size: 1.2em; font-weight: 600; }
+
+        .host-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        .host-status.online { background: #d4edda; color: #155724; }
+        .host-status.offline { background: #f8d7da; color: #721c24; }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .metric-box {
+            background: var(--bg-color);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .metric-label {
+            font-size: 0.8em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
+        .metric-bar {
+            height: 8px;
+            background: var(--border-color);
+            border-radius: 4px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .metric-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .bar-success { background: var(--success-color); }
+        .bar-warning { background: var(--warning-color); }
+        .bar-danger { background: var(--danger-color); }
+
+        .disk-breakdown {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .disk-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 0.9em;
+        }
+
+        .container-counts {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .count-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        .count-running { background: #d4edda; color: #155724; }
+        .count-stopped { background: #f8d7da; color: #721c24; }
+        .count-paused { background: #fff3cd; color: #856404; }
+
+        .refresh-btn {
+            padding: 8px 16px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .back-link {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body class="{{ 'dark-mode' if dark_mode else '' }}">
+    <div class="header">
+        <div>
+            <a href="/" class="back-link"><- Back to Dashboard</a>
+            <h1>Host Metrics</h1>
+        </div>
+        <button class="refresh-btn" onclick="loadMetrics()">Refresh</button>
+    </div>
+
+    <div id="metricsContainer" class="hosts-grid">
+        <div class="loading">Loading metrics...</div>
+    </div>
+
+    <script>
+        const csrfToken = '{{ csrf_token }}';
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function getBarClass(percent) {
+            if (percent > 80) return 'bar-danger';
+            if (percent > 60) return 'bar-warning';
+            return 'bar-success';
+        }
+
+        function loadMetrics() {
+            document.getElementById('metricsContainer').innerHTML = '<div class="loading">Loading metrics...</div>';
+
+            fetch('/api/hosts/metrics', {
+                headers: { 'X-CSRFToken': csrfToken }
+            })
+            .then(response => response.json())
+            .then(hosts => {
+                const container = document.getElementById('metricsContainer');
+
+                if (hosts.length === 0) {
+                    container.innerHTML = '<div class="loading">No hosts configured</div>';
+                    return;
+                }
+
+                const detailPromises = hosts
+                    .filter(h => h.status === 'online')
+                    .map(h => fetch(`/api/hosts/${h.host_id}/metrics`, {
+                        headers: { 'X-CSRFToken': csrfToken }
+                    }).then(r => r.json()).catch(() => null));
+
+                Promise.all(detailPromises).then(details => {
+                    const detailMap = {};
+                    details.forEach(d => {
+                        if (d && d.host_id) detailMap[d.host_id] = d;
+                    });
+
+                    container.innerHTML = hosts.map(host => {
+                        if (host.status !== 'online') {
+                            return `
+                                <div class="host-card">
+                                    <div class="host-header">
+                                        <span class="host-name">${host.name}</span>
+                                        <span class="host-status offline">${host.status}</span>
+                                    </div>
+                                    <p>${host.error || 'Host is not reachable'}</p>
+                                </div>
+                            `;
+                        }
+
+                        const detail = detailMap[host.host_id] || {};
+                        const memPercent = detail.memory
+                            ? Math.round((detail.memory.used_by_containers_bytes / detail.memory.total_bytes) * 100)
+                            : 0;
+
+                        return `
+                            <div class="host-card">
+                                <div class="host-header">
+                                    <span class="host-name">${host.name}</span>
+                                    <span class="host-status online">Online</span>
+                                </div>
+
+                                <div class="metrics-grid">
+                                    <div class="metric-box">
+                                        <div class="metric-label">Operating System</div>
+                                        <div class="metric-value" style="font-size: 1em;">${detail.os || host.os}</div>
+                                    </div>
+                                    <div class="metric-box">
+                                        <div class="metric-label">Docker Version</div>
+                                        <div class="metric-value" style="font-size: 1em;">${detail.docker_version || 'N/A'}</div>
+                                    </div>
+                                    <div class="metric-box">
+                                        <div class="metric-label">CPUs</div>
+                                        <div class="metric-value">${detail.cpus || host.cpus}</div>
+                                    </div>
+                                    <div class="metric-box">
+                                        <div class="metric-label">Total Memory</div>
+                                        <div class="metric-value">${detail.memory ? detail.memory.total_gb : host.memory_gb} GB</div>
+                                    </div>
+                                </div>
+
+                                ${detail.memory ? `
+                                <div class="metric-box" style="margin-top: 15px;">
+                                    <div class="metric-label">Memory Used by Containers</div>
+                                    <div class="metric-value">${detail.memory.used_by_containers_gb} GB (${memPercent}%)</div>
+                                    <div class="metric-bar">
+                                        <div class="metric-bar-fill ${getBarClass(memPercent)}" style="width: ${memPercent}%"></div>
+                                    </div>
+                                </div>
+                                ` : ''}
+
+                                <div class="metric-box" style="margin-top: 15px;">
+                                    <div class="metric-label">Containers</div>
+                                    <div class="container-counts">
+                                        <span class="count-badge count-running">${detail.containers?.running || host.containers_running} running</span>
+                                        <span class="count-badge count-stopped">${detail.containers?.stopped || 0} stopped</span>
+                                        <span class="count-badge count-paused">${detail.containers?.paused || 0} paused</span>
+                                    </div>
+                                </div>
+
+                                ${detail.disk ? `
+                                <div class="disk-breakdown">
+                                    <div class="metric-label">Docker Disk Usage</div>
+                                    <div class="metric-value">${detail.disk.total_gb} GB total</div>
+                                    <div class="disk-item"><span>Images (${detail.images_count})</span><span>${detail.disk.images_gb} GB</span></div>
+                                    <div class="disk-item"><span>Containers</span><span>${detail.disk.containers_gb} GB</span></div>
+                                    <div class="disk-item"><span>Volumes</span><span>${detail.disk.volumes_gb} GB</span></div>
+                                    <div class="disk-item"><span>Build Cache</span><span>${detail.disk.build_cache_gb} GB</span></div>
+                                </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('');
+                });
+            })
+            .catch(err => {
+                console.error('Failed to load metrics:', err);
+                document.getElementById('metricsContainer').innerHTML =
+                    '<div class="loading">Failed to load metrics</div>';
+            });
+        }
+
+        loadMetrics();
+        setInterval(loadMetrics, 30000);
+
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+        }
+    </script>
+</body>
+</html>

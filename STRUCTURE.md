@@ -3,25 +3,34 @@
 ```
 chrontainer/
 ├── app/
-│   └── main.py              # Main Flask application & scheduler logic (~2200 lines)
+│   └── main.py              # Main Flask application & scheduler logic (~3200 lines)
 ├── templates/
-│   ├── index.html           # Main dashboard UI (~1920 lines)
+│   ├── index.html           # Main dashboard UI (~2700 lines)
 │   ├── login.html           # Authentication page (~185 lines)
 │   ├── hosts.html           # Docker host management (~230 lines)
-│   ├── settings.html        # Discord webhook & settings (~320 lines)
+│   ├── settings.html        # Settings UI (Discord, ntfy, API keys, webhooks) (~1230 lines)
 │   ├── logs.html            # Activity logs page (~175 lines)
+│   ├── metrics.html         # Host metrics dashboard (~320 lines)
 │   └── error.html           # Error page (~80 lines)
 ├── tests/                   # pytest test suite
 │   ├── __init__.py
 │   ├── conftest.py          # Test fixtures (app, client, authenticated_client)
+│   ├── test_auth.py         # Tests for authentication endpoints
 │   ├── test_health.py       # Tests for /health and /api/version endpoints
-│   └── test_auth.py         # Tests for authentication endpoints
+│   ├── test_ntfy.py         # Tests for ntfy settings endpoints
+│   ├── test_schedules.py    # Tests for schedule endpoints
+│   ├── test_stats.py        # Tests for container stats endpoints
+│   ├── test_api_keys.py     # Tests for API key management and auth
+│   ├── test_webhooks.py     # Tests for webhook endpoints
+│   └── test_host_metrics.py # Tests for host metrics endpoints
 ├── migrations/              # Alembic database migrations
 │   ├── env.py               # Migration environment config
 │   ├── script.py.mako       # Migration script template
 │   ├── README               # Migration instructions
 │   └── versions/
-│       └── 001_initial_schema.py  # Baseline schema migration
+│       ├── 001_initial_schema.py  # Baseline schema migration
+│       ├── 002_add_one_time_schedules.py # One-time schedule support
+│       └── 003_add_api_keys.py    # API keys + webhooks tables
 ├── .github/
 │   └── workflows/
 │       └── ci.yml           # GitHub Actions CI pipeline
@@ -52,7 +61,7 @@ chrontainer/
 
 ## Key Files
 
-### `app/main.py` (~1850 lines)
+### `app/main.py` (~3200 lines)
 - Flask web server with Flask-Login authentication
 - Docker SDK integration (multi-host support)
 - APScheduler for cron jobs
@@ -61,9 +70,11 @@ chrontainer/
 - Container control functions (restart, start, stop, pause, unpause, update)
 - Input validation and sanitization
 - Discord webhook notifications
+- API key authentication and webhooks
+- Host metrics endpoints
 - Rate limiting and CSRF protection
 
-### `templates/index.html` (~1920 lines)
+### `templates/index.html` (~2700 lines)
 - Main dashboard interface
 - Container list with status, tags, IP, stack columns
 - Schedule management UI
@@ -84,10 +95,15 @@ chrontainer/
 - Connection testing
 - Enable/disable hosts
 
-### `templates/settings.html` (~320 lines)
-- Discord webhook URL configuration
-- Test notification button
-- Setup instructions
+### `templates/settings.html` (~1230 lines)
+- Discord + ntfy settings
+- API key management
+- Webhook management
+- Host management and account password change
+
+### `templates/metrics.html` (~320 lines)
+- Host metrics dashboard (CPU, memory, disk usage)
+- Metrics cards per host with auto-refresh
 
 ### `templates/logs.html` (~175 lines)
 - Activity log viewer
@@ -123,6 +139,7 @@ chrontainer/
 - name: TEXT UNIQUE
 - url: TEXT (unix://... or tcp://...)
 - enabled: INTEGER (0 or 1)
+- color: TEXT (hex color)
 - last_seen: TIMESTAMP
 - created_at: TIMESTAMP
 ```
@@ -201,6 +218,33 @@ chrontainer/
 - last_login: TIMESTAMP
 ```
 
+### `api_keys` table
+```sql
+- id: INTEGER PRIMARY KEY
+- user_id: INTEGER (FK to users)
+- name: TEXT
+- key_hash: TEXT (SHA256)
+- key_prefix: TEXT
+- permissions: TEXT ('read', 'write', 'admin')
+- last_used: TIMESTAMP
+- expires_at: TIMESTAMP
+- created_at: TIMESTAMP
+```
+
+### `webhooks` table
+```sql
+- id: INTEGER PRIMARY KEY
+- name: TEXT
+- token: TEXT UNIQUE
+- container_id: TEXT (optional)
+- host_id: INTEGER (optional)
+- action: TEXT
+- enabled: INTEGER (0 or 1)
+- last_triggered: TIMESTAMP
+- trigger_count: INTEGER
+- created_at: TIMESTAMP
+```
+
 ## Technology Stack
 
 - **Backend**: Flask 3.0 (Python web framework)
@@ -225,8 +269,8 @@ Estimated resource usage on Raspberry Pi 5:
 
 1. **Docker Socket Access**: Read-only mount (`ro` flag)
 2. **Database**: Local SQLite file in mounted volume
-3. **Web UI**: No authentication (local network only)
-4. **API**: No authentication (consider reverse proxy for production)
+3. **Web UI**: Session authentication via Flask-Login
+4. **API**: Session auth or API key (`X-API-Key`) with read/write/admin permissions
 
 ## Development Notes
 
@@ -251,20 +295,20 @@ Estimated resource usage on Raspberry Pi 5:
 ## Future Enhancements (v0.3.0+)
 
 1. **Advanced Authentication**
-   - API key authentication
+   - ✅ API key authentication
    - OAuth integration (GitHub, Google)
    - Granular role-based permissions
 
 2. **Additional Notifications**
    - Email alerts (SMTP)
    - Slack webhooks
-   - ntfy.sh support
+   - ✅ ntfy.sh support
    - Custom webhook templates
 
 3. **Monitoring & Health**
    - Container health monitoring
-   - Host metrics dashboard (CPU, RAM, disk)
-   - Container resource usage
+   - ✅ Host metrics dashboard (CPU, RAM, disk)
+   - ✅ Container resource usage
    - Auto-restart on health check failure
 
 4. **Advanced Scheduling**
@@ -289,7 +333,7 @@ Estimated resource usage on Raspberry Pi 5:
 ## Known Limitations
 
 1. **Basic RBAC**: Only admin/viewer roles (no granular permissions)
-2. **No API authentication**: API requires session auth (no API keys yet)
+2. **Limited API permissions**: API keys support only read/write/admin scopes
 3. **Single action per schedule**: Can't chain multiple container actions
 4. **No health monitoring**: No container health checks or auto-restart on failure
 5. **No scheduled updates**: Container updates are manual only (no scheduled auto-update)

@@ -8,7 +8,7 @@ class TestStatsEndpoint:
     def test_stats_endpoint_requires_auth(self, client):
         """Stats endpoint should require authentication"""
         response = client.get('/api/container/abc123/stats?host_id=1')
-        assert response.status_code == 302
+        assert response.status_code in [302, 401]
 
     def test_stats_endpoint_returns_json(self, authenticated_client):
         """Stats endpoint should return JSON"""
@@ -22,7 +22,7 @@ class TestBulkStatsEndpoint:
     def test_bulk_stats_requires_auth(self, client):
         """Bulk stats should require authentication"""
         response = client.get('/api/containers/stats')
-        assert response.status_code == 302
+        assert response.status_code in [302, 401]
 
     def test_bulk_stats_returns_dict(self, authenticated_client):
         """Bulk stats should return a dictionary"""

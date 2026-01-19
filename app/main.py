@@ -6,15 +6,18 @@ import os
 import docker
 import sqlite3
 import bcrypt
+import secrets
+import hashlib
+import threading
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_talisman import Talisman
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from functools import wraps
 from dotenv import load_dotenv
@@ -24,7 +27,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):
@@ -343,6 +346,73 @@ def sanitize_string(value, max_length=255):
     value = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', str(value))
     # Truncate to max length
     return value[:max_length].strip()
+
+def generate_api_key():
+    """Generate a new API key"""
+    key_body = secrets.token_urlsafe(22)[:30]
+    return f"chron_{key_body}"
+
+def hash_api_key(key):
+    """Hash an API key for storage"""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+def verify_api_key(key, key_hash):
+    """Verify an API key against its hash"""
+    return hash_api_key(key) == key_hash
+
+def api_key_or_login_required(f):
+    """Allow either session auth or API key auth"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
+        if api_key:
+            if not api_key.startswith('chron_'):
+                return jsonify({'error': 'Invalid API key format'}), 401
+
+            key_hash = hash_api_key(api_key)
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT ak.id, ak.user_id, ak.permissions, ak.expires_at, u.role
+                FROM api_keys ak
+                JOIN users u ON ak.user_id = u.id
+                WHERE ak.key_hash = ?
+            ''', (key_hash,))
+            result = cursor.fetchone()
+
+            if not result:
+                conn.close()
+                return jsonify({'error': 'Invalid API key'}), 401
+
+            key_id, user_id, permissions, expires_at, user_role = result
+
+            if expires_at:
+                try:
+                    expires_dt = datetime.fromisoformat(expires_at)
+                    if expires_dt < datetime.now():
+                        conn.close()
+                        return jsonify({'error': 'API key expired'}), 401
+                except ValueError:
+                    conn.close()
+                    return jsonify({'error': 'Invalid API key expiry'}), 401
+
+            cursor.execute('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?', (key_id,))
+            conn.commit()
+            conn.close()
+
+            request.api_key_auth = True
+            request.api_key_permissions = permissions
+            request.api_key_user_id = user_id
+            request.api_key_user_role = user_role
+            return f(*args, **kwargs)
+
+        if current_user.is_authenticated:
+            request.api_key_auth = False
+            return f(*args, **kwargs)
+
+        return jsonify({'error': 'Authentication required'}), 401
+
+    return decorated_function
 
 # Docker client manager for multi-host support
 class DockerHostManager:
@@ -669,6 +739,38 @@ def init_db():
             role TEXT NOT NULL DEFAULT 'viewer',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_login TIMESTAMP
+        )
+    ''')
+
+    # Create api_keys table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL,
+            key_prefix TEXT NOT NULL,
+            permissions TEXT DEFAULT 'read',
+            last_used TIMESTAMP,
+            expires_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Create webhooks table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS webhooks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            container_id TEXT,
+            host_id INTEGER,
+            action TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            last_triggered TIMESTAMP,
+            trigger_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -1245,6 +1347,7 @@ def index():
         return render_template('error.html', error=str(e))
 
 @app.route('/api/containers')
+@api_key_or_login_required
 def get_containers():
     """API endpoint to get all containers"""
     try:
@@ -1371,45 +1474,60 @@ def get_containers():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/container/<container_id>/restart', methods=['POST'])
+@api_key_or_login_required
 def api_restart_container(container_id):
     """API endpoint to restart a container"""
-    data = request.json
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+    data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
     success, message = restart_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/container/<container_id>/start', methods=['POST'])
+@api_key_or_login_required
 def api_start_container(container_id):
     """API endpoint to start a container"""
-    data = request.json
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+    data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
     success, message = start_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/container/<container_id>/stop', methods=['POST'])
+@api_key_or_login_required
 def api_stop_container(container_id):
     """API endpoint to stop a container"""
-    data = request.json
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+    data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
     success, message = stop_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/container/<container_id>/pause', methods=['POST'])
+@api_key_or_login_required
 def api_pause_container(container_id):
     """API endpoint to pause a container"""
-    data = request.json
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+    data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
     success, message = pause_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/container/<container_id>/unpause', methods=['POST'])
+@api_key_or_login_required
 def api_unpause_container(container_id):
     """API endpoint to unpause a container"""
-    data = request.json
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+    data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
     success, message = unpause_container(container_id, container_name, host_id=host_id)
@@ -1490,9 +1608,12 @@ def api_check_all_updates():
         return jsonify({'error': 'Failed to check for updates'}), 500
 
 @app.route('/api/container/<container_id>/update', methods=['POST'])
+@api_key_or_login_required
 def api_update_container(container_id):
     """API endpoint to update a container"""
-    data = request.json
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+    data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
 
@@ -1541,7 +1662,7 @@ def api_get_container_logs(container_id):
         return jsonify({'error': 'Failed to retrieve container logs. Please try again.'}), 500
 
 @app.route('/api/container/<container_id>/stats', methods=['GET'])
-@login_required
+@api_key_or_login_required
 def api_get_container_stats(container_id):
     """API endpoint to get container resource stats"""
     host_id = request.args.get('host_id', 1, type=int)
@@ -1599,7 +1720,7 @@ def api_get_container_stats(container_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/containers/stats', methods=['GET'])
-@login_required
+@api_key_or_login_required
 def api_get_all_container_stats():
     """API endpoint to get stats for all running containers"""
     results = {}
@@ -1647,9 +1768,11 @@ def api_get_all_container_stats():
     return jsonify(results)
 
 @app.route('/api/schedule', methods=['POST'])
-@login_required
+@api_key_or_login_required
 def add_schedule():
     """Add a new schedule"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
     data = request.json
     container_id = sanitize_string(data.get('container_id', ''), max_length=64)
     container_name = sanitize_string(data.get('container_name', ''), max_length=255)
@@ -1770,8 +1893,11 @@ def add_schedule():
         return jsonify({'error': 'Failed to create schedule. Please check the logs for details.'}), 500
 
 @app.route('/api/schedule/<int:schedule_id>', methods=['DELETE'])
+@api_key_or_login_required
 def delete_schedule(schedule_id):
     """Delete a schedule"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
     try:
         # Remove from scheduler
         try:
@@ -1793,8 +1919,11 @@ def delete_schedule(schedule_id):
         return jsonify({'error': 'Failed to delete schedule. It may have already been removed.'}), 500
 
 @app.route('/api/schedule/<int:schedule_id>/toggle', methods=['POST'])
+@api_key_or_login_required
 def toggle_schedule(schedule_id):
     """Enable/disable a schedule"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -1999,7 +2128,470 @@ def test_discord_webhook():
         logger.error(f"Failed to test Discord webhook: {e}")
         return jsonify({'error': 'Failed to send test notification. Please check your webhook URL and network connection.'}), 500
 
+@app.route('/api/keys', methods=['GET'])
+@login_required
+def list_api_keys():
+    """List all API keys for current user"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, key_prefix, permissions, last_used, expires_at, created_at
+            FROM api_keys WHERE user_id = ?
+            ORDER BY created_at DESC
+        ''', (current_user.id,))
+        keys = cursor.fetchall()
+        conn.close()
+
+        return jsonify([{
+            'id': k[0],
+            'name': k[1],
+            'key_prefix': k[2],
+            'permissions': k[3],
+            'last_used': k[4],
+            'expires_at': k[5],
+            'created_at': k[6]
+        } for k in keys])
+    except Exception as e:
+        logger.error(f"Failed to list API keys: {e}")
+        return jsonify({'error': 'Failed to list keys'}), 500
+
+
+@app.route('/api/keys', methods=['POST'])
+@login_required
+def create_api_key():
+    """Create a new API key"""
+    try:
+        data = request.json or {}
+        name = sanitize_string(data.get('name', 'Unnamed Key'), max_length=100)
+        permissions = data.get('permissions', 'read')
+        expires_days = data.get('expires_days')
+
+        if permissions not in ['read', 'write', 'admin']:
+            return jsonify({'error': 'Invalid permissions. Use: read, write, or admin'}), 400
+
+        if permissions == 'admin' and current_user.role != 'admin':
+            return jsonify({'error': 'Only admins can create admin API keys'}), 403
+
+        full_key = generate_api_key()
+        key_hash = hash_api_key(full_key)
+        key_prefix = full_key[:14]
+
+        expires_at = None
+        if expires_days:
+            try:
+                expires_days = int(expires_days)
+                expires_at = (datetime.now() + timedelta(days=expires_days)).isoformat()
+            except (TypeError, ValueError):
+                return jsonify({'error': 'Invalid expires_days value'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO api_keys (user_id, name, key_hash, key_prefix, permissions, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (current_user.id, name, key_hash, key_prefix, permissions, expires_at))
+        key_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        logger.info(f"API key created: {key_prefix}... for user {current_user.username}")
+
+        return jsonify({
+            'id': key_id,
+            'name': name,
+            'key': full_key,
+            'key_prefix': key_prefix,
+            'permissions': permissions,
+            'expires_at': expires_at,
+            'message': 'Save this key now - it will not be shown again!'
+        })
+    except Exception as e:
+        logger.error(f"Failed to create API key: {e}")
+        return jsonify({'error': 'Failed to create key'}), 500
+
+
+@app.route('/api/keys/<int:key_id>', methods=['DELETE'])
+@login_required
+def delete_api_key(key_id):
+    """Delete an API key"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT user_id FROM api_keys WHERE id = ?', (key_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            conn.close()
+            return jsonify({'error': 'API key not found'}), 404
+
+        if result[0] != current_user.id and current_user.role != 'admin':
+            conn.close()
+            return jsonify({'error': 'Not authorized to delete this key'}), 403
+
+        cursor.execute('DELETE FROM api_keys WHERE id = ?', (key_id,))
+        conn.commit()
+        conn.close()
+
+        logger.info(f"API key {key_id} deleted by user {current_user.username}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Failed to delete API key: {e}")
+        return jsonify({'error': 'Failed to delete key'}), 500
+
+
+@app.route('/webhook/<token>', methods=['POST', 'GET'])
+def trigger_webhook(token):
+    """Trigger a webhook action - no auth required, uses token"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, container_id, host_id, action, enabled
+            FROM webhooks WHERE token = ?
+        ''', (token,))
+        webhook = cursor.fetchone()
+
+        if not webhook:
+            conn.close()
+            return jsonify({'error': 'Invalid webhook'}), 404
+
+        webhook_id, name, container_id, host_id, action, enabled = webhook
+
+        if not enabled:
+            conn.close()
+            return jsonify({'error': 'Webhook is disabled'}), 403
+
+        override_container = None
+        override_host = None
+
+        if request.method == 'POST' and request.is_json:
+            data = request.json or {}
+            override_container = data.get('container_id')
+            override_host = data.get('host_id')
+        else:
+            override_container = request.args.get('container_id')
+            override_host = request.args.get('host_id')
+
+        target_container = override_container or container_id
+        target_host = int(override_host or host_id or 1)
+
+        if not target_container:
+            conn.close()
+            return jsonify({'error': 'No container specified'}), 400
+
+        docker_client = docker_manager.get_client(target_host)
+        if not docker_client:
+            conn.close()
+            return jsonify({'error': 'Docker host not available'}), 503
+
+        try:
+            container = docker_client.containers.get(target_container)
+            container_name = container.name
+        except docker.errors.NotFound:
+            conn.close()
+            return jsonify({'error': 'Container not found'}), 404
+
+        cursor.execute('''
+            UPDATE webhooks
+            SET last_triggered = CURRENT_TIMESTAMP, trigger_count = trigger_count + 1
+            WHERE id = ?
+        ''', (webhook_id,))
+        conn.commit()
+        conn.close()
+
+        action_map = {
+            'restart': restart_container,
+            'start': start_container,
+            'stop': stop_container,
+            'pause': pause_container,
+            'unpause': unpause_container,
+            'update': update_container
+        }
+
+        action_func = action_map.get(action)
+        if not action_func:
+            return jsonify({'error': f'Unknown action: {action}'}), 400
+
+        thread = threading.Thread(
+            target=action_func,
+            args=[target_container, container_name, None, target_host]
+        )
+        thread.start()
+
+        logger.info(f"Webhook '{name}' triggered: {action} on {container_name}")
+
+        return jsonify({
+            'success': True,
+            'webhook': name,
+            'action': action,
+            'container': container_name,
+            'message': f'{action.capitalize()} triggered for {container_name}'
+        })
+
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({'error': 'Webhook execution failed'}), 500
+
+
+@app.route('/api/webhooks', methods=['GET'])
+@login_required
+def list_webhooks():
+    """List all webhooks"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT w.id, w.name, w.token, w.container_id, w.host_id, w.action,
+                   w.enabled, w.last_triggered, w.trigger_count, w.created_at, h.name
+            FROM webhooks w
+            LEFT JOIN hosts h ON w.host_id = h.id
+            ORDER BY w.created_at DESC
+        ''')
+        webhooks = cursor.fetchall()
+        conn.close()
+
+        return jsonify([{
+            'id': w[0],
+            'name': w[1],
+            'token': w[2],
+            'container_id': w[3],
+            'host_id': w[4],
+            'action': w[5],
+            'enabled': bool(w[6]),
+            'last_triggered': w[7],
+            'trigger_count': w[8],
+            'created_at': w[9],
+            'host_name': w[10]
+        } for w in webhooks])
+    except Exception as e:
+        logger.error(f"Failed to list webhooks: {e}")
+        return jsonify({'error': 'Failed to list webhooks'}), 500
+
+
+@app.route('/api/webhooks', methods=['POST'])
+@login_required
+def create_webhook():
+    """Create a new webhook"""
+    try:
+        data = request.json or {}
+        name = sanitize_string(data.get('name', ''), max_length=100)
+        container_id = sanitize_string(data.get('container_id', ''), max_length=64) or None
+        host_id = data.get('host_id')
+        action = sanitize_string(data.get('action', 'restart'), max_length=20)
+
+        if not name:
+            return jsonify({'error': 'Name is required'}), 400
+
+        if action not in ['restart', 'start', 'stop', 'pause', 'unpause', 'update']:
+            return jsonify({'error': 'Invalid action'}), 400
+
+        token = secrets.token_urlsafe(24)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO webhooks (name, token, container_id, host_id, action)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (name, token, container_id, host_id, action))
+        webhook_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        webhook_url = f"{request.host_url}webhook/{token}"
+
+        logger.info(f"Webhook created: {name}")
+
+        return jsonify({
+            'id': webhook_id,
+            'name': name,
+            'token': token,
+            'url': webhook_url,
+            'action': action
+        })
+    except Exception as e:
+        logger.error(f"Failed to create webhook: {e}")
+        return jsonify({'error': 'Failed to create webhook'}), 500
+
+
+@app.route('/api/webhooks/<int:webhook_id>', methods=['DELETE'])
+@login_required
+def delete_webhook(webhook_id):
+    """Delete a webhook"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM webhooks WHERE id = ?', (webhook_id,))
+        conn.commit()
+        conn.close()
+
+        logger.info(f"Webhook {webhook_id} deleted")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Failed to delete webhook: {e}")
+        return jsonify({'error': 'Failed to delete webhook'}), 500
+
+
+@app.route('/api/webhooks/<int:webhook_id>/toggle', methods=['POST'])
+@login_required
+def toggle_webhook(webhook_id):
+    """Enable/disable a webhook"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE webhooks SET enabled = NOT enabled WHERE id = ?', (webhook_id,))
+        cursor.execute('SELECT enabled FROM webhooks WHERE id = ?', (webhook_id,))
+        result = cursor.fetchone()
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'enabled': bool(result[0])})
+    except Exception as e:
+        logger.error(f"Failed to toggle webhook: {e}")
+        return jsonify({'error': 'Failed to toggle webhook'}), 500
+
+@app.route('/api/hosts/<int:host_id>/metrics', methods=['GET'])
+@api_key_or_login_required
+def get_host_metrics(host_id):
+    """Get system metrics for a Docker host"""
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            return jsonify({'error': 'Cannot connect to Docker host'}), 503
+
+        info = docker_client.info()
+
+        try:
+            disk_usage = docker_client.df()
+        except Exception:
+            disk_usage = None
+
+        containers_running = info.get('ContainersRunning', 0)
+        containers_paused = info.get('ContainersPaused', 0)
+        containers_stopped = info.get('ContainersStopped', 0)
+
+        mem_total = info.get('MemTotal', 0)
+
+        mem_used_by_containers = 0
+        try:
+            for container in docker_client.containers.list():
+                try:
+                    stats = container.stats(stream=False)
+                    mem_used_by_containers += stats.get('memory_stats', {}).get('usage', 0)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        cpus = info.get('NCPU', 0)
+
+        images_size = 0
+        containers_size = 0
+        volumes_size = 0
+        build_cache_size = 0
+
+        if disk_usage:
+            for img in disk_usage.get('Images', []) or []:
+                images_size += img.get('Size', 0) or 0
+
+            for cont in disk_usage.get('Containers', []) or []:
+                containers_size += cont.get('SizeRw', 0) or 0
+
+            for vol in disk_usage.get('Volumes', []) or []:
+                volumes_size += vol.get('UsageData', {}).get('Size', 0) or 0
+
+            for cache in disk_usage.get('BuildCache', []) or []:
+                build_cache_size += cache.get('Size', 0) or 0
+
+        return jsonify({
+            'host_id': host_id,
+            'name': info.get('Name', 'Unknown'),
+            'os': info.get('OperatingSystem', 'Unknown'),
+            'architecture': info.get('Architecture', 'Unknown'),
+            'docker_version': info.get('ServerVersion', 'Unknown'),
+            'kernel_version': info.get('KernelVersion', 'Unknown'),
+            'cpus': cpus,
+            'memory': {
+                'total_bytes': mem_total,
+                'total_gb': round(mem_total / (1024**3), 2),
+                'used_by_containers_bytes': mem_used_by_containers,
+                'used_by_containers_gb': round(mem_used_by_containers / (1024**3), 2)
+            },
+            'containers': {
+                'running': containers_running,
+                'paused': containers_paused,
+                'stopped': containers_stopped,
+                'total': containers_running + containers_paused + containers_stopped
+            },
+            'disk': {
+                'images_bytes': images_size,
+                'images_gb': round(images_size / (1024**3), 2),
+                'containers_bytes': containers_size,
+                'containers_gb': round(containers_size / (1024**3), 2),
+                'volumes_bytes': volumes_size,
+                'volumes_gb': round(volumes_size / (1024**3), 2),
+                'build_cache_bytes': build_cache_size,
+                'build_cache_gb': round(build_cache_size / (1024**3), 2),
+                'total_bytes': images_size + containers_size + volumes_size + build_cache_size,
+                'total_gb': round((images_size + containers_size + volumes_size + build_cache_size) / (1024**3), 2)
+            },
+            'images_count': info.get('Images', 0)
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to get host metrics for host {host_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/hosts/metrics', methods=['GET'])
+@api_key_or_login_required
+def get_all_hosts_metrics():
+    """Get metrics for all enabled hosts"""
+    results = []
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, name FROM hosts WHERE enabled = 1')
+    hosts = cursor.fetchall()
+    conn.close()
+
+    for host_id, host_name in hosts:
+        try:
+            docker_client = docker_manager.get_client(host_id)
+            if not docker_client:
+                results.append({
+                    'host_id': host_id,
+                    'name': host_name,
+                    'status': 'offline',
+                    'error': 'Cannot connect'
+                })
+                continue
+
+            info = docker_client.info()
+
+            results.append({
+                'host_id': host_id,
+                'name': host_name,
+                'status': 'online',
+                'os': info.get('OperatingSystem', 'Unknown'),
+                'cpus': info.get('NCPU', 0),
+                'memory_gb': round(info.get('MemTotal', 0) / (1024**3), 2),
+                'containers_running': info.get('ContainersRunning', 0),
+                'containers_total': info.get('Containers', 0),
+                'images': info.get('Images', 0)
+            })
+        except Exception as e:
+            results.append({
+                'host_id': host_id,
+                'name': host_name,
+                'status': 'error',
+                'error': str(e)
+            })
+
+    return jsonify(results)
+
 @app.route('/api/hosts', methods=['GET'])
+@api_key_or_login_required
 def get_hosts():
     """Get all Docker hosts"""
     try:
@@ -2075,6 +2667,7 @@ def add_host():
         return jsonify({'error': 'Failed to add Docker host. Please try again.'}), 500
 
 @app.route('/api/hosts/<int:host_id>', methods=['PUT'])
+@login_required
 def update_host(host_id):
     """Update a Docker host"""
     try:
@@ -2131,6 +2724,7 @@ def update_host(host_id):
         return jsonify({'error': 'Failed to update Docker host. Please try again.'}), 500
 
 @app.route('/api/hosts/<int:host_id>', methods=['DELETE'])
+@login_required
 def delete_host(host_id):
     """Delete a Docker host"""
     try:
@@ -2162,6 +2756,7 @@ def delete_host(host_id):
         return jsonify({'error': 'Failed to delete Docker host. Please try again.'}), 500
 
 @app.route('/api/hosts/<int:host_id>/test', methods=['POST'])
+@login_required
 def test_host_connection(host_id):
     """Test connection to a Docker host"""
     try:
@@ -2192,6 +2787,7 @@ def test_host_connection(host_id):
 # ===== Tags API =====
 
 @app.route('/api/tags', methods=['GET'])
+@api_key_or_login_required
 def get_tags():
     """Get all tags"""
     try:
@@ -2359,6 +2955,13 @@ def settings_page():
     """Settings page"""
     webhook_url = get_setting('discord_webhook_url', '')
     return render_template('settings.html', discord_webhook_url=webhook_url, version=VERSION)
+
+@app.route('/metrics')
+@login_required
+def metrics_page():
+    """Host metrics dashboard page"""
+    dark_mode = request.cookies.get('darkMode', 'false') == 'true'
+    return render_template('metrics.html', dark_mode=dark_mode, csrf_token=generate_csrf())
 
 @app.route('/hosts')
 @login_required

@@ -149,6 +149,7 @@
         }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
 
         /* Info box */
         .info-box {
@@ -191,6 +192,59 @@
         .status-badge.enabled { background: #d4edda; color: #155724; }
         .status-badge.disabled { background: #f8d7da; color: #721c24; }
         .color-chip { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1px solid #d0d7de; margin-right: 6px; vertical-align: middle; }
+        .help-text { color: var(--text-secondary); font-size: 13px; margin-bottom: 15px; }
+
+        .inline-form {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-info { background: #d1ecf1; color: #0c5460; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+
+        .btn-sm { padding: 6px 10px; font-size: 12px; }
+
+        .code-examples {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .code-examples pre {
+            background: var(--hover-bg);
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        .empty {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 15px;
+        }
 
         /* Modal */
         .modal {
@@ -238,6 +292,7 @@
             <div class="nav-links">
                 <a href="/">Dashboard</a>
                 <a href="/logs">Logs</a>
+                <a href="/metrics">Host Metrics</a>
                 <a href="/settings">Settings</a>
             </div>
         </div>
@@ -250,6 +305,8 @@
             <div class="tabs">
                 <button class="tab active" onclick="showTab('discord')">Discord</button>
                 <button class="tab" onclick="showTab('ntfy')">ntfy.sh</button>
+                <button class="tab" onclick="showTab('apikeys')">API Keys</button>
+                <button class="tab" onclick="showTab('webhooks')">Webhooks</button>
                 <button class="tab" onclick="showTab('hosts')">Docker Hosts</button>
                 <button class="tab" onclick="showTab('account')">Account</button>
             </div>
@@ -321,6 +378,165 @@
                         <a href="https://ntfy.sh" target="_blank">ntfy.sh</a> is a simple pub-sub notification service.
                         You can use the free public server or self-host your own.
                     </p>
+                </div>
+            </div>
+
+            <!-- API Keys Tab -->
+            <div id="apikeys-tab" class="tab-content">
+                <h2>API Keys</h2>
+                <p class="help-text">
+                    API keys allow external applications to access Chrontainer without a browser session.
+                    Keys are shown only once when created - save them securely.
+                </p>
+
+                <div class="form-group">
+                    <h3>Create New Key</h3>
+                    <div class="inline-form">
+                        <input type="text" id="newKeyName" placeholder="Key name (e.g., 'Home Assistant')" style="flex: 2;">
+                        <select id="newKeyPermissions" style="flex: 1;">
+                            <option value="read">Read Only</option>
+                            <option value="write">Read + Write</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <select id="newKeyExpires" style="flex: 1;">
+                            <option value="">Never expires</option>
+                            <option value="30">30 days</option>
+                            <option value="90">90 days</option>
+                            <option value="365">1 year</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="createApiKey()">Create Key</button>
+                    </div>
+                </div>
+
+                <div id="newKeyDisplay" class="alert alert-warning" style="display: none;">
+                    <strong>Save this key now.</strong> It will not be shown again.<br>
+                    <code id="newKeyValue" style="font-size: 1.1em; user-select: all;"></code>
+                    <button class="btn btn-sm" onclick="copyApiKey()">Copy</button>
+                </div>
+
+                <h3>Existing Keys</h3>
+                <table class="data-table" id="apiKeysTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Key Prefix</th>
+                            <th>Permissions</th>
+                            <th>Last Used</th>
+                            <th>Expires</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="apiKeysList"></tbody>
+                </table>
+
+                <h3>Usage Examples</h3>
+                <div class="code-examples">
+                    <h4>curl</h4>
+                    <pre><code>curl -H "X-API-Key: chron_xxxxx" http://your-server:5000/api/containers</code></pre>
+
+                    <h4>Python</h4>
+                    <pre><code>import requests
+response = requests.get(
+    'http://your-server:5000/api/containers',
+    headers={'X-API-Key': 'chron_xxxxx'}
+)</code></pre>
+
+                    <h4>Home Assistant REST Command</h4>
+                    <pre><code>rest_command:
+  restart_container:
+    url: "http://your-server:5000/api/container/{{ container_id }}/restart"
+    method: POST
+    headers:
+      X-API-Key: "chron_xxxxx"</code></pre>
+                </div>
+            </div>
+
+            <!-- Webhooks Tab -->
+            <div id="webhooks-tab" class="tab-content">
+                <h2>Webhooks</h2>
+                <p class="help-text">
+                    Webhooks allow external services to trigger container actions via a simple URL.
+                    The unique token acts as the secret.
+                </p>
+
+                <div class="form-group">
+                    <h3>Create New Webhook</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Name *</label>
+                            <input type="text" id="webhookName" placeholder="e.g., Home Assistant Restart">
+                        </div>
+                        <div class="form-group">
+                            <label>Action *</label>
+                            <select id="webhookAction">
+                                <option value="restart">Restart</option>
+                                <option value="start">Start</option>
+                                <option value="stop">Stop</option>
+                                <option value="pause">Pause</option>
+                                <option value="unpause">Unpause</option>
+                                <option value="update">Update</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Container (optional)</label>
+                            <select id="webhookContainer">
+                                <option value="">Any (specify in request)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Host</label>
+                            <select id="webhookHost"></select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="createWebhook()">Create Webhook</button>
+                </div>
+
+                <div id="newWebhookDisplay" class="alert alert-success" style="display: none;">
+                    <strong>Webhook URL:</strong><br>
+                    <code id="newWebhookUrl" style="font-size: 1.1em; user-select: all; word-break: break-all;"></code>
+                    <button class="btn btn-sm" onclick="copyWebhookUrl()">Copy</button>
+                </div>
+
+                <h3>Existing Webhooks</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Action</th>
+                            <th>Container</th>
+                            <th>Triggered</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="webhooksList"></tbody>
+                </table>
+
+                <h3>Usage Examples</h3>
+                <div class="code-examples">
+                    <h4>curl (GET or POST)</h4>
+                    <pre><code>curl "http://your-server:5000/webhook/YOUR_TOKEN"</code></pre>
+
+                    <h4>curl with container override</h4>
+                    <pre><code>curl "http://your-server:5000/webhook/YOUR_TOKEN?container_id=abc123&host_id=1"</code></pre>
+
+                    <h4>Home Assistant Automation</h4>
+                    <pre><code>automation:
+  - alias: "Restart media server at 3am"
+    trigger:
+      platform: time
+      at: "03:00:00"
+    action:
+      service: rest_command.trigger_webhook
+      data:
+        url: "http://chrontainer:5000/webhook/YOUR_TOKEN"</code></pre>
+
+                    <h4>n8n HTTP Request Node</h4>
+                    <pre><code>Method: POST
+URL: http://your-server:5000/webhook/YOUR_TOKEN
+Body: {"container_id": "optional_override"}</code></pre>
                 </div>
             </div>
 
@@ -397,6 +613,8 @@
 
     <script>
         let editingHostId = null;
+        let webhookContainerMap = {};
+        let webhookHostMap = {};
 
         function getCsrfToken() {
             return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -410,6 +628,18 @@
             setTimeout(() => alert.style.display = 'none', 5000);
         }
 
+        function escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value ?? '';
+            return div.innerHTML;
+        }
+
+        function formatDate(value) {
+            if (!value) return 'Never';
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+        }
+
         // Tab handling
         function showTab(tabName) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -420,6 +650,10 @@
             // Load hosts when switching to that tab
             if (tabName === 'hosts') loadHosts();
             if (tabName === 'ntfy') loadNtfySettings();
+            if (tabName === 'apikeys') loadApiKeys();
+            if (tabName === 'webhooks') {
+                loadWebhookOptions().then(() => loadWebhooks());
+            }
 
             // Update URL hash
             window.location.hash = tabName;
@@ -428,7 +662,7 @@
         // Check URL hash on page load
         window.addEventListener('load', () => {
             const hash = window.location.hash.replace('#', '');
-            if (['discord', 'ntfy', 'hosts', 'account'].includes(hash)) {
+            if (['discord', 'ntfy', 'apikeys', 'webhooks', 'hosts', 'account'].includes(hash)) {
                 showTab(hash);
             }
         });
@@ -539,6 +773,281 @@
                 toggleNtfyFields();
             } catch (error) {
                 showAlert('Error loading ntfy settings: ' + error.message, 'error');
+            }
+        }
+
+        // API keys
+        async function loadApiKeys() {
+            try {
+                const response = await fetch('/api/keys', {
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const keys = await response.json();
+                const tbody = document.getElementById('apiKeysList');
+
+                if (!Array.isArray(keys) || keys.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty">No API keys created yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = keys.map(key => {
+                    const badgeClass = key.permissions === 'admin'
+                        ? 'badge-danger'
+                        : key.permissions === 'write'
+                            ? 'badge-warning'
+                            : 'badge-info';
+                    return `
+                        <tr>
+                            <td>${escapeHtml(key.name)}</td>
+                            <td><code>${escapeHtml(key.key_prefix)}...</code></td>
+                            <td><span class="badge ${badgeClass}">${escapeHtml(key.permissions)}</span></td>
+                            <td>${formatDate(key.last_used)}</td>
+                            <td>${formatDate(key.expires_at)}</td>
+                            <td><button class="btn btn-sm btn-danger" onclick="deleteApiKey(${key.id})">Delete</button></td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                showAlert('Error loading API keys: ' + error.message, 'error');
+            }
+        }
+
+        async function createApiKey() {
+            const name = document.getElementById('newKeyName').value.trim();
+            const permissions = document.getElementById('newKeyPermissions').value;
+            const expiresDays = document.getElementById('newKeyExpires').value;
+
+            if (!name) {
+                showAlert('Please enter a key name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/keys', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        name,
+                        permissions,
+                        expires_days: expiresDays || null
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) {
+                    showAlert(data.error || 'Failed to create key', 'error');
+                    return;
+                }
+
+                document.getElementById('newKeyValue').textContent = data.key;
+                document.getElementById('newKeyDisplay').style.display = 'block';
+                document.getElementById('newKeyName').value = '';
+                loadApiKeys();
+                showAlert('API key created. Save it now.', 'success');
+            } catch (error) {
+                showAlert('Failed to create key: ' + error.message, 'error');
+            }
+        }
+
+        function copyApiKey() {
+            const key = document.getElementById('newKeyValue').textContent;
+            navigator.clipboard.writeText(key).then(() => {
+                showAlert('Key copied to clipboard', 'success');
+            });
+        }
+
+        async function deleteApiKey(keyId) {
+            if (!confirm('Delete this API key? This cannot be undone.')) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/keys/${keyId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    loadApiKeys();
+                    showAlert('API key deleted', 'success');
+                } else {
+                    showAlert(data.error || 'Failed to delete key', 'error');
+                }
+            } catch (error) {
+                showAlert('Failed to delete key: ' + error.message, 'error');
+            }
+        }
+
+        // Webhooks
+        async function loadWebhookOptions() {
+            try {
+                const [hostsResponse, containersResponse] = await Promise.all([
+                    fetch('/api/hosts'),
+                    fetch('/api/containers')
+                ]);
+                const hosts = await hostsResponse.json();
+                const containers = await containersResponse.json();
+
+                const hostSelect = document.getElementById('webhookHost');
+                hostSelect.innerHTML = '<option value="">Default (Local)</option>';
+                webhookHostMap = {};
+                hosts.forEach(host => {
+                    webhookHostMap[host.id] = host.name;
+                    const option = document.createElement('option');
+                    option.value = host.id;
+                    option.textContent = host.name;
+                    hostSelect.appendChild(option);
+                });
+
+                const containerSelect = document.getElementById('webhookContainer');
+                containerSelect.innerHTML = '<option value="">Any (specify in request)</option>';
+                webhookContainerMap = {};
+                containers.forEach(container => {
+                    webhookContainerMap[container.id] = container.name;
+                    const option = document.createElement('option');
+                    option.value = container.id;
+                    option.dataset.hostId = container.host_id;
+                    option.textContent = `${container.name} (${container.host_name})`;
+                    containerSelect.appendChild(option);
+                });
+
+                containerSelect.onchange = () => {
+                    const selected = containerSelect.selectedOptions[0];
+                    if (selected && selected.dataset.hostId && !hostSelect.value) {
+                        hostSelect.value = selected.dataset.hostId;
+                    }
+                };
+            } catch (error) {
+                showAlert('Failed to load webhook options: ' + error.message, 'error');
+            }
+        }
+
+        async function loadWebhooks() {
+            try {
+                const response = await fetch('/api/webhooks', {
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const webhooks = await response.json();
+                const tbody = document.getElementById('webhooksList');
+
+                if (!Array.isArray(webhooks) || webhooks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty">No webhooks created yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = webhooks.map(webhook => {
+                    const containerLabel = webhook.container_id
+                        ? `${webhookContainerMap[webhook.container_id] || webhook.container_id}`
+                        : 'Any';
+                    const statusLabel = webhook.enabled ? 'Enabled' : 'Disabled';
+                    const statusClass = webhook.enabled ? 'enabled' : 'disabled';
+                    const lastTriggered = webhook.last_triggered ? formatDate(webhook.last_triggered) : 'Never';
+                    return `
+                        <tr>
+                            <td>${escapeHtml(webhook.name)}</td>
+                            <td>${escapeHtml(webhook.action)}</td>
+                            <td>${escapeHtml(containerLabel)}</td>
+                            <td>${lastTriggered} (${webhook.trigger_count})</td>
+                            <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-secondary" onclick="toggleWebhook(${webhook.id})">
+                                    ${webhook.enabled ? 'Disable' : 'Enable'}
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteWebhook(${webhook.id})">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                showAlert('Failed to load webhooks: ' + error.message, 'error');
+            }
+        }
+
+        async function createWebhook() {
+            const name = document.getElementById('webhookName').value.trim();
+            const action = document.getElementById('webhookAction').value;
+            const containerId = document.getElementById('webhookContainer').value || null;
+            const hostValue = document.getElementById('webhookHost').value;
+            const hostId = hostValue ? parseInt(hostValue, 10) : null;
+
+            if (!name) {
+                showAlert('Webhook name is required', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/webhooks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        name,
+                        action,
+                        container_id: containerId,
+                        host_id: hostId
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) {
+                    showAlert(data.error || 'Failed to create webhook', 'error');
+                    return;
+                }
+
+                document.getElementById('newWebhookUrl').textContent = data.url;
+                document.getElementById('newWebhookDisplay').style.display = 'block';
+                document.getElementById('webhookName').value = '';
+                loadWebhooks();
+                showAlert('Webhook created', 'success');
+            } catch (error) {
+                showAlert('Failed to create webhook: ' + error.message, 'error');
+            }
+        }
+
+        function copyWebhookUrl() {
+            const url = document.getElementById('newWebhookUrl').textContent;
+            navigator.clipboard.writeText(url).then(() => {
+                showAlert('Webhook URL copied', 'success');
+            });
+        }
+
+        async function deleteWebhook(webhookId) {
+            if (!confirm('Delete this webhook? This cannot be undone.')) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/webhooks/${webhookId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    loadWebhooks();
+                    showAlert('Webhook deleted', 'success');
+                } else {
+                    showAlert(data.error || 'Failed to delete webhook', 'error');
+                }
+            } catch (error) {
+                showAlert('Failed to delete webhook: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleWebhook(webhookId) {
+            try {
+                const response = await fetch(`/api/webhooks/${webhookId}/toggle`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    loadWebhooks();
+                } else {
+                    showAlert(data.error || 'Failed to toggle webhook', 'error');
+                }
+            } catch (error) {
+                showAlert('Failed to toggle webhook: ' + error.message, 'error');
             }
         }
 
