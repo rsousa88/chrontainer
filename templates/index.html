@@ -293,6 +293,25 @@
             color: #555;
         }
 
+        .auto-refresh-progress {
+            width: 70px;
+            height: 4px;
+            background: #dbe4ef;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .auto-refresh-progress.disabled {
+            opacity: 0.4;
+        }
+
+        .auto-refresh-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: #3498db;
+            transition: width 0.1s linear;
+        }
+
         .status-cell {
             position: relative;
             padding-right: 22px;
@@ -899,6 +918,9 @@
                         <option value="30">30s</option>
                         <option value="60">60s</option>
                     </select>
+                    <span class="auto-refresh-progress disabled" id="autoRefreshProgress">
+                        <span class="auto-refresh-progress-bar" id="autoRefreshProgressBar"></span>
+                    </span>
                 </label>
             </div>
             <div style="margin-bottom: 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
@@ -1476,6 +1498,9 @@
         }
 
         let autoRefreshTimer = null;
+        let autoRefreshProgressTimer = null;
+        let autoRefreshDurationMs = 0;
+        let autoRefreshStartTime = 0;
 
         function fetchContainerStatsFallback() {
             const rows = document.querySelectorAll('tr[data-host]');
@@ -1540,10 +1565,15 @@
                 clearInterval(autoRefreshTimer);
                 autoRefreshTimer = null;
             }
+            stopAutoRefreshProgress();
             if (Number.isFinite(seconds) && seconds > 0) {
+                autoRefreshDurationMs = seconds * 1000;
+                startAutoRefreshProgress();
                 autoRefreshTimer = setInterval(() => {
-                    fetchContainerStats();
-                }, seconds * 1000);
+                    triggerAutoRefresh();
+                }, autoRefreshDurationMs);
+            } else {
+                setAutoRefreshProgress(0, true);
             }
         }
 
@@ -1562,6 +1592,41 @@
             const seconds = parseInt(select.value, 10);
             localStorage.setItem('autoRefreshSeconds', Number.isFinite(seconds) ? String(seconds) : '0');
             applyAutoRefreshInterval(Number.isFinite(seconds) ? seconds : 0);
+        }
+
+        function triggerAutoRefresh() {
+            fetchContainerStats();
+            autoRefreshStartTime = Date.now();
+            setAutoRefreshProgress(0, false);
+        }
+
+        function setAutoRefreshProgress(percent, disabled) {
+            const progress = document.getElementById('autoRefreshProgress');
+            const bar = document.getElementById('autoRefreshProgressBar');
+            if (!progress || !bar) return;
+            progress.classList.toggle('disabled', disabled);
+            bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        }
+
+        function startAutoRefreshProgress() {
+            autoRefreshStartTime = Date.now();
+            setAutoRefreshProgress(0, false);
+            autoRefreshProgressTimer = setInterval(() => {
+                const elapsed = Date.now() - autoRefreshStartTime;
+                if (autoRefreshDurationMs <= 0) {
+                    setAutoRefreshProgress(0, true);
+                    return;
+                }
+                const percent = (elapsed / autoRefreshDurationMs) * 100;
+                setAutoRefreshProgress(percent, false);
+            }, 100);
+        }
+
+        function stopAutoRefreshProgress() {
+            if (autoRefreshProgressTimer) {
+                clearInterval(autoRefreshProgressTimer);
+                autoRefreshProgressTimer = null;
+            }
         }
 
         function toggleScheduleType() {
