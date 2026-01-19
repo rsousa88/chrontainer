@@ -668,12 +668,6 @@ def init_db():
         )
     ''')
 
-    # Insert default local host if not exists
-    cursor.execute('''
-        INSERT OR IGNORE INTO hosts (id, name, url, enabled, color, last_seen)
-        VALUES (1, 'Local', 'unix://var/run/docker.sock', 1, ?, ?)
-    ''', (HOST_DEFAULT_COLOR, datetime.now()))
-
     # Create default admin user if no users exist
     cursor.execute('SELECT COUNT(*) FROM users')
     user_count = cursor.fetchone()[0]
@@ -707,6 +701,12 @@ def init_db():
         logger.info("Migrating hosts table - adding color column")
         cursor.execute(f"ALTER TABLE hosts ADD COLUMN color TEXT DEFAULT '{HOST_DEFAULT_COLOR}'")
         cursor.execute('UPDATE hosts SET color = ? WHERE color IS NULL OR color = ""', (HOST_DEFAULT_COLOR,))
+
+    # Insert default local host if not exists
+    cursor.execute('''
+        INSERT OR IGNORE INTO hosts (id, name, url, enabled, color, last_seen)
+        VALUES (1, 'Local', 'unix://var/run/docker.sock', 1, ?, ?)
+    ''', (HOST_DEFAULT_COLOR, datetime.now()))
 
     conn.commit()
     conn.close()
