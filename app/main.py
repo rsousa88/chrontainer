@@ -1766,6 +1766,7 @@ def remove_container_tag(container_id, host_id, tag_id):
         return jsonify({'error': 'Failed to remove tag from container. Please try again.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/webui', methods=['GET'])
+@login_required
 def get_container_webui(container_id, host_id):
     """Get Web UI URL for a container"""
     try:
@@ -1783,6 +1784,7 @@ def get_container_webui(container_id, host_id):
         return jsonify({'error': 'Failed to load Web UI URL.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/webui', methods=['POST'])
+@login_required
 def set_container_webui(container_id, host_id):
     """Set Web UI URL for a container"""
     try:
@@ -1823,8 +1825,8 @@ def settings_page():
 @app.route('/hosts')
 @login_required
 def hosts_page():
-    """Hosts management page"""
-    return render_template('hosts.html', version=VERSION)
+    """Redirect to unified settings page (hosts tab)"""
+    return redirect('/settings#hosts')
 
 @app.route('/logs')
 @login_required
@@ -1898,8 +1900,8 @@ def logout():
 @app.route('/user-settings')
 @login_required
 def user_settings_page():
-    """User settings page"""
-    return render_template('user_settings.html', version=VERSION)
+    """Redirect to unified settings page (account tab)"""
+    return redirect('/settings#account')
 
 @app.route('/api/user/change-password', methods=['POST'])
 @login_required

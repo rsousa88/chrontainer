@@ -7,105 +7,118 @@
     <title>Settings - Chrontainer</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%232c3e50' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='70' font-size='70' text-anchor='middle' fill='%233498db'%3E🐳%3C/text%3E%3C/svg%3E">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg-primary: #f5f5f5;
+            --bg-secondary: white;
+            --bg-header: #2c3e50;
+            --text-primary: #333;
+            --text-secondary: #555;
+            --text-light: white;
+            --border-color: #ddd;
+            --shadow: rgba(0,0,0,0.1);
+            --th-bg: #34495e;
+            --hover-bg: #f8f9fa;
+            --tab-inactive: #e0e0e0;
         }
+
+        body.dark-mode {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-header: #1a1a1a;
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --text-light: #e0e0e0;
+            --border-color: #404040;
+            --shadow: rgba(0,0,0,0.3);
+            --th-bg: #1f1f1f;
+            --hover-bg: #363636;
+            --tab-inactive: #404040;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f5f5;
-            color: #333;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             line-height: 1.6;
+            transition: background-color 0.3s, color 0.3s;
         }
 
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
 
         header {
-            background: #2c3e50;
-            color: white;
+            background: var(--bg-header);
+            color: var(--text-light);
             padding: 20px 0;
             margin-bottom: 30px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px var(--shadow);
         }
 
-        header h1 {
-            font-size: 28px;
-            font-weight: 600;
-        }
+        header h1 { font-size: 28px; font-weight: 600; }
 
-        .nav-links {
-            margin-top: 10px;
-        }
-
-        .nav-links a {
-            color: #3498db;
-            text-decoration: none;
-            margin-right: 20px;
-            font-size: 14px;
-        }
-
-        .nav-links a:hover {
-            color: #5dade2;
-        }
+        .nav-links { margin-top: 10px; }
+        .nav-links a { color: #3498db; text-decoration: none; margin-right: 20px; font-size: 14px; }
+        .nav-links a:hover { color: #5dade2; }
 
         .card {
-            background: white;
+            background: var(--bg-secondary);
             border-radius: 8px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px var(--shadow);
+            overflow: hidden;
         }
 
-        .card h2 {
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .tab {
+            padding: 15px 25px;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-secondary);
+            border: none;
+            background: none;
+            font-size: 14px;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab:hover { color: #3498db; background: var(--hover-bg); }
+        .tab.active { color: #3498db; border-bottom-color: #3498db; font-weight: 600; }
+
+        .tab-content { display: none; padding: 25px; }
+        .tab-content.active { display: block; }
+
+        .tab-content h2 {
             font-size: 20px;
-            margin-bottom: 15px;
-            color: #2c3e50;
+            margin-bottom: 20px;
+            color: var(--text-primary);
             border-bottom: 2px solid #3498db;
             padding-bottom: 10px;
         }
 
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #555;
-        }
-
+        /* Forms */
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: var(--text-secondary); }
         .form-group input {
             width: 100%;
             padding: 10px 12px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--border-color);
             border-radius: 4px;
             font-size: 14px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
             transition: border-color 0.3s;
         }
+        .form-group input:focus { outline: none; border-color: #3498db; }
+        .form-group small { display: block; margin-top: 5px; color: var(--text-secondary); font-size: 13px; }
 
-        .form-group input:focus {
-            outline: none;
-            border-color: #3498db;
-        }
-
-        .form-group small {
-            display: block;
-            margin-top: 5px;
-            color: #7f8c8d;
-            font-size: 13px;
-        }
-
-        .button-group {
-            display: flex;
-            gap: 10px;
-        }
+        .button-group { display: flex; gap: 10px; flex-wrap: wrap; }
 
         .btn {
             padding: 10px 20px;
@@ -114,50 +127,30 @@
             font-size: 14px;
             cursor: pointer;
             transition: all 0.3s;
+            font-weight: 500;
         }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-primary:hover { background: #2980b9; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover { background: #229954; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-danger:hover { background: #c0392b; }
 
-        .btn-primary {
-            background: #3498db;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #2980b9;
-        }
-
-        .btn-secondary {
-            background: #95a5a6;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #7f8c8d;
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
+        /* Alert */
         .alert {
             padding: 12px 15px;
             border-radius: 4px;
             margin-bottom: 20px;
             display: none;
         }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
+        /* Info box */
         .info-box {
             background: #e8f4f8;
             border-left: 4px solid #3498db;
@@ -165,40 +158,86 @@
             margin-top: 20px;
             border-radius: 4px;
         }
-
-        .info-box h3 {
-            font-size: 16px;
-            margin-bottom: 10px;
-            color: #2c3e50;
-        }
-
-        .info-box ol {
-            margin-left: 20px;
-        }
-
-        .info-box li {
-            margin-bottom: 5px;
-        }
-
+        body.dark-mode .info-box { background: #1f3a4a; }
+        .info-box h3 { font-size: 16px; margin-bottom: 10px; color: var(--text-primary); }
+        .info-box ol { margin-left: 20px; }
+        .info-box li { margin-bottom: 5px; }
         .info-box code {
-            background: #fff;
+            background: var(--bg-secondary);
             padding: 2px 6px;
             border-radius: 3px;
             font-family: 'Courier New', monospace;
             font-size: 13px;
+        }
+
+        .password-requirements {
+            background: #fff3cd;
+            border-left: 4px solid #f39c12;
+            padding: 10px 15px;
+            margin-top: 15px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #856404;
+        }
+        body.dark-mode .password-requirements { background: #4a3f1f; color: #ffc107; }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { background: var(--th-bg); color: var(--text-light); padding: 12px; text-align: left; font-weight: 600; font-size: 14px; }
+        td { padding: 12px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
+        tr:hover { background: var(--hover-bg); }
+
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .status-badge.enabled { background: #d4edda; color: #155724; }
+        .status-badge.disabled { background: #f8d7da; color: #721c24; }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            overflow-y: auto;
+        }
+        .modal-content {
+            background: var(--bg-secondary);
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            position: relative;
+        }
+        .modal-content h2 { margin-bottom: 20px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .tabs { flex-wrap: wrap; }
+            .tab { padding: 12px 15px; flex: 1; min-width: 100px; text-align: center; }
+            .container { padding: 10px; }
+            .button-group { flex-direction: column; }
+            .btn { width: 100%; }
+            table { font-size: 13px; }
+            th, td { padding: 8px; }
+        }
+
+        @media (max-width: 480px) {
+            header h1 { font-size: 22px; }
+            .tab { font-size: 13px; padding: 10px 12px; }
         }
     </style>
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>⚙️ Chrontainer Settings <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
+            <h1>Settings <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
                 <a href="/logs">Logs</a>
                 <a href="/settings">Settings</a>
-                <a href="/hosts">Hosts</a>
-                <a href="/user-settings">User</a>
             </div>
         </div>
     </header>
@@ -207,40 +246,107 @@
         <div id="alert" class="alert"></div>
 
         <div class="card">
-            <h2>🔔 Discord Notifications</h2>
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('discord')">Discord</button>
+                <button class="tab" onclick="showTab('hosts')">Docker Hosts</button>
+                <button class="tab" onclick="showTab('account')">Account</button>
+            </div>
 
+            <!-- Discord Tab -->
+            <div id="discord-tab" class="tab-content active">
+                <h2>Discord Notifications</h2>
+                <div class="form-group">
+                    <label for="discord_webhook">Discord Webhook URL</label>
+                    <input type="text" id="discord_webhook" placeholder="https://discord.com/api/webhooks/..." value="{{ discord_webhook_url }}">
+                    <small>Enter your Discord webhook URL to receive notifications when containers are restarted, started, or stopped.</small>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="saveDiscordSettings()">Save Settings</button>
+                    <button class="btn btn-secondary" onclick="testWebhook()" id="testBtn">Send Test Notification</button>
+                </div>
+                <div class="info-box">
+                    <h3>How to get a Discord Webhook URL:</h3>
+                    <ol>
+                        <li>Open your Discord server settings</li>
+                        <li>Go to <strong>Integrations - Webhooks</strong></li>
+                        <li>Click <strong>New Webhook</strong></li>
+                        <li>Give it a name (e.g., "Chrontainer")</li>
+                        <li>Select the channel where you want notifications</li>
+                        <li>Click <strong>Copy Webhook URL</strong></li>
+                        <li>Paste the URL in the field above</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Docker Hosts Tab -->
+            <div id="hosts-tab" class="tab-content">
+                <h2>Docker Hosts</h2>
+                <button class="btn btn-primary" onclick="showAddHostModal()" style="margin-bottom: 20px;">+ Add New Host</button>
+                <table id="hostsTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>URL</th>
+                            <th>Status</th>
+                            <th>Last Seen</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hostsBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Account Tab -->
+            <div id="account-tab" class="tab-content">
+                <h2>Change Password</h2>
+                <form id="changePasswordForm">
+                    <div class="form-group">
+                        <label for="current_password">Current Password</label>
+                        <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="new_password">New Password</label>
+                        <input type="password" id="new_password" name="new_password" required autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm New Password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" required autocomplete="new-password">
+                    </div>
+                    <div class="password-requirements">
+                        <strong>Password requirements:</strong>
+                        <ul style="margin: 5px 0 0 20px;">
+                            <li>At least 6 characters long</li>
+                            <li>New password must match confirmation</li>
+                        </ul>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="submitBtn" style="margin-top: 20px;">Change Password</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Host Modal -->
+    <div id="hostModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">Add Docker Host</h2>
             <div class="form-group">
-                <label for="discord_webhook">Discord Webhook URL</label>
-                <input
-                    type="text"
-                    id="discord_webhook"
-                    placeholder="https://discord.com/api/webhooks/..."
-                    value="{{ discord_webhook_url }}"
-                >
-                <small>Enter your Discord webhook URL to receive notifications when containers are restarted, started, or stopped.</small>
+                <label>Name</label>
+                <input type="text" id="hostName" placeholder="Synology NAS">
             </div>
-
-            <div class="button-group">
-                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
-                <button class="btn btn-secondary" onclick="testWebhook()" id="testBtn">Send Test Notification</button>
+            <div class="form-group">
+                <label>URL</label>
+                <input type="text" id="hostUrl" placeholder="tcp://192.168.1.100:2375">
             </div>
-
-            <div class="info-box">
-                <h3>How to get a Discord Webhook URL:</h3>
-                <ol>
-                    <li>Open your Discord server settings</li>
-                    <li>Go to <strong>Integrations → Webhooks</strong></li>
-                    <li>Click <strong>New Webhook</strong></li>
-                    <li>Give it a name (e.g., "Chrontainer")</li>
-                    <li>Select the channel where you want notifications</li>
-                    <li>Click <strong>Copy Webhook URL</strong></li>
-                    <li>Paste the URL in the field above</li>
-                </ol>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="saveHost()">Save</button>
+                <button class="btn btn-secondary" onclick="closeHostModal()">Cancel</button>
             </div>
         </div>
     </div>
 
     <script>
+        let editingHostId = null;
+
         function getCsrfToken() {
             return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         }
@@ -250,29 +356,41 @@
             alert.textContent = message;
             alert.className = `alert alert-${type}`;
             alert.style.display = 'block';
-
-            setTimeout(() => {
-                alert.style.display = 'none';
-            }, 5000);
+            setTimeout(() => alert.style.display = 'none', 5000);
         }
 
-        async function saveSettings() {
-            const webhookUrl = document.getElementById('discord_webhook').value.trim();
+        // Tab handling
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector(`[onclick="showTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
 
+            // Load hosts when switching to that tab
+            if (tabName === 'hosts') loadHosts();
+
+            // Update URL hash
+            window.location.hash = tabName;
+        }
+
+        // Check URL hash on page load
+        window.addEventListener('load', () => {
+            const hash = window.location.hash.replace('#', '');
+            if (['discord', 'hosts', 'account'].includes(hash)) {
+                showTab(hash);
+            }
+        });
+
+        // Discord settings
+        async function saveDiscordSettings() {
+            const webhookUrl = document.getElementById('discord_webhook').value.trim();
             try {
                 const response = await fetch('/api/settings/discord', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCsrfToken()
-                    },
-                    body: JSON.stringify({
-                        webhook_url: webhookUrl
-                    })
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    body: JSON.stringify({ webhook_url: webhookUrl })
                 });
-
                 const data = await response.json();
-
                 if (response.ok) {
                     showAlert('Settings saved successfully!', 'success');
                 } else {
@@ -285,27 +403,19 @@
 
         async function testWebhook() {
             const webhookUrl = document.getElementById('discord_webhook').value.trim();
-
             if (!webhookUrl) {
                 showAlert('Please enter a Discord webhook URL first', 'error');
                 return;
             }
-
             const testBtn = document.getElementById('testBtn');
             testBtn.disabled = true;
             testBtn.textContent = 'Sending...';
-
             try {
                 const response = await fetch('/api/settings/discord/test', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCsrfToken()
-                    }
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() }
                 });
-
                 const data = await response.json();
-
                 if (response.ok) {
                     showAlert('Test notification sent! Check your Discord channel.', 'success');
                 } else {
@@ -319,12 +429,180 @@
             }
         }
 
-        // Allow Enter key to save
-        document.getElementById('discord_webhook').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                saveSettings();
+        // Hosts management
+        async function loadHosts() {
+            try {
+                const response = await fetch('/api/hosts');
+                const hosts = await response.json();
+                const tbody = document.getElementById('hostsBody');
+                tbody.innerHTML = '';
+                hosts.forEach(host => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${host.name}</td>
+                        <td><code>${host.url}</code></td>
+                        <td><span class="status-badge ${host.enabled ? 'enabled' : 'disabled'}">${host.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                        <td>${host.last_seen ? new Date(host.last_seen).toLocaleString() : 'Never'}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick="showEditHostModal(${host.id}, '${host.name}', '${host.url}')">Edit</button>
+                            <button class="btn btn-success" onclick="testHost(${host.id})">Test</button>
+                            ${host.id !== 1 ? `<button class="btn btn-danger" onclick="deleteHost(${host.id}, '${host.name}')">Delete</button>` : ''}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                showAlert('Error loading hosts: ' + error.message, 'error');
+            }
+        }
+
+        function showAddHostModal() {
+            editingHostId = null;
+            document.getElementById('modalTitle').textContent = 'Add Docker Host';
+            document.getElementById('hostName').value = '';
+            document.getElementById('hostUrl').value = '';
+            document.getElementById('hostModal').style.display = 'block';
+        }
+
+        function showEditHostModal(hostId, hostName, hostUrl) {
+            editingHostId = hostId;
+            document.getElementById('modalTitle').textContent = 'Edit Docker Host';
+            document.getElementById('hostName').value = hostName;
+            document.getElementById('hostUrl').value = hostUrl;
+            document.getElementById('hostModal').style.display = 'block';
+        }
+
+        function closeHostModal() {
+            document.getElementById('hostModal').style.display = 'none';
+        }
+
+        async function saveHost() {
+            const name = document.getElementById('hostName').value.trim();
+            const url = document.getElementById('hostUrl').value.trim();
+            if (!name || !url) {
+                showAlert('Please fill in all fields', 'error');
+                return;
+            }
+            try {
+                const isEdit = editingHostId !== null;
+                const apiUrl = isEdit ? `/api/hosts/${editingHostId}` : '/api/hosts';
+                const method = isEdit ? 'PUT' : 'POST';
+                const response = await fetch(apiUrl, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    body: JSON.stringify({ name, url })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showAlert(isEdit ? 'Host updated successfully!' : 'Host added successfully!', 'success');
+                    closeHostModal();
+                    loadHosts();
+                } else {
+                    showAlert(data.error || `Failed to ${isEdit ? 'update' : 'add'} host`, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function testHost(hostId) {
+            try {
+                const response = await fetch(`/api/hosts/${hostId}/test`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showAlert('Connection successful!', 'success');
+                    loadHosts();
+                } else {
+                    showAlert('Connection failed: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteHost(hostId, hostName) {
+            if (!confirm(`Delete host "${hostName}"?`)) return;
+            try {
+                const response = await fetch(`/api/hosts/${hostId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showAlert('Host deleted', 'success');
+                    loadHosts();
+                } else {
+                    showAlert(data.error || 'Failed to delete host', 'error');
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Password change
+        document.getElementById('changePasswordForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const currentPassword = document.getElementById('current_password').value;
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+
+            if (newPassword !== confirmPassword) {
+                showAlert('New passwords do not match', 'error');
+                return;
+            }
+            if (newPassword.length < 6) {
+                showAlert('New password must be at least 6 characters', 'error');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Changing...';
+
+            try {
+                const response = await fetch('/api/user/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword,
+                        confirm_password: confirmPassword
+                    })
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    showAlert('Password changed successfully!', 'success');
+                    document.getElementById('changePasswordForm').reset();
+                } else {
+                    showAlert(data.error || 'Failed to change password', 'error');
+                }
+            } catch (error) {
+                showAlert('Error changing password: ' + error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Change Password';
             }
         });
+
+        // Allow Enter key to save Discord webhook
+        document.getElementById('discord_webhook').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') saveDiscordSettings();
+        });
+
+        // Close modal on outside click
+        window.onclick = function(event) {
+            if (event.target.className === 'modal') {
+                event.target.style.display = 'none';
+            }
+        }
+
+        // Check dark mode preference
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+        }
     </script>
 </body>
 </html>
