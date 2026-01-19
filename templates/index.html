@@ -758,6 +758,7 @@
                         <th>Web UI</th>
                         <th onclick="sortTable('status')" style="cursor: pointer;">Status <span id="sort-status"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
+                        <th>Version</th>
                         <th>Updates</th>
                         <th>Actions</th>
                     </tr>
@@ -773,6 +774,7 @@
                                     <div><span class="tooltip-label">Image:</span> {{ container.image }}</div>
                                     <div><span class="tooltip-label">Status:</span> {{ container.status }}</div>
                                     <div><span class="tooltip-label">Created:</span> {{ container.created[:19].replace('T', ' ') }}</div>
+                                    <div><span class="tooltip-label">Version:</span> {{ container.image_version }}</div>
                                 </span>
                             </div>
                         </td>
@@ -811,6 +813,13 @@
                                 <a href="{{ container.image_links.docs }}" target="_blank" style="color: #27ae60; text-decoration: none; font-size: 14px;" title="Docs">📚</a>
                                 {% endif %}
                             </div>
+                        </td>
+                        <td>
+                            {% if container.image_version == 'unknown' %}
+                            <span title="Source: {{ container.image_version_source }}" style="color: #888;">unknown</span>
+                            {% else %}
+                            <span title="Source: {{ container.image_version_source }}">{{ container.image_version }}</span>
+                            {% endif %}
                         </td>
                         <td id="update-cell-{{ container.id }}-{{ container.host_id }}">
                             <button class="btn btn-info btn-small" onclick="checkForUpdate('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Check</button>
@@ -1276,29 +1285,74 @@
             }
         }
 
+        function renderUpdateCell(cell, result, containerId, containerName, hostId) {
+            cell.innerHTML = '';
+
+            if (result.loading) {
+                const spinner = document.createElement('span');
+                spinner.className = 'spinner';
+                cell.appendChild(spinner);
+                cell.appendChild(document.createTextNode(' Checking...'));
+                return;
+            }
+
+            if (result.error) {
+                const error = document.createElement('span');
+                error.style.fontSize = '11px';
+                error.style.color = '#e74c3c';
+                error.textContent = result.error;
+                cell.appendChild(error);
+                return;
+            }
+
+            if (result.has_update) {
+                const status = document.createElement('span');
+                status.style.color = '#27ae60';
+                status.style.fontWeight = '600';
+                status.style.fontSize = '12px';
+                status.textContent = 'Update available';
+                cell.appendChild(status);
+
+                if (result.remote_version) {
+                    const version = document.createElement('div');
+                    version.style.fontSize = '11px';
+                    version.style.color = '#555';
+                    version.textContent = `New: ${result.remote_version}`;
+                    cell.appendChild(version);
+                }
+
+                const updateButton = document.createElement('button');
+                updateButton.className = 'btn btn-success btn-small';
+                updateButton.style.marginTop = '4px';
+                updateButton.textContent = 'Update';
+                updateButton.addEventListener('click', () => updateContainer(containerId, containerName, hostId));
+                cell.appendChild(updateButton);
+                return;
+            }
+
+            const upToDate = document.createElement('span');
+            upToDate.style.color = '#7f8c8d';
+            upToDate.style.fontSize = '11px';
+            upToDate.textContent = 'Up to date';
+            cell.appendChild(upToDate);
+        }
+
         async function checkForUpdate(containerId, containerName, hostId) {
             const cell = document.getElementById(`update-cell-${containerId}-${hostId}`);
-            cell.innerHTML = '<span class="spinner"></span> Checking...';
+            renderUpdateCell(cell, {loading: true});
 
             try {
                 const response = await fetch(`/api/container/${containerId}/check-update?host_id=${hostId}`);
                 const result = await response.json();
 
                 if (result.error) {
-                    cell.innerHTML = `<span style="font-size: 11px; color: #e74c3c;">${result.error}</span>`;
+                    renderUpdateCell(cell, {error: result.error});
                     return;
                 }
 
-                if (result.has_update) {
-                    cell.innerHTML = `
-                        <span style="color: #27ae60; font-weight: 600; font-size: 12px;">✓ Available</span><br>
-                        <button class="btn btn-success btn-small" onclick="updateContainer('${containerId}', '${containerName}', ${hostId})" style="margin-top: 4px;">Update</button>
-                    `;
-                } else {
-                    cell.innerHTML = '<span style="color: #7f8c8d; font-size: 11px;">Up to date</span>';
-                }
+                renderUpdateCell(cell, result, containerId, containerName, hostId);
             } catch (error) {
-                cell.innerHTML = '<span style="font-size: 11px; color: #e74c3c;">Check failed</span>';
+                renderUpdateCell(cell, {error: 'Check failed'});
                 showAlert('Error checking for update: ' + error.message, 'error');
             }
         }
@@ -1343,18 +1397,14 @@
                     // Update each container's update cell
                     result.results.forEach(r => {
                         const cell = document.getElementById(`update-cell-${r.container_id}-${r.host_id}`);
-                        if (cell) {
-                            if (r.error) {
-                                cell.innerHTML = `<span style="font-size: 11px; color: #e74c3c;" title="${r.error}">Error</span>`;
-                            } else if (r.has_update) {
-                                cell.innerHTML = `
-                                    <span style="color: #27ae60; font-weight: 600; font-size: 12px;">✓ Available</span><br>
-                                    <button class="btn btn-success btn-small" onclick="updateContainer('${r.container_id}', '${r.container_name}', ${r.host_id})" style="margin-top: 4px;">Update</button>
-                                `;
-                            } else {
-                                cell.innerHTML = '<span style="color: #7f8c8d; font-size: 11px;">Up to date</span>';
-                            }
+                        if (!cell) {
+                            return;
                         }
+                        if (r.error) {
+                            renderUpdateCell(cell, {error: r.error});
+                            return;
+                        }
+                        renderUpdateCell(cell, r, r.container_id, r.container_name, r.host_id);
                     });
 
                     showAlert(`Update check complete: ${result.updates_available} of ${result.total} containers have updates available`, 'success');

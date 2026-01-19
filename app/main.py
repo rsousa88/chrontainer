@@ -77,6 +77,50 @@ def get_image_links(image_name):
 
     return links
 
+VERSION_LABEL_KEYS = (
+    'org.opencontainers.image.version',
+    'org.label-schema.version',
+    'version'
+)
+NON_VERSION_TAGS = {
+    'latest', 'stable', 'edge', 'nightly', 'main', 'master', 'dev', 'develop'
+}
+
+def get_image_version(container, image_name):
+    """Best-effort version from image labels, falling back to version-like tags."""
+    labels = {}
+    try:
+        labels = container.image.attrs.get('Config', {}).get('Labels', {}) or {}
+    except Exception:
+        labels = {}
+
+    for key in VERSION_LABEL_KEYS:
+        value = labels.get(key)
+        if value:
+            return value.strip(), 'label'
+
+    tag = None
+    if image_name and ':' in image_name:
+        tag = image_name.rsplit(':', 1)[1].strip()
+
+    if tag and tag.lower() not in NON_VERSION_TAGS and re.search(r'\d', tag):
+        return tag, 'tag'
+
+    return 'unknown', 'unknown'
+
+def get_registry_version(registry_data):
+    """Best-effort version from registry metadata annotations."""
+    try:
+        descriptor = registry_data.attrs.get('Descriptor', {}) if registry_data else {}
+        annotations = descriptor.get('annotations') or descriptor.get('Annotations') or registry_data.attrs.get('Annotations') or {}
+        for key in VERSION_LABEL_KEYS:
+            value = annotations.get(key)
+            if value:
+                return value.strip()
+    except Exception as e:
+        logger.debug(f"Failed to parse registry version: {e}")
+    return None
+
 # Configure logging
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
@@ -354,21 +398,22 @@ def check_for_update(container, client):
             # Get registry data for the image
             registry_data = client.images.get_registry_data(image_name)
             remote_digest = registry_data.attrs.get('Descriptor', {}).get('digest')
+            remote_version = get_registry_version(registry_data)
 
             if not remote_digest or not local_digest:
-                return False, None, "Unable to compare digests"
+                return False, None, None, "Unable to compare digests"
 
             # Compare digests
             has_update = (remote_digest != local_digest)
-            return has_update, remote_digest, None
+            return has_update, remote_digest, remote_version, None
 
         except docker.errors.APIError as e:
             # Handle rate limits, authentication errors, etc.
-            return False, None, f"Registry error: {str(e)}"
+            return False, None, None, f"Registry error: {str(e)}"
 
     except Exception as e:
         logger.error(f"Error checking for update: {e}")
-        return False, None, str(e)
+        return False, None, None, str(e)
 
 def update_container(container_id, container_name, schedule_id=None, host_id=1):
     """Update a container by pulling the latest image and recreating it"""
@@ -946,11 +991,25 @@ def index():
                     except:
                         pass
 
+                    # Extract health status if available
+                    health_status = None
+                    try:
+                        health = container.attrs.get('State', {}).get('Health', {})
+                        if health:
+                            health_status = health.get('Status')  # healthy, unhealthy, starting, or none
+                    except:
+                        pass
+
+                    image_version, version_source = get_image_version(container, image_name)
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
                         'status': container.status,
+                        'health': health_status,
                         'image': image_name,
+                        'image_version': image_version,
+                        'image_version_source': version_source,
                         'created': container.attrs['Created'],
                         'host_id': host_id,
                         'host_name': host_name,
@@ -1051,11 +1110,15 @@ def get_containers():
                     except:
                         pass
 
+                    image_version, version_source = get_image_version(container, image_name)
+
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
                         'status': container.status,
                         'image': image_name,
+                        'image_version': image_version,
+                        'image_version_source': version_source,
                         'host_id': host_id,
                         'host_name': host_name,
                         'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
@@ -1157,12 +1220,16 @@ def api_check_container_update(container_id):
             return jsonify({'error': 'Cannot connect to Docker host'}), 500
 
         container = client.containers.get(container_id)
-        has_update, remote_digest, error = check_for_update(container, client)
+        has_update, remote_digest, remote_version, error = check_for_update(container, client)
 
         if error:
             return jsonify({'has_update': False, 'error': error})
 
-        return jsonify({'has_update': has_update, 'remote_digest': remote_digest})
+        return jsonify({
+            'has_update': has_update,
+            'remote_digest': remote_digest,
+            'remote_version': remote_version
+        })
 
     except docker.errors.NotFound:
         return jsonify({'error': 'Container not found'}), 404
@@ -1183,13 +1250,14 @@ def api_check_all_updates():
                 for container in containers:
                     container_id = container.id[:12]
                     try:
-                        has_update, remote_digest, error = check_for_update(container, docker_client)
+                        has_update, remote_digest, remote_version, error = check_for_update(container, docker_client)
                         results.append({
                             'container_id': container_id,
                             'container_name': container.name,
                             'host_id': host_id,
                             'host_name': host_name,
                             'has_update': has_update,
+                            'remote_version': remote_version,
                             'error': error
                         })
                     except Exception as e:
@@ -1199,6 +1267,7 @@ def api_check_all_updates():
                             'host_id': host_id,
                             'host_name': host_name,
                             'has_update': False,
+                            'remote_version': None,
                             'error': str(e)
                         })
             except Exception as e:

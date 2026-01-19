@@ -296,16 +296,15 @@ POST   /api/settings/discord/test
 
 ---
 
+# Human Feedback
 ## High Priority Bugs
-- [x] [Bug] Error while changing password: Error changing password: Unexpected token '<', "<!doctype "... is not valid JSON (Fixed: added CSRF tokens to all AJAX requests)
-- [x] [Bug] Error while trying to set a URL for a container (Fixed: added missing @login_required decorators to webui endpoints)
+- [x] [...] (removed already implemented items from this list)
 
 ## Immediate Improvements
 - [x] [...] (removed already implemented items from this list)
-- [ ] [Feature] Show containers current version. I want to see the actual version (e.g. v2.3.7) and not the tag (e.g. latest)
-- [ ] [Feature] Show new version if update available (check for updates + update button). I want to see the actual version (e.g. v2.3.7) and not the tag (e.g. latest)
+- [x] [Feature] Show containers current version. I want to see the actual version (e.g. v2.3.7) and not the tag (e.g. latest)
+- [x] [Feature] Show new version if update available (check for updates + update button). I want to see the actual version (e.g. v2.3.7) and not the tag (e.g. latest)
 - [ ] [Feature] Remove the tag from the image (e.g. SOME_IMAGE:latest -> SOME_IMAGE)
-- [x] [Feature] Add Users settings to allow username and password update. Settings should be unified in a single page (Users shouldn't be a separate navigation). Use tabs in the settings page or similar (Implemented: tabbed settings page with Discord, Hosts, and Account tabs)
 - [ ] [Feature] Ability to select multiple containers and apply actions to the selection (applicable actions only)
 - [ ] [Dev] Add another sample docker-compose file to create the container but connect to a macvlan network and using a static IP address
 - [ ] [UI/UX] Replace common 'Actions' column by a common set of buttons on top. The buttons will execute for all selected containers. This assumes that the selection of containers feature is already implemented. Logs action is the exception as it doesn't make much sense to be applied to multiple containers at once. Keep the Logs and the Check (update) buttons in the table, but make them smaller and integrated similar to the link to docker hub and github. This would be especially important in smaller screens, to minimize the amount of horizontal scrolling. As an alternative add a dropdown with all quick actions
@@ -327,6 +326,7 @@ POST   /api/settings/discord/test
 
 ---
 
+# Versioning
 ## Recent Additions (v0.2.0)
 
 ### Custom Tags System ✅
