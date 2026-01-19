@@ -1390,7 +1390,6 @@
 
             if (document.querySelectorAll('.stats-cell').length > 0) {
                 fetchContainerStats();
-                setInterval(fetchContainerStats, 10000);
             }
 
             startSystemClock();
@@ -1451,10 +1450,6 @@
                             cell.querySelector('.cpu-value').textContent = `${stats.cpu_percent}%`;
                             updateStatClass(cell.querySelector('.cpu-value'), 'cpu-value', stats.cpu_percent);
                             if (row) row.dataset.cpu = stats.cpu_percent;
-                        } else {
-                            cell.querySelector('.cpu-value').textContent = '-';
-                            updateStatClass(cell.querySelector('.cpu-value'), 'cpu-value', 0);
-                            if (row) row.dataset.cpu = 0;
                         }
                     }
 
@@ -1467,10 +1462,6 @@
                             cell.querySelector('.memory-value').textContent = memStr;
                             updateStatClass(cell.querySelector('.memory-value'), 'memory-value', stats.memory_percent);
                             if (row) row.dataset.memory = memValue;
-                        } else {
-                            cell.querySelector('.memory-value').textContent = '-';
-                            updateStatClass(cell.querySelector('.memory-value'), 'memory-value', 0);
-                            if (row) row.dataset.memory = 0;
                         }
                     }
                 });
@@ -1513,10 +1504,6 @@
                             cpuCell.textContent = `${stats.cpu_percent}%`;
                             updateStatClass(cpuCell, 'cpu-value', stats.cpu_percent);
                             row.dataset.cpu = stats.cpu_percent;
-                        } else {
-                            cpuCell.textContent = '-';
-                            updateStatClass(cpuCell, 'cpu-value', 0);
-                            row.dataset.cpu = 0;
                         }
                     }
 
@@ -1529,10 +1516,6 @@
                             memCell.textContent = memStr;
                             updateStatClass(memCell, 'memory-value', stats.memory_percent);
                             row.dataset.memory = memValue;
-                        } else {
-                            memCell.textContent = '-';
-                            updateStatClass(memCell, 'memory-value', 0);
-                            row.dataset.memory = 0;
                         }
                     }
                 })
@@ -1559,9 +1542,7 @@
             }
             if (Number.isFinite(seconds) && seconds > 0) {
                 autoRefreshTimer = setInterval(() => {
-                    if (!statsInFlight) {
-                        window.location.reload();
-                    }
+                    fetchContainerStats();
                 }, seconds * 1000);
             }
         }
@@ -1570,8 +1551,8 @@
             const select = document.getElementById('autoRefreshSelect');
             if (!select) return;
             const stored = localStorage.getItem('autoRefreshSeconds');
-            const seconds = stored ? parseInt(stored, 10) : 30;
-            select.value = Number.isFinite(seconds) ? String(seconds) : '30';
+            const seconds = stored ? parseInt(stored, 10) : 10;
+            select.value = Number.isFinite(seconds) ? String(seconds) : '10';
             applyAutoRefreshInterval(parseInt(select.value, 10));
         }
 
@@ -2317,6 +2298,14 @@
                 if (column === 'ip') {
                     const aNum = ipToNumber(aVal);
                     const bNum = ipToNumber(bVal);
+                    if (aNum < bNum) return currentSort.direction === 'asc' ? -1 : 1;
+                    if (aNum > bNum) return currentSort.direction === 'asc' ? 1 : -1;
+                    return 0;
+                }
+
+                if (column === 'cpu' || column === 'memory') {
+                    const aNum = parseFloat(aVal) || 0;
+                    const bNum = parseFloat(bVal) || 0;
                     if (aNum < bNum) return currentSort.direction === 'asc' ? -1 : 1;
                     if (aNum > bNum) return currentSort.direction === 'asc' ? 1 : -1;
                     return 0;

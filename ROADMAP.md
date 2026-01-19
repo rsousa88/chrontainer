@@ -21,6 +21,7 @@
 ✅ pytest test suite (22 tests)
 ✅ GitHub Actions CI/CD with auto-releases
 ✅ Alembic database migrations
+✅ Dashboard stats refresh preserves last values and numeric CPU/memory sorting
 
 ---
 
