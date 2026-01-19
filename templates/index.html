@@ -515,7 +515,9 @@
             th:nth-child(3), /* Stack column */
             td:nth-child(3),
             th:nth-child(5), /* IP Address column */
-            td:nth-child(5) {
+            td:nth-child(5),
+            th:nth-child(9), /* Updates column */
+            td:nth-child(9) {
                 display: none;
             }
 
@@ -754,6 +756,7 @@
                         <th>Web UI</th>
                         <th onclick="sortTable('status')" style="cursor: pointer;">Status <span id="sort-status"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
+                        <th>Updates</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -806,6 +809,9 @@
                                 <a href="{{ container.image_links.docs }}" target="_blank" style="color: #27ae60; text-decoration: none; font-size: 14px;" title="Docs">📚</a>
                                 {% endif %}
                             </div>
+                        </td>
+                        <td id="update-cell-{{ container.id }}-{{ container.host_id }}">
+                            <button class="btn btn-info btn-small" onclick="checkForUpdate('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Check</button>
                         </td>
                         <td>
                             {% if container.status == 'running' %}
@@ -1256,6 +1262,58 @@
 
                 if (result.success) {
                     setTimeout(() => location.reload(), 2000);
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function checkForUpdate(containerId, containerName, hostId) {
+            const cell = document.getElementById(`update-cell-${containerId}-${hostId}`);
+            cell.innerHTML = '<span class="spinner"></span> Checking...';
+
+            try {
+                const response = await fetch(`/api/container/${containerId}/check-update?host_id=${hostId}`);
+                const result = await response.json();
+
+                if (result.error) {
+                    cell.innerHTML = `<span style="font-size: 11px; color: #e74c3c;">${result.error}</span>`;
+                    return;
+                }
+
+                if (result.has_update) {
+                    cell.innerHTML = `
+                        <span style="color: #27ae60; font-weight: 600; font-size: 12px;">✓ Available</span><br>
+                        <button class="btn btn-success btn-small" onclick="updateContainer('${containerId}', '${containerName}', ${hostId})" style="margin-top: 4px;">Update</button>
+                    `;
+                } else {
+                    cell.innerHTML = '<span style="color: #7f8c8d; font-size: 11px;">Up to date</span>';
+                }
+            } catch (error) {
+                cell.innerHTML = '<span style="font-size: 11px; color: #e74c3c;">Check failed</span>';
+                showAlert('Error checking for update: ' + error.message, 'error');
+            }
+        }
+
+        async function updateContainer(containerId, containerName, hostId) {
+            if (!confirm(`Update container "${containerName}"? This will:\n\n1. Stop the current container\n2. Pull the latest image\n3. Recreate the container with the same settings\n\nThis may take a few minutes.`)) {
+                return;
+            }
+
+            showAlert('<span class="spinner"></span> Updating container...', 'info');
+
+            try {
+                const response = await fetch(`/api/container/${containerId}/update`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: containerName, host_id: hostId})
+                });
+
+                const result = await response.json();
+                showAlert(result.message, result.success ? 'success' : 'error');
+
+                if (result.success) {
+                    setTimeout(() => location.reload(), 3000);
                 }
             } catch (error) {
                 showAlert('Error: ' + error.message, 'error');

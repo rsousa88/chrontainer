@@ -278,7 +278,7 @@ POST   /api/settings/discord/test
 ## Additional features to consider
 - [x] [UI/UX] Add filters and sorts to the table in web UI (similar to what dockpeek has)
 - [x] [UI/UX] Dark mode
-- [ ] [Updates] Be able to check for updates to containers and directly update them from the web UI (similar to dockpeek)
+- [x] [Feature] Be able to check for updates to containers and directly update them from the web UI (similar to dockpeek)
 - [x] [Hosts] Ability to edit hosts
 - [x] [UI/UX] Ability to add tags to containers and then allow filtering by tag
 - [x] [UI/UX] Add column to dashboard table that show the name of the stack that a container belongs to
@@ -288,7 +288,8 @@ POST   /api/settings/discord/test
 - [ ] [Monitoring] If possible, include resource usage from each container (not sure if this data is provided through the docker API but it would be awesome to have at least the RAM usage in real-time or near real-time)
 - [x] [UI/UX] Include a version label in the UI
 - [x] [UI/UX] If possible, add the IP address of each container in a new column in the table
-- [ ] [UI/UX] Make the UI responsive by adjusting to 3 screen sizes (Desktop, Tablet and Smartphone)
+- [x] [UI/UX] Make the UI responsive by adjusting to 3 screen sizes (Desktop, Tablet and Smartphone)
+- [ ] [Feature] Ability to schedule an update
 
 ---
 

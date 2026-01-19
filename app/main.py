@@ -165,6 +165,101 @@ class DockerHostManager:
 # Initialize Docker host manager
 docker_manager = DockerHostManager()
 
+# Container update management functions
+def check_for_update(container, client):
+    """Check if a container has an update available"""
+    try:
+        # Get the image used by the container
+        image_name = container.image.tags[0] if container.image.tags else container.attrs.get('Config', {}).get('Image', '')
+
+        if not image_name or ':' not in image_name:
+            return False, None, "Unable to determine image tag"
+
+        # Get local image digest
+        local_image = container.image
+        local_digest = local_image.attrs.get('RepoDigests', [])
+        if not local_digest:
+            return False, None, "No local digest available"
+        local_digest = local_digest[0].split('@')[1] if '@' in local_digest[0] else None
+
+        # Pull latest image info without actually pulling the image
+        repository, tag = image_name.rsplit(':', 1) if ':' in image_name else (image_name, 'latest')
+
+        try:
+            # Get registry data for the image
+            registry_data = client.images.get_registry_data(image_name)
+            remote_digest = registry_data.attrs.get('Descriptor', {}).get('digest')
+
+            if not remote_digest or not local_digest:
+                return False, None, "Unable to compare digests"
+
+            # Compare digests
+            has_update = (remote_digest != local_digest)
+            return has_update, remote_digest, None
+
+        except docker.errors.APIError as e:
+            # Handle rate limits, authentication errors, etc.
+            return False, None, f"Registry error: {str(e)}"
+
+    except Exception as e:
+        logger.error(f"Error checking for update: {e}")
+        return False, None, str(e)
+
+def update_container(container_id, container_name, host_id):
+    """Update a container by pulling the latest image and recreating it"""
+    try:
+        client = docker_manager.get_client(host_id)
+        if not client:
+            return False, "Cannot connect to Docker host"
+
+        # Get container
+        container = client.containers.get(container_id)
+
+        # Get container configuration
+        attrs = container.attrs
+        image_name = attrs.get('Config', {}).get('Image', '')
+
+        if not image_name:
+            return False, "Unable to determine container image"
+
+        # Get container settings for recreation
+        config = attrs.get('Config', {})
+        host_config = attrs.get('HostConfig', {})
+        networking_config = attrs.get('NetworkSettings', {})
+
+        container_settings = {
+            'name': container.name,
+            'image': image_name,
+            'command': config.get('Cmd'),
+            'environment': config.get('Env', []),
+            'volumes': host_config.get('Binds', []),
+            'ports': config.get('ExposedPorts', {}),
+            'labels': config.get('Labels', {}),
+            'restart_policy': host_config.get('RestartPolicy', {}),
+            'network_mode': host_config.get('NetworkMode'),
+            'detach': True
+        }
+
+        # Stop and remove the old container
+        logger.info(f"Stopping container {container_name}...")
+        container.stop(timeout=10)
+        container.remove()
+
+        # Pull the latest image
+        logger.info(f"Pulling latest image {image_name}...")
+        client.images.pull(image_name)
+
+        # Create and start new container with same settings
+        logger.info(f"Creating new container {container_name}...")
+        new_container = client.containers.run(**container_settings)
+
+        logger.info(f"Successfully updated container {container_name}")
+        return True, f"Container updated successfully"
+
+    except Exception as e:
+        logger.error(f"Failed to update container {container_name}: {e}")
+        return False, f"Update failed: {str(e)}"
+
 # Initialize APScheduler
 scheduler = BackgroundScheduler()
 scheduler.start()
@@ -840,6 +935,45 @@ def api_unpause_container(container_id):
     host_id = data.get('host_id', 1)
     success, message = unpause_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
+
+@app.route('/api/container/<container_id>/check-update', methods=['GET'])
+def api_check_container_update(container_id):
+    """API endpoint to check if a container has an update available"""
+    host_id = request.args.get('host_id', 1, type=int)
+
+    try:
+        client = docker_manager.get_client(host_id)
+        if not client:
+            return jsonify({'error': 'Cannot connect to Docker host'}), 500
+
+        container = client.containers.get(container_id)
+        has_update, remote_digest, error = check_for_update(container, client)
+
+        if error:
+            return jsonify({'has_update': False, 'error': error})
+
+        return jsonify({'has_update': has_update, 'remote_digest': remote_digest})
+
+    except docker.errors.NotFound:
+        return jsonify({'error': 'Container not found'}), 404
+    except Exception as e:
+        logger.error(f"Error checking for update: {e}")
+        return jsonify({'error': 'Failed to check for updates'}), 500
+
+@app.route('/api/container/<container_id>/update', methods=['POST'])
+def api_update_container(container_id):
+    """API endpoint to update a container"""
+    data = request.json
+    container_name = data.get('name', 'unknown')
+    host_id = data.get('host_id', 1)
+
+    try:
+        success, message = update_container(container_id, container_name, host_id)
+        return jsonify({'success': success, 'message': message})
+
+    except Exception as e:
+        logger.error(f"Error updating container: {e}")
+        return jsonify({'success': False, 'message': f'Update failed: {str(e)}'}), 500
 
 @app.route('/api/container/<container_id>/logs', methods=['GET'])
 def api_get_container_logs(container_id):
