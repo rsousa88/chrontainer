@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - Chrontainer</title>
+    <title>User Settings - Chrontainer</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%232c3e50' width='100' height='100' rx='20'/%3E%3Ctext x='50' y='70' font-size='70' text-anchor='middle' fill='%233498db'%3E🐳%3C/text%3E%3C/svg%3E">
     <style>
         * {
@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 600px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -101,11 +101,6 @@
             font-size: 13px;
         }
 
-        .button-group {
-            display: flex;
-            gap: 10px;
-        }
-
         .btn {
             padding: 10px 20px;
             border: none;
@@ -122,15 +117,6 @@
 
         .btn-primary:hover {
             background: #2980b9;
-        }
-
-        .btn-secondary {
-            background: #95a5a6;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #7f8c8d;
         }
 
         .btn:disabled {
@@ -157,41 +143,37 @@
             border: 1px solid #f5c6cb;
         }
 
-        .info-box {
+        .user-info {
             background: #e8f4f8;
             border-left: 4px solid #3498db;
             padding: 15px;
-            margin-top: 20px;
+            margin-bottom: 20px;
             border-radius: 4px;
         }
 
-        .info-box h3 {
-            font-size: 16px;
-            margin-bottom: 10px;
+        .user-info p {
+            margin: 5px 0;
+        }
+
+        .user-info strong {
             color: #2c3e50;
         }
 
-        .info-box ol {
-            margin-left: 20px;
-        }
-
-        .info-box li {
-            margin-bottom: 5px;
-        }
-
-        .info-box code {
-            background: #fff;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'Courier New', monospace;
+        .password-requirements {
+            background: #fff3cd;
+            border-left: 4px solid #f39c12;
+            padding: 10px 15px;
+            margin-top: 15px;
+            border-radius: 4px;
             font-size: 13px;
+            color: #856404;
         }
     </style>
 </head>
 <body>
     <header>
-        <div class="container">
-            <h1>⚙️ Chrontainer Settings <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
+        <div class="container" style="max-width: 900px;">
+            <h1>👤 User Settings <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
                 <a href="/logs">Logs</a>
@@ -206,36 +188,54 @@
         <div id="alert" class="alert"></div>
 
         <div class="card">
-            <h2>🔔 Discord Notifications</h2>
+            <h2>🔐 Change Password</h2>
 
-            <div class="form-group">
-                <label for="discord_webhook">Discord Webhook URL</label>
-                <input
-                    type="text"
-                    id="discord_webhook"
-                    placeholder="https://discord.com/api/webhooks/..."
-                    value="{{ discord_webhook_url }}"
-                >
-                <small>Enter your Discord webhook URL to receive notifications when containers are restarted, started, or stopped.</small>
-            </div>
+            <form id="changePasswordForm">
+                <div class="form-group">
+                    <label for="current_password">Current Password</label>
+                    <input
+                        type="password"
+                        id="current_password"
+                        name="current_password"
+                        required
+                        autocomplete="current-password"
+                    >
+                </div>
 
-            <div class="button-group">
-                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
-                <button class="btn btn-secondary" onclick="testWebhook()" id="testBtn">Send Test Notification</button>
-            </div>
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                    <input
+                        type="password"
+                        id="new_password"
+                        name="new_password"
+                        required
+                        autocomplete="new-password"
+                    >
+                </div>
 
-            <div class="info-box">
-                <h3>How to get a Discord Webhook URL:</h3>
-                <ol>
-                    <li>Open your Discord server settings</li>
-                    <li>Go to <strong>Integrations → Webhooks</strong></li>
-                    <li>Click <strong>New Webhook</strong></li>
-                    <li>Give it a name (e.g., "Chrontainer")</li>
-                    <li>Select the channel where you want notifications</li>
-                    <li>Click <strong>Copy Webhook URL</strong></li>
-                    <li>Paste the URL in the field above</li>
-                </ol>
-            </div>
+                <div class="form-group">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <input
+                        type="password"
+                        id="confirm_password"
+                        name="confirm_password"
+                        required
+                        autocomplete="new-password"
+                    >
+                </div>
+
+                <div class="password-requirements">
+                    <strong>Password requirements:</strong>
+                    <ul style="margin: 5px 0 0 20px;">
+                        <li>At least 6 characters long</li>
+                        <li>New password must match confirmation</li>
+                    </ul>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="submitBtn" style="margin-top: 20px;">
+                    Change Password
+                </button>
+            </form>
         </div>
     </div>
 
@@ -251,71 +251,54 @@
             }, 5000);
         }
 
-        async function saveSettings() {
-            const webhookUrl = document.getElementById('discord_webhook').value.trim();
+        document.getElementById('changePasswordForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const currentPassword = document.getElementById('current_password').value;
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+
+            // Client-side validation
+            if (newPassword !== confirmPassword) {
+                showAlert('New passwords do not match', 'error');
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                showAlert('New password must be at least 6 characters', 'error');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Changing...';
 
             try {
-                const response = await fetch('/api/settings/discord', {
+                const response = await fetch('/api/user/change-password', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        webhook_url: webhookUrl
+                        current_password: currentPassword,
+                        new_password: newPassword,
+                        confirm_password: confirmPassword
                     })
                 });
 
                 const data = await response.json();
 
-                if (response.ok) {
-                    showAlert('Settings saved successfully!', 'success');
+                if (response.ok && data.success) {
+                    showAlert('Password changed successfully!', 'success');
+                    document.getElementById('changePasswordForm').reset();
                 } else {
-                    showAlert(data.error || 'Failed to save settings', 'error');
+                    showAlert(data.error || 'Failed to change password', 'error');
                 }
             } catch (error) {
-                showAlert('Error saving settings: ' + error.message, 'error');
-            }
-        }
-
-        async function testWebhook() {
-            const webhookUrl = document.getElementById('discord_webhook').value.trim();
-
-            if (!webhookUrl) {
-                showAlert('Please enter a Discord webhook URL first', 'error');
-                return;
-            }
-
-            const testBtn = document.getElementById('testBtn');
-            testBtn.disabled = true;
-            testBtn.textContent = 'Sending...';
-
-            try {
-                const response = await fetch('/api/settings/discord/test', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    showAlert('Test notification sent! Check your Discord channel.', 'success');
-                } else {
-                    showAlert(data.error || 'Failed to send test notification', 'error');
-                }
-            } catch (error) {
-                showAlert('Error sending test: ' + error.message, 'error');
+                showAlert('Error changing password: ' + error.message, 'error');
             } finally {
-                testBtn.disabled = false;
-                testBtn.textContent = 'Send Test Notification';
-            }
-        }
-
-        // Allow Enter key to save
-        document.getElementById('discord_webhook').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                saveSettings();
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Change Password';
             }
         });
     </script>

@@ -3,44 +3,76 @@
 ```
 chrontainer/
 ├── app/
-│   └── main.py              # Main Flask application & scheduler logic
+│   └── main.py              # Main Flask application & scheduler logic (~1850 lines)
 ├── templates/
-│   ├── index.html           # Main dashboard UI
-│   ├── logs.html            # Activity logs page
-│   └── error.html           # Error page
-├── static/                  # (empty for now, CSS is inline)
+│   ├── index.html           # Main dashboard UI (~1920 lines)
+│   ├── login.html           # Authentication page (~185 lines)
+│   ├── hosts.html           # Docker host management (~230 lines)
+│   ├── settings.html        # Discord webhook & settings (~320 lines)
+│   ├── logs.html            # Activity logs page (~175 lines)
+│   └── error.html           # Error page (~80 lines)
+├── static/                  # (empty - CSS is inline in templates)
 ├── data/                    # Created at runtime
 │   └── chrontainer.db       # SQLite database (auto-created)
+├── docs/
+│   ├── PRODUCTION_DEPLOYMENT.md  # Production setup guide
+│   └── SECURITY.md          # Security documentation
+├── wsgi.py                  # Production WSGI entry point
+├── gunicorn.conf.py         # Gunicorn configuration
 ├── Dockerfile               # Container build instructions
 ├── docker-compose.yml       # Easy deployment configuration
 ├── requirements.txt         # Python dependencies
 ├── README.md                # Full documentation
 ├── DEPLOYMENT.md            # Quick deployment guide
+├── ROADMAP.md               # Feature roadmap & status
+├── CLAUDE.md                # AI assistant context file
 ├── .gitignore              # Git ignore rules
 └── .dockerignore           # Docker ignore rules
 ```
 
 ## Key Files
 
-### `app/main.py` (523 lines)
-- Flask web server
-- Docker SDK integration
+### `app/main.py` (~1850 lines)
+- Flask web server with Flask-Login authentication
+- Docker SDK integration (multi-host support)
 - APScheduler for cron jobs
 - SQLite database management
 - REST API endpoints
-- Container control functions
+- Container control functions (restart, start, stop, pause, unpause, update)
+- Input validation and sanitization
+- Discord webhook notifications
+- Rate limiting and CSRF protection
 
-### `templates/index.html` (424 lines)
+### `templates/index.html` (~1920 lines)
 - Main dashboard interface
-- Container list with status
+- Container list with status, tags, IP, stack columns
 - Schedule management UI
-- Modal for creating schedules
+- Multiple modals (schedule, logs, tags, web UI)
+- Dark mode support with CSS variables
+- Mobile responsive design (3 breakpoints)
+- Client-side filtering and sorting
+- Keyboard shortcuts
 - JavaScript for API interactions
 
-### `templates/logs.html` (110 lines)
+### `templates/login.html` (~185 lines)
+- Login form with CSRF protection
+- Default credentials warning
+- Gradient background styling
+
+### `templates/hosts.html` (~230 lines)
+- Add/edit/delete Docker hosts
+- Connection testing
+- Enable/disable hosts
+
+### `templates/settings.html` (~320 lines)
+- Discord webhook URL configuration
+- Test notification button
+- Setup instructions
+
+### `templates/logs.html` (~175 lines)
 - Activity log viewer
 - Shows all scheduled & manual actions
-- Status indicators
+- Status indicators with timestamps
 
 ### `docker-compose.yml`
 - Single-file deployment
@@ -55,12 +87,23 @@ chrontainer/
 
 ## Database Schema
 
+### `hosts` table
+```sql
+- id: INTEGER PRIMARY KEY (1 = Local, cannot be deleted)
+- name: TEXT UNIQUE
+- url: TEXT (unix://... or tcp://...)
+- enabled: INTEGER (0 or 1)
+- last_seen: TIMESTAMP
+- created_at: TIMESTAMP
+```
+
 ### `schedules` table
 ```sql
 - id: INTEGER PRIMARY KEY
+- host_id: INTEGER (FK to hosts)
 - container_id: TEXT (Docker container ID)
 - container_name: TEXT
-- action: TEXT (restart/start/stop)
+- action: TEXT (restart/start/stop/pause/unpause)
 - cron_expression: TEXT (5-part cron)
 - enabled: INTEGER (0 or 1)
 - created_at: TIMESTAMP
@@ -71,7 +114,8 @@ chrontainer/
 ### `logs` table
 ```sql
 - id: INTEGER PRIMARY KEY
-- schedule_id: INTEGER (FK to schedules)
+- schedule_id: INTEGER (FK to schedules, nullable for manual)
+- host_id: INTEGER (FK to hosts)
 - container_name: TEXT
 - action: TEXT
 - status: TEXT (success/error)
@@ -79,14 +123,63 @@ chrontainer/
 - timestamp: TIMESTAMP
 ```
 
+### `settings` table
+```sql
+- key: TEXT PRIMARY KEY (e.g., 'discord_webhook_url')
+- value: TEXT
+- updated_at: TIMESTAMP
+```
+
+### `tags` table
+```sql
+- id: INTEGER PRIMARY KEY
+- name: TEXT UNIQUE
+- color: TEXT (hex color, default '#3498db')
+- created_at: TIMESTAMP
+```
+
+### `container_tags` table (many-to-many)
+```sql
+- id: INTEGER PRIMARY KEY
+- container_id: TEXT
+- host_id: INTEGER
+- tag_id: INTEGER (FK to tags, CASCADE delete)
+- created_at: TIMESTAMP
+- UNIQUE(container_id, host_id, tag_id)
+```
+
+### `container_webui_urls` table
+```sql
+- id: INTEGER PRIMARY KEY
+- container_id: TEXT
+- host_id: INTEGER
+- url: TEXT
+- created_at: TIMESTAMP
+- updated_at: TIMESTAMP
+- UNIQUE(container_id, host_id)
+```
+
+### `users` table
+```sql
+- id: INTEGER PRIMARY KEY
+- username: TEXT UNIQUE
+- password_hash: TEXT (bcrypt)
+- role: TEXT ('admin' or 'viewer')
+- created_at: TIMESTAMP
+- last_login: TIMESTAMP
+```
+
 ## Technology Stack
 
 - **Backend**: Flask 3.0 (Python web framework)
+- **Authentication**: Flask-Login + bcrypt
+- **Security**: Flask-WTF (CSRF), Flask-Talisman (headers), Flask-Limiter (rate limiting)
 - **Scheduler**: APScheduler 3.10 (cron-like job scheduling)
-- **Docker**: Docker SDK 7.0 (container management)
+- **Docker**: Docker SDK 6.1 (container management)
 - **Database**: SQLite 3 (embedded database)
-- **Frontend**: Vanilla JavaScript + CSS
-- **Container**: Python 3.11-slim
+- **Frontend**: Vanilla JavaScript + CSS (no frameworks)
+- **Container**: Python 3.11-slim (multi-arch: ARM64 + AMD64)
+- **WSGI Server**: Gunicorn (production)
 
 ## Memory Footprint
 
@@ -123,36 +216,36 @@ Estimated resource usage on Raspberry Pi 5:
 - [ ] Works on ARM64 (Raspberry Pi)
 - [ ] Docker socket permissions correct
 
-## Future Enhancements (v2.0+)
+## Future Enhancements (v0.3.0+)
 
-1. **Multi-host Support**
-   - Remote Docker hosts via TCP
-   - Host management UI
-   - Credential storage
+1. **Advanced Authentication**
+   - API key authentication
+   - OAuth integration (GitHub, Google)
+   - Granular role-based permissions
 
-2. **Authentication**
-   - Basic auth
-   - OAuth integration
-   - Role-based access
-
-3. **Notifications**
-   - Email alerts
+2. **Additional Notifications**
+   - Email alerts (SMTP)
    - Slack webhooks
-   - Discord integration
+   - ntfy.sh support
+   - Custom webhook templates
 
-4. **Advanced Features**
+3. **Monitoring & Health**
    - Container health monitoring
-   - Log viewer integration
-   - Backup/restore schedules
-   - Statistics dashboard
-   - One-time schedules
-   - Conditional restarts
+   - Host metrics dashboard (CPU, RAM, disk)
+   - Container resource usage
+   - Auto-restart on health check failure
 
-5. **UI Improvements**
-   - Dark mode
-   - Mobile responsive
-   - Container grouping
-   - Search/filter
+4. **Advanced Scheduling**
+   - One-time schedules (run once)
+   - Schedule dependencies (A then B)
+   - Scheduled container updates
+   - Bulk operations (multi-select)
+
+5. **Database & DevOps**
+   - Alembic migrations
+   - Backup/restore schedules
+   - pytest test suite
+   - CI/CD pipeline
 
 ## Performance Optimization
 
@@ -163,8 +256,8 @@ Estimated resource usage on Raspberry Pi 5:
 
 ## Known Limitations
 
-1. **No authentication**: Deploy in trusted network only
-2. **Local only**: Remote Docker hosts not yet supported
-3. **Restart only**: Other actions (start/stop) exist but limited scheduling
-4. **No notifications**: Failed schedules only logged
-5. **Single action**: Can't chain multiple container actions
+1. **Basic RBAC**: Only admin/viewer roles (no granular permissions)
+2. **No API authentication**: API requires session auth (no API keys yet)
+3. **Single action per schedule**: Can't chain multiple container actions
+4. **No health monitoring**: No container health checks or auto-restart on failure
+5. **No scheduled updates**: Container updates are manual only (no scheduled auto-update)

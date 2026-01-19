@@ -370,7 +370,7 @@ def check_for_update(container, client):
         logger.error(f"Error checking for update: {e}")
         return False, None, str(e)
 
-def update_container(container_id, container_name, host_id):
+def update_container(container_id, container_name, schedule_id=None, host_id=1):
     """Update a container by pulling the latest image and recreating it"""
     try:
         client = docker_manager.get_client(host_id)
@@ -418,12 +418,30 @@ def update_container(container_id, container_name, host_id):
         logger.info(f"Creating new container {container_name}...")
         new_container = client.containers.run(**container_settings)
 
-        logger.info(f"Successfully updated container {container_name}")
-        return True, f"Container updated successfully"
+        message = f"Container {container_name} updated successfully"
+        logger.info(message)
+        log_action(schedule_id, container_name, 'update', 'success', message, host_id)
+        send_discord_notification(container_name, 'update', 'success', message, schedule_id)
+
+        # Update last_run in schedules
+        if schedule_id:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE schedules SET last_run = ? WHERE id = ?',
+                (datetime.now(), schedule_id)
+            )
+            conn.commit()
+            conn.close()
+
+        return True, message
 
     except Exception as e:
-        logger.error(f"Failed to update container {container_name}: {e}")
-        return False, f"Update failed: {str(e)}"
+        message = f"Failed to update container {container_name}: {str(e)}"
+        logger.error(message)
+        log_action(schedule_id, container_name, 'update', 'error', message, host_id)
+        send_discord_notification(container_name, 'update', 'error', message, schedule_id)
+        return False, message
 
 # Initialize APScheduler
 scheduler = BackgroundScheduler()
@@ -863,6 +881,8 @@ def load_schedules():
                 action_func = pause_container
             elif action == 'unpause':
                 action_func = unpause_container
+            elif action == 'update':
+                action_func = update_container
             else:
                 logger.error(f"Unknown action '{action}' for schedule {schedule_id}")
                 continue
@@ -1150,6 +1170,50 @@ def api_check_container_update(container_id):
         logger.error(f"Error checking for update: {e}")
         return jsonify({'error': 'Failed to check for updates'}), 500
 
+@app.route('/api/containers/check-updates', methods=['GET'])
+@login_required
+def api_check_all_updates():
+    """API endpoint to check for updates on all containers"""
+    results = []
+
+    try:
+        for host_id, host_name, docker_client in docker_manager.get_all_clients():
+            try:
+                containers = docker_client.containers.list(all=True)
+                for container in containers:
+                    container_id = container.id[:12]
+                    try:
+                        has_update, remote_digest, error = check_for_update(container, docker_client)
+                        results.append({
+                            'container_id': container_id,
+                            'container_name': container.name,
+                            'host_id': host_id,
+                            'host_name': host_name,
+                            'has_update': has_update,
+                            'error': error
+                        })
+                    except Exception as e:
+                        results.append({
+                            'container_id': container_id,
+                            'container_name': container.name,
+                            'host_id': host_id,
+                            'host_name': host_name,
+                            'has_update': False,
+                            'error': str(e)
+                        })
+            except Exception as e:
+                logger.error(f"Error checking updates for host {host_name}: {e}")
+
+        return jsonify({
+            'success': True,
+            'results': results,
+            'total': len(results),
+            'updates_available': sum(1 for r in results if r.get('has_update'))
+        })
+    except Exception as e:
+        logger.error(f"Error in bulk update check: {e}")
+        return jsonify({'error': 'Failed to check for updates'}), 500
+
 @app.route('/api/container/<container_id>/update', methods=['POST'])
 def api_update_container(container_id):
     """API endpoint to update a container"""
@@ -1223,8 +1287,8 @@ def add_schedule():
         return jsonify({'error': error}), 400
 
     # Validate action
-    if action not in ['restart', 'start', 'stop', 'pause', 'unpause']:
-        return jsonify({'error': 'Invalid action. Must be one of: restart, start, stop, pause, unpause'}), 400
+    if action not in ['restart', 'start', 'stop', 'pause', 'unpause', 'update']:
+        return jsonify({'error': 'Invalid action. Must be one of: restart, start, stop, pause, unpause, update'}), 400
 
     # Validate cron expression
     valid, error = validate_cron_expression(cron_expression)
@@ -1259,17 +1323,16 @@ def add_schedule():
         conn.close()
 
         # Add to scheduler with the appropriate action function
-        if action == 'restart':
-            action_func = restart_container
-        elif action == 'start':
-            action_func = start_container
-        elif action == 'stop':
-            action_func = stop_container
-        elif action == 'pause':
-            action_func = pause_container
-        elif action == 'unpause':
-            action_func = unpause_container
-        else:
+        action_map = {
+            'restart': restart_container,
+            'start': start_container,
+            'stop': stop_container,
+            'pause': pause_container,
+            'unpause': unpause_container,
+            'update': update_container
+        }
+        action_func = action_map.get(action)
+        if not action_func:
             return jsonify({'error': f'Invalid action: {action}'}), 400
 
         scheduler.add_job(
@@ -1831,6 +1894,62 @@ def logout():
     logger.info(f"User {username} logged out")
     flash('You have been logged out', 'success')
     return redirect(url_for('login'))
+
+@app.route('/user-settings')
+@login_required
+def user_settings_page():
+    """User settings page"""
+    return render_template('user_settings.html', version=VERSION)
+
+@app.route('/api/user/change-password', methods=['POST'])
+@login_required
+def change_password():
+    """Change current user's password"""
+    try:
+        data = request.json
+        current_password = data.get('current_password', '')
+        new_password = data.get('new_password', '')
+        confirm_password = data.get('confirm_password', '')
+
+        # Validate inputs
+        if not current_password or not new_password or not confirm_password:
+            return jsonify({'error': 'All fields are required'}), 400
+
+        if new_password != confirm_password:
+            return jsonify({'error': 'New passwords do not match'}), 400
+
+        if len(new_password) < 6:
+            return jsonify({'error': 'New password must be at least 6 characters'}), 400
+
+        # Verify current password
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT password_hash FROM users WHERE id = ?', (current_user.id,))
+        result = cursor.fetchone()
+
+        if not result:
+            conn.close()
+            return jsonify({'error': 'User not found'}), 404
+
+        if not bcrypt.checkpw(current_password.encode('utf-8'), result[0].encode('utf-8')):
+            conn.close()
+            return jsonify({'error': 'Current password is incorrect'}), 400
+
+        # Update password
+        new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        cursor.execute(
+            'UPDATE users SET password_hash = ? WHERE id = ?',
+            (new_hash.decode('utf-8'), current_user.id)
+        )
+        conn.commit()
+        conn.close()
+
+        logger.info(f"User {current_user.username} changed their password")
+        return jsonify({'success': True, 'message': 'Password changed successfully'})
+
+    except Exception as e:
+        logger.error(f"Error changing password: {e}")
+        return jsonify({'error': 'Failed to change password'}), 500
 
 if __name__ == '__main__':
     # Create data directory if it doesn't exist

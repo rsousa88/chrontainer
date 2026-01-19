@@ -1,20 +1,26 @@
 # Chrontainer Roadmap
 
-## Current Status: v0.2.0-dev (Multi-Host Support)
+## Current Status: v0.2.0 (Production Ready)
 ✅ Single Docker host support
 ✅ Basic web UI for container management
-✅ Cron-based restart scheduling
+✅ Cron-based scheduling (restart, start, stop, pause, unpause)
 ✅ SQLite persistence
 ✅ Activity logs
 ✅ Deployed on Raspberry Pi 5
 ✅ Multi-host Docker support
 ✅ Discord notifications
+✅ Authentication (login/logout with bcrypt)
+✅ Container tags with colors
+✅ Container update management (check + update)
+✅ Dark mode
+✅ Mobile responsive design
+✅ Production hardening (CSRF, rate limiting, security headers)
 ✅ Comprehensive documentation
 
 ---
 
 ## Phase 1: Core Features & Multi-Host Support (v0.2.0)
-**Priority: High | Status: In Progress**
+**Priority: High | Status: COMPLETED**
 
 ### 1.1 Multi-Host Docker Support ✅ COMPLETED
 - [x] Add docker hosts table (host_id, name, url, enabled)
@@ -107,7 +113,7 @@ POST   /api/settings/discord/test
 ---
 
 ## Phase 2: Notifications & Authentication (v0.3.0)
-**Priority: High | Status: Partially Completed**
+**Priority: High | Status: Partially Completed (Discord + Basic Auth done)**
 
 ### 2.1 Discord Notifications ✅ COMPLETED
 - [x] Add notification settings to UI
@@ -125,19 +131,20 @@ POST   /api/settings/discord/test
 - ✅ Includes container name, action, host, timestamp
 - ✅ Integrated into all container actions (start, stop, restart)
 
-### 2.2 Authentication
-- [ ] User accounts table (username, password_hash, role)
-- [ ] Login/logout pages
-- [ ] Session management
-- [ ] Basic auth support (username/password)
+### 2.2 Authentication ✅ PARTIALLY COMPLETED
+- [x] User accounts table (username, password_hash, role)
+- [x] Login/logout pages
+- [x] Session management (Flask-Login)
+- [x] Basic auth support (username/password with bcrypt)
 - [ ] OAuth support (GitHub, Google - optional)
-- [ ] Role-based access control (admin, viewer)
+- [x] Role-based access control (admin, viewer - basic implementation)
 - [ ] API key management per user
 
-**Security:**
-- Use bcrypt for password hashing
-- Flask-Login for session management
-- Consider Flask-Security or Authlib
+**Security (Implemented):**
+- ✅ bcrypt for password hashing
+- ✅ Flask-Login for session management
+- ✅ Rate limiting on login (10/min)
+- ✅ CSRF protection via Flask-WTF
 
 ### 2.3 Additional Notifications (Optional)
 - [ ] Email notifications (SMTP)
@@ -164,8 +171,8 @@ POST   /api/settings/discord/test
 - [ ] Container uptime charts
 - [ ] Recent activity feed
 - [x] Search/filter containers (name, status, host, stack, tags)
-- [x] Dark mode toggle
-- [ ] Mobile responsive design
+- [x] Dark mode toggle (with localStorage persistence)
+- [x] Mobile responsive design (3 breakpoints: desktop, tablet, mobile)
 
 ### 3.3 Advanced Scheduling
 - [ ] One-time schedules (run once, then delete)
@@ -178,7 +185,7 @@ POST   /api/settings/discord/test
 ---
 
 ## Phase 4: Production Hardening (v1.0.0)
-**Priority: High | Status: In Progress**
+**Priority: High | Status: COMPLETED (Security & Deployment done)**
 
 ### 4.1 Security ✅ COMPLETED
 - [x] Generate secure SECRET_KEY
@@ -279,11 +286,11 @@ POST   /api/settings/discord/test
 
 ## Quick Wins (Can be done anytime)
 - [x] Favicon and branding
-- [ ] Better error messages
+- [x] Better error messages
 - [x] Loading indicators in UI
-- [ ] Keyboard shortcuts
+- [x] Keyboard shortcuts (?, r, f, m, t, c, Esc)
 - [x] Container stats in tooltip
-- [ ] Copy schedule to clipboard
+- [x] Copy schedule to clipboard
 - [x] Example cron expressions in UI (in schedule modal)
 - [x] Link to crontab.guru for help (mentioned in UI)
 
@@ -311,11 +318,11 @@ POST   /api/settings/discord/test
 - [x] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Fixed with fallback logic: tags → Config.Image → short image ID
 - [x] [UI/UX] IP address sorting should be numeric (192.168.1.100 before 192.168.1.100)
 - [x] [Bug] Copy function is throwing an error: "Failed to copy to clipboard: Cannot read properties of undefined (reading 'writeText')". Fixed with fallback to document.execCommand('copy') for HTTP contexts.
-- [ ] [Feature] Ability to schedule an update (new scheduler action)
-- [ ] [Feature] Ability to check for updates on all containers (not only one by one)
-- [ ] [Feature] Show containers current
-- [ ] [Feature] Show new version if update available
-- [ ] [Feature] Add Users settings to allow username and password update
+- [x] [Feature] Ability to schedule an update (new scheduler action)
+- [x] [Feature] Ability to check for updates on all containers (Check All Updates button)
+- [x] [Feature] Show containers current version (image name shown in table)
+- [x] [Feature] Show new version if update available (check for updates + update button)
+- [x] [Feature] Add Users settings to allow username and password update (User Settings page)
 - [ ] [Feature] Ability to select multiple containers and apply actions to the selection (applicable actions only)
 - [ ] [Dev] Add another sample docker-compose file to create the container but connect to a macvlan network and using a static IP address
 

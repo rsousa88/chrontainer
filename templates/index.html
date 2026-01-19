@@ -709,6 +709,7 @@
                 <a href="/logs">Logs</a>
                 <a href="/settings">Settings</a>
                 <a href="/hosts">Hosts</a>
+                <a href="/user-settings">User</a>
                 <button onclick="showKeyboardShortcuts()" style="background: none; border: 1px solid #3498db; color: #3498db; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 10px;" title="Keyboard Shortcuts (?)">⌨️</button>
                 <button id="darkModeToggle" onclick="toggleDarkMode()" style="background: none; border: 1px solid #3498db; color: #3498db; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 4px;">🌙 Dark</button>
                 <a href="/logout" style="background: #e74c3c; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; margin-left: 4px; display: inline-block;">🚪 Logout</a>
@@ -744,6 +745,7 @@
                 </select>
                 <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 16px;">Clear Filters</button>
                 <button class="btn btn-primary" onclick="openManageTagsModal()" style="padding: 8px 16px;">Manage Tags</button>
+                <button class="btn btn-info" onclick="checkAllUpdates()" id="checkAllUpdatesBtn" style="padding: 8px 16px;">Check All Updates</button>
             </div>
             <div class="table-container">
             <table id="containersTable">
@@ -911,6 +913,7 @@
                         <option value="stop">Stop</option>
                         <option value="pause">Pause</option>
                         <option value="unpause">Unpause</option>
+                        <option value="update">Update (pull latest image)</option>
                     </select>
                 </div>
                 
@@ -1318,6 +1321,47 @@
                 }
             } catch (error) {
                 showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function checkAllUpdates() {
+            const btn = document.getElementById('checkAllUpdatesBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Checking...';
+
+            showAlert('<span class="spinner"></span> Checking all containers for updates... This may take a moment.', 'info');
+
+            try {
+                const response = await fetch('/api/containers/check-updates');
+                const result = await response.json();
+
+                if (result.success) {
+                    // Update each container's update cell
+                    result.results.forEach(r => {
+                        const cell = document.getElementById(`update-cell-${r.container_id}-${r.host_id}`);
+                        if (cell) {
+                            if (r.error) {
+                                cell.innerHTML = `<span style="font-size: 11px; color: #e74c3c;" title="${r.error}">Error</span>`;
+                            } else if (r.has_update) {
+                                cell.innerHTML = `
+                                    <span style="color: #27ae60; font-weight: 600; font-size: 12px;">✓ Available</span><br>
+                                    <button class="btn btn-success btn-small" onclick="updateContainer('${r.container_id}', '${r.container_name}', ${r.host_id})" style="margin-top: 4px;">Update</button>
+                                `;
+                            } else {
+                                cell.innerHTML = '<span style="color: #7f8c8d; font-size: 11px;">Up to date</span>';
+                            }
+                        }
+                    });
+
+                    showAlert(`Update check complete: ${result.updates_available} of ${result.total} containers have updates available`, 'success');
+                } else {
+                    showAlert(result.error || 'Failed to check updates', 'error');
+                }
+            } catch (error) {
+                showAlert('Error checking updates: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Check All Updates';
             }
         }
 
