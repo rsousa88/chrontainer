@@ -1644,8 +1644,8 @@ class TestMetricsPage:
 - [x] Bump VERSION to "0.4.0" in main.py
 - [x] Run `pytest tests/ -v` - all tests must pass
 - [x] Update ROADMAP.md to mark features complete
-- [ ] Update TRACKING_LOG.md with commit hashes
-- [ ] Commit with descriptive message
+- [x] Update TRACKING_LOG.md with commit hashes
+- [x] Commit with descriptive message
 - [ ] Push to GitHub (will trigger CI and release v0.4.0)
 
 ---
