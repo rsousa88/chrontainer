@@ -1364,10 +1364,29 @@
 
         async function copySchedule(cronExpression) {
             try {
-                await navigator.clipboard.writeText(cronExpression);
-                showAlert('Cron expression copied to clipboard!', 'success');
+                // Check if Clipboard API is available (requires HTTPS)
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(cronExpression);
+                    showAlert('Cron expression copied to clipboard!', 'success');
+                } else {
+                    // Fallback for HTTP or unsupported browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = cronExpression;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textarea);
+
+                    if (successful) {
+                        showAlert('Cron expression copied to clipboard!', 'success');
+                    } else {
+                        showAlert('Failed to copy to clipboard. Please copy manually: ' + cronExpression, 'error');
+                    }
+                }
             } catch (error) {
-                showAlert('Failed to copy to clipboard: ' + error.message, 'error');
+                showAlert('Failed to copy to clipboard. Please copy manually: ' + cronExpression, 'error');
             }
         }
 
