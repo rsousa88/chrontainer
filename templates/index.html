@@ -431,6 +431,271 @@
             font-weight: 600;
             color: #3498db;
         }
+
+        /* Responsive Design - Tablet (768px - 1024px) */
+        @media (max-width: 1024px) {
+            .container {
+                max-width: 100%;
+                padding: 15px;
+            }
+
+            header h1 {
+                font-size: 24px;
+            }
+
+            .section {
+                padding: 20px;
+            }
+
+            th, td {
+                padding: 10px 8px;
+                font-size: 13px;
+            }
+        }
+
+        /* Responsive Design - Mobile (< 768px) */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            header {
+                padding: 15px 0;
+                margin-bottom: 20px;
+            }
+
+            header h1 {
+                font-size: 20px;
+            }
+
+            header h1 span {
+                display: block;
+                margin-top: 5px;
+            }
+
+            .nav-links {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-top: 10px;
+            }
+
+            .nav-links a {
+                margin-right: 0;
+                font-size: 13px;
+            }
+
+            .section {
+                padding: 15px;
+                margin-bottom: 15px;
+            }
+
+            .section h2 {
+                font-size: 18px;
+                margin-bottom: 15px;
+            }
+
+            /* Table responsive - horizontal scroll */
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            table {
+                min-width: 900px;
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 8px 6px;
+                font-size: 12px;
+            }
+
+            /* Hide less important columns on mobile */
+            th:nth-child(3), /* Stack column */
+            td:nth-child(3),
+            th:nth-child(5), /* IP Address column */
+            td:nth-child(5) {
+                display: none;
+            }
+
+            /* Buttons */
+            .btn {
+                padding: 6px 12px;
+                font-size: 12px;
+                margin-right: 3px;
+                margin-bottom: 3px;
+            }
+
+            .btn-small {
+                padding: 4px 8px;
+                font-size: 11px;
+            }
+
+            /* Modal responsive */
+            .modal-content {
+                margin: 20px 10px;
+                padding: 20px;
+                max-width: calc(100% - 20px);
+                width: calc(100% - 20px);
+            }
+
+            .modal-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .close {
+                position: absolute;
+                top: 15px;
+                right: 15px;
+            }
+
+            /* Logs modal specific */
+            #logsModal .modal-content {
+                width: 95%;
+                max-width: 95%;
+                margin: 10px auto;
+            }
+
+            #logsWrapper {
+                height: 60vh;
+                font-size: 11px;
+            }
+
+            /* Keyboard shortcuts modal */
+            #keyboardShortcutsModal .modal-content {
+                max-width: 90%;
+            }
+
+            #keyboardShortcutsModal table {
+                min-width: 0;
+            }
+
+            #keyboardShortcutsModal td {
+                padding: 8px 4px;
+                font-size: 12px;
+            }
+
+            /* Filters responsive */
+            .filters-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .form-group input,
+            .form-group select {
+                font-size: 13px;
+                padding: 8px;
+            }
+
+            /* Status badges */
+            .status-badge {
+                font-size: 10px;
+                padding: 3px 6px;
+            }
+
+            /* Spinner */
+            .spinner {
+                width: 12px;
+                height: 12px;
+            }
+
+            /* Alerts */
+            .alert {
+                font-size: 13px;
+                padding: 10px;
+            }
+
+            /* Toggle switch */
+            .toggle-switch {
+                width: 40px;
+                height: 20px;
+            }
+
+            .slider:before {
+                height: 14px;
+                width: 14px;
+                left: 3px;
+                bottom: 3px;
+            }
+
+            input:checked + .slider:before {
+                transform: translateX(20px);
+            }
+
+            /* Empty state */
+            .empty-state {
+                padding: 30px 15px;
+                font-size: 14px;
+            }
+        }
+
+        /* Responsive Design - Small Mobile (< 480px) */
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 18px;
+            }
+
+            .nav-links a {
+                font-size: 12px;
+            }
+
+            table {
+                min-width: 700px;
+                font-size: 11px;
+            }
+
+            th, td {
+                padding: 6px 4px;
+                font-size: 11px;
+            }
+
+            /* Hide more columns on very small screens */
+            th:nth-child(4), /* Tags column */
+            td:nth-child(4),
+            th:nth-child(6), /* Web UI column */
+            td:nth-child(6) {
+                display: none;
+            }
+
+            .btn {
+                padding: 5px 10px;
+                font-size: 11px;
+            }
+
+            .btn-small {
+                padding: 3px 6px;
+                font-size: 10px;
+            }
+
+            .modal-content {
+                margin: 10px 5px;
+                padding: 15px;
+            }
+
+            #logsWrapper {
+                height: 50vh;
+                font-size: 10px;
+            }
+        }
+
+        /* Landscape mobile optimization */
+        @media (max-height: 500px) and (orientation: landscape) {
+            header {
+                padding: 10px 0;
+                margin-bottom: 15px;
+            }
+
+            .section {
+                padding: 12px;
+                margin-bottom: 12px;
+            }
+
+            #logsWrapper {
+                height: 40vh;
+            }
+        }
     </style>
 </head>
 <body>
@@ -477,6 +742,7 @@
                 <button class="btn btn-secondary" onclick="clearFilters()" style="padding: 8px 16px;">Clear Filters</button>
                 <button class="btn btn-primary" onclick="openManageTagsModal()" style="padding: 8px 16px;">Manage Tags</button>
             </div>
+            <div class="table-container">
             <table id="containersTable">
                 <thead>
                     <tr>
@@ -559,17 +825,19 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% else %}
             <div class="empty-state">
                 <p>No containers found</p>
             </div>
             {% endif %}
         </div>
-        
+
         <!-- Schedules Section -->
         <div class="section">
             <h2>Active Schedules</h2>
             {% if schedules %}
+            <div class="table-container">
             <table>
                 <thead>
                     <tr>
@@ -602,6 +870,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% else %}
             <div class="empty-state">
                 <p>No schedules configured. Click "Schedule" on any container to create one.</p>

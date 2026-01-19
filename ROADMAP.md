@@ -300,6 +300,7 @@ POST   /api/settings/discord/test
 - [x] [UI/UX] Clicking outside of the logs modal should close it (backdrop click handler added)
 - [x] [Bug] some container images are not identified (in the dashboard table just says 'unknown' in the image column). Fixed with fallback logic: tags → Config.Image → short image ID
 - [x] [UI/UX] IP address sorting should be numeric (192.168.1.100 before 192.168.1.100)
+- [ ] [Bug] Copy function is throwing an error: "Failed to copy to clipboard: Cannot read properties of undefined (reading 'writeText')"
 
 ---
 
