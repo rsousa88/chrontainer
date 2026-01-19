@@ -1148,10 +1148,35 @@
                 currentSort.direction = 'asc';
             }
 
+            // Helper function to convert IP to comparable number
+            function ipToNumber(ip) {
+                if (!ip || ip === 'N/A') return 0;
+                // Take first IP if multiple (comma-separated)
+                const firstIp = ip.split(',')[0].trim();
+                const parts = firstIp.split('.');
+                if (parts.length !== 4) return 0;
+                return parts.reduce((acc, octet, idx) => {
+                    return acc + (parseInt(octet) || 0) * Math.pow(256, 3 - idx);
+                }, 0);
+            }
+
             // Sort rows
             rows.sort((a, b) => {
-                const aVal = (a.dataset[column] || '').toLowerCase();
-                const bVal = (b.dataset[column] || '').toLowerCase();
+                let aVal = a.dataset[column] || '';
+                let bVal = b.dataset[column] || '';
+
+                // Special handling for IP addresses
+                if (column === 'ip') {
+                    const aNum = ipToNumber(aVal);
+                    const bNum = ipToNumber(bVal);
+                    if (aNum < bNum) return currentSort.direction === 'asc' ? -1 : 1;
+                    if (aNum > bNum) return currentSort.direction === 'asc' ? 1 : -1;
+                    return 0;
+                }
+
+                // Standard string comparison for other columns
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
 
                 if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
                 if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
