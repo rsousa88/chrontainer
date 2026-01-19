@@ -245,28 +245,31 @@
             flex-wrap: wrap;
         }
 
-        .health-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            margin-left: 6px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 600;
+        .status-cell {
+            position: relative;
+            padding-right: 22px;
         }
 
-        .health-badge.healthy {
-            background: #d4edda;
-            color: #155724;
+        .health-indicator {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #bdc3c7;
         }
 
-        .health-badge.unhealthy {
-            background: #f8d7da;
-            color: #721c24;
+        .health-indicator.healthy {
+            background: #2ecc71;
         }
 
-        .health-badge.starting {
-            background: #fff3cd;
-            color: #856404;
+        .health-indicator.unhealthy {
+            background: #e74c3c;
+        }
+
+        .health-indicator.starting {
+            background: #f39c12;
         }
         
         .form-group {
@@ -870,7 +873,7 @@
                                 </span>
                             </div>
                         </td>
-                        <td><span style="background:#e8f4f8;padding:4px 8px;border-radius:4px;font-size:12px;">{{ container.host_name }}</span></td>
+                        <td><span style="background: {{ container.host_color }}; color: {{ container.host_text_color }}; padding:4px 8px;border-radius:4px;font-size:12px;">{{ container.host_name }}</span></td>
                         <td><span style="background:#f0e8ff;padding:4px 8px;border-radius:4px;font-size:12px;color:#5a3d7a;">{{ container.stack }}</span></td>
                         <td>
                             <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
@@ -880,19 +883,13 @@
                             </div>
                         </td>
                         <td><span style="font-family: monospace; font-size: 12px; color: #555;">{{ container.ip_addresses }}</span></td>
-                        <td>
+                        <td class="status-cell">
                             <div class="status-stack">
                                 <span class="status {{ container.status }}">{{ container.status }}</span>
-                            {% if container.health %}
-                                {% if container.health == 'healthy' %}
-                                <span class="health-badge healthy">healthy</span>
-                                {% elif container.health == 'unhealthy' %}
-                                <span class="health-badge unhealthy">unhealthy</span>
-                                {% else %}
-                                <span class="health-badge starting">{{ container.health }}</span>
-                                {% endif %}
-                            {% endif %}
                             </div>
+                            {% if container.health %}
+                            <span class="health-indicator {{ container.health }}" title="{{ container.health }}"></span>
+                            {% endif %}
                         </td>
                         <td>
                             <div style="display: flex; align-items: center; gap: 6px;">

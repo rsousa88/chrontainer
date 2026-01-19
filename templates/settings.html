@@ -190,6 +190,7 @@
         .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
         .status-badge.enabled { background: #d4edda; color: #155724; }
         .status-badge.disabled { background: #f8d7da; color: #721c24; }
+        .color-chip { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1px solid #d0d7de; margin-right: 6px; vertical-align: middle; }
 
         /* Modal */
         .modal {
@@ -287,6 +288,7 @@
                         <tr>
                             <th>Name</th>
                             <th>URL</th>
+                            <th>Color</th>
                             <th>Status</th>
                             <th>Last Seen</th>
                             <th>Actions</th>
@@ -336,6 +338,10 @@
             <div class="form-group">
                 <label>URL</label>
                 <input type="text" id="hostUrl" placeholder="tcp://192.168.1.100:2375">
+            </div>
+            <div class="form-group">
+                <label>Color</label>
+                <input type="color" id="hostColor" value="#e8f4f8">
             </div>
             <div style="margin-top: 20px;">
                 <button class="btn btn-primary" onclick="saveHost()">Save</button>
@@ -441,10 +447,11 @@
                     row.innerHTML = `
                         <td>${host.name}</td>
                         <td><code>${host.url}</code></td>
+                        <td><span class="color-chip" style="background:${host.color || '#e8f4f8'}"></span>${host.color || '#e8f4f8'}</td>
                         <td><span class="status-badge ${host.enabled ? 'enabled' : 'disabled'}">${host.enabled ? 'Enabled' : 'Disabled'}</span></td>
                         <td>${host.last_seen ? new Date(host.last_seen).toLocaleString() : 'Never'}</td>
                         <td>
-                            <button class="btn btn-primary" onclick="showEditHostModal(${host.id}, '${host.name}', '${host.url}')">Edit</button>
+                            <button class="btn btn-primary" onclick="showEditHostModal(${host.id}, '${host.name}', '${host.url}', '${host.color || '#e8f4f8'}')">Edit</button>
                             <button class="btn btn-success" onclick="testHost(${host.id})">Test</button>
                             ${host.id !== 1 ? `<button class="btn btn-danger" onclick="deleteHost(${host.id}, '${host.name}')">Delete</button>` : ''}
                         </td>
@@ -461,14 +468,16 @@
             document.getElementById('modalTitle').textContent = 'Add Docker Host';
             document.getElementById('hostName').value = '';
             document.getElementById('hostUrl').value = '';
+            document.getElementById('hostColor').value = '#e8f4f8';
             document.getElementById('hostModal').style.display = 'block';
         }
 
-        function showEditHostModal(hostId, hostName, hostUrl) {
+        function showEditHostModal(hostId, hostName, hostUrl, hostColor) {
             editingHostId = hostId;
             document.getElementById('modalTitle').textContent = 'Edit Docker Host';
             document.getElementById('hostName').value = hostName;
             document.getElementById('hostUrl').value = hostUrl;
+            document.getElementById('hostColor').value = hostColor || '#e8f4f8';
             document.getElementById('hostModal').style.display = 'block';
         }
 
@@ -479,6 +488,7 @@
         async function saveHost() {
             const name = document.getElementById('hostName').value.trim();
             const url = document.getElementById('hostUrl').value.trim();
+            const color = document.getElementById('hostColor').value.trim();
             if (!name || !url) {
                 showAlert('Please fill in all fields', 'error');
                 return;
@@ -490,7 +500,7 @@
                 const response = await fetch(apiUrl, {
                     method: method,
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-                    body: JSON.stringify({ name, url })
+                    body: JSON.stringify({ name, url, color })
                 });
                 const data = await response.json();
                 if (response.ok) {

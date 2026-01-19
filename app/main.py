@@ -87,6 +87,23 @@ NON_VERSION_TAGS = {
 }
 VERSION_TAG_RE = re.compile(r'^v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*$')
 VERSION_IN_TEXT_RE = re.compile(r'v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*')
+HOST_DEFAULT_COLOR = '#e8f4f8'
+
+def validate_color(color):
+    if not color:
+        return False, 'Color is required'
+    if not re.match(r'^#[0-9a-fA-F]{6}$', color):
+        return False, 'Color must be a hex value like #1ea7e1'
+    return True, None
+
+def get_contrast_text_color(color, default='#2c3e50'):
+    if not color or not re.match(r'^#[0-9a-fA-F]{6}$', color):
+        return default
+    red = int(color[1:3], 16)
+    green = int(color[3:5], 16)
+    blue = int(color[5:7], 16)
+    luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255
+    return '#000000' if luminance > 0.6 else '#ffffff'
 
 def strip_image_tag(image_name):
     """Return image name without tag or digest for display."""
@@ -125,6 +142,20 @@ def get_image_version(container, image_name):
         match = VERSION_IN_TEXT_RE.search(ref_name)
         if match:
             return match.group(0), 'label'
+
+    try:
+        envs = container.attrs.get('Config', {}).get('Env', []) or []
+        for entry in envs:
+            if '=' not in entry:
+                continue
+            key, value = entry.split('=', 1)
+            if 'VERSION' not in key.upper():
+                continue
+            match = VERSION_IN_TEXT_RE.search(value)
+            if match:
+                return match.group(0), 'env'
+    except Exception:
+        pass
 
     tag = None
     if image_name and ':' in image_name:
@@ -540,6 +571,7 @@ def init_db():
             name TEXT NOT NULL UNIQUE,
             url TEXT NOT NULL,
             enabled INTEGER DEFAULT 1,
+            color TEXT DEFAULT '#e8f4f8',
             last_seen TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -638,9 +670,9 @@ def init_db():
 
     # Insert default local host if not exists
     cursor.execute('''
-        INSERT OR IGNORE INTO hosts (id, name, url, enabled, last_seen)
-        VALUES (1, 'Local', 'unix://var/run/docker.sock', 1, ?)
-    ''', (datetime.now(),))
+        INSERT OR IGNORE INTO hosts (id, name, url, enabled, color, last_seen)
+        VALUES (1, 'Local', 'unix://var/run/docker.sock', 1, ?, ?)
+    ''', (HOST_DEFAULT_COLOR, datetime.now()))
 
     # Create default admin user if no users exist
     cursor.execute('SELECT COUNT(*) FROM users')
@@ -667,6 +699,14 @@ def init_db():
     if 'host_id' not in columns:
         logger.info("Migrating logs table - adding host_id column")
         cursor.execute('ALTER TABLE logs ADD COLUMN host_id INTEGER DEFAULT 1')
+
+    # Migration: Add color column to hosts if needed
+    cursor.execute("PRAGMA table_info(hosts)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if 'color' not in columns:
+        logger.info("Migrating hosts table - adding color column")
+        cursor.execute(f"ALTER TABLE hosts ADD COLUMN color TEXT DEFAULT '{HOST_DEFAULT_COLOR}'")
+        cursor.execute('UPDATE hosts SET color = ? WHERE color IS NULL OR color = ""', (HOST_DEFAULT_COLOR,))
 
     conn.commit()
     conn.close()
@@ -985,6 +1025,17 @@ def index():
     """Main dashboard"""
     try:
         container_list = []
+        host_color_map = {}
+        host_text_color_map = {}
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, color FROM hosts')
+        for host_id_row, color in cursor.fetchall():
+            resolved_color = color or HOST_DEFAULT_COLOR
+            host_color_map[host_id_row] = resolved_color
+            host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
+        conn.close()
 
         # Get containers from all hosts
         for host_id, host_name, docker_client in docker_manager.get_all_clients():
@@ -1037,6 +1088,8 @@ def index():
 
                     image_display = strip_image_tag(image_name)
                     image_version, version_source = get_image_version(container, image_name)
+                    host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
+                    host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 
                     container_list.append({
                         'id': container.id[:12],
@@ -1050,6 +1103,8 @@ def index():
                         'created': container.attrs['Created'],
                         'host_id': host_id,
                         'host_name': host_name,
+                        'host_color': host_color,
+                        'host_text_color': host_text_color,
                         'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
                         'stack': stack_name,
                         'webui_url_label': webui_url_from_label
@@ -1108,6 +1163,18 @@ def get_containers():
     """API endpoint to get all containers"""
     try:
         container_list = []
+        host_color_map = {}
+        host_text_color_map = {}
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, color FROM hosts')
+        for host_id_row, color in cursor.fetchall():
+            resolved_color = color or HOST_DEFAULT_COLOR
+            host_color_map[host_id_row] = resolved_color
+            host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
+        conn.close()
+
         for host_id, host_name, docker_client in docker_manager.get_all_clients():
             try:
                 containers = docker_client.containers.list(all=True)
@@ -1158,6 +1225,8 @@ def get_containers():
 
                     image_display = strip_image_tag(image_name)
                     image_version, version_source = get_image_version(container, image_name)
+                    host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
+                    host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 
                     container_list.append({
                         'id': container.id[:12],
@@ -1170,6 +1239,8 @@ def get_containers():
                         'image_version_source': version_source,
                         'host_id': host_id,
                         'host_name': host_name,
+                        'host_color': host_color,
+                        'host_text_color': host_text_color,
                         'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
                         'stack': stack_name,
                         'webui_url_label': webui_url_from_label
@@ -1595,7 +1666,7 @@ def get_hosts():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, name, url, enabled, last_seen, created_at FROM hosts ORDER BY id')
+        cursor.execute('SELECT id, name, url, enabled, color, last_seen, created_at FROM hosts ORDER BY id')
         hosts = cursor.fetchall()
         conn.close()
 
@@ -1606,8 +1677,9 @@ def get_hosts():
                 'name': host[1],
                 'url': host[2],
                 'enabled': bool(host[3]),
-                'last_seen': host[4],
-                'created_at': host[5]
+                'color': host[4],
+                'last_seen': host[5],
+                'created_at': host[6]
             })
         return jsonify(host_list)
     except Exception as e:
@@ -1622,6 +1694,7 @@ def add_host():
         data = request.json
         name = sanitize_string(data.get('name', ''), max_length=100).strip()
         url = sanitize_string(data.get('url', ''), max_length=500).strip()
+        color = sanitize_string(data.get('color', HOST_DEFAULT_COLOR), max_length=7).strip()
 
         # Validate name
         if not name or len(name) < 1:
@@ -1634,6 +1707,10 @@ def add_host():
         if not valid:
             return jsonify({'error': 'Host URL is required (e.g., tcp://192.168.1.100:2375 or unix:///var/run/docker.sock)'}), 400
 
+        valid, error = validate_color(color)
+        if not valid:
+            return jsonify({'error': error}), 400
+
         # Test connection first
         success, message = docker_manager.test_connection(url)
         if not success:
@@ -1642,8 +1719,8 @@ def add_host():
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO hosts (name, url, enabled, last_seen) VALUES (?, ?, 1, ?)',
-            (name, url, datetime.now())
+            'INSERT INTO hosts (name, url, enabled, color, last_seen) VALUES (?, ?, 1, ?, ?)',
+            (name, url, color, datetime.now())
         )
         host_id = cursor.lastrowid
         conn.commit()
@@ -1665,12 +1742,16 @@ def update_host(host_id):
         data = request.json
         name = data.get('name', '').strip()
         url = data.get('url', '').strip()
+        color = data.get('color', HOST_DEFAULT_COLOR).strip()
         enabled = data.get('enabled', True)
 
         if not name:
             return jsonify({'error': 'Host name is required'}), 400
         if not url:
             return jsonify({'error': 'Host URL is required'}), 400
+        valid, error = validate_color(color)
+        if not valid:
+            return jsonify({'error': error}), 400
 
         # Don't allow disabling the local host
         if host_id == 1 and not enabled:
@@ -1695,8 +1776,8 @@ def update_host(host_id):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            'UPDATE hosts SET name = ?, url = ?, enabled = ? WHERE id = ?',
-            (name, url, 1 if enabled else 0, host_id)
+            'UPDATE hosts SET name = ?, url = ?, enabled = ?, color = ? WHERE id = ?',
+            (name, url, 1 if enabled else 0, color, host_id)
         )
         conn.commit()
         conn.close()
