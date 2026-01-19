@@ -85,6 +85,7 @@ VERSION_LABEL_KEYS = (
 NON_VERSION_TAGS = {
     'latest', 'stable', 'edge', 'nightly', 'main', 'master', 'dev', 'develop'
 }
+VERSION_TAG_RE = re.compile(r'^v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*$')
 
 def get_image_version(container, image_name):
     """Best-effort version from image labels, falling back to version-like tags."""
@@ -103,7 +104,7 @@ def get_image_version(container, image_name):
     if image_name and ':' in image_name:
         tag = image_name.rsplit(':', 1)[1].strip()
 
-    if tag and tag.lower() not in NON_VERSION_TAGS and re.search(r'\d', tag):
+    if tag and tag.lower() not in NON_VERSION_TAGS and VERSION_TAG_RE.match(tag):
         return tag, 'tag'
 
     return 'unknown', 'unknown'
