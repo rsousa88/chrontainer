@@ -220,7 +220,7 @@ POST   /api/settings/discord/test
 - ✅ Security best practices guide
 
 ### 4.3 Database & Backup
-- [ ] Database migration system (Alembic)
+- [x] Database migration system (Alembic)
 - [ ] Automated daily backups
 - [ ] Backup to external storage (NAS, S3)
 - [ ] Database optimization (indexes)
@@ -232,8 +232,8 @@ POST   /api/settings/discord/test
 - [ ] Grafana dashboard template
 - [ ] Application logging (structured logs)
 - [ ] Error tracking (Sentry integration)
-- [ ] Health check endpoint (`/health`)
-- [ ] Version info endpoint (`/api/version`)
+- [x] Health check endpoint (`/health`)
+- [x] Version info endpoint (`/api/version`)
 
 ---
 
@@ -272,10 +272,10 @@ POST   /api/settings/discord/test
 ## Maintenance & Technical Debt
 
 ### Ongoing
-- [ ] Unit tests (pytest)
+- [x] Unit tests (pytest)
 - [ ] Integration tests
 - [ ] E2E tests (Playwright/Selenium)
-- [ ] CI/CD pipeline (GitHub Actions)
+- [x] CI/CD pipeline (GitHub Actions)
 - [ ] Documentation updates
 - [ ] Performance optimization
 - [ ] Code refactoring

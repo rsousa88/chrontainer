@@ -3,7 +3,7 @@
 ```
 chrontainer/
 ├── app/
-│   └── main.py              # Main Flask application & scheduler logic (~1850 lines)
+│   └── main.py              # Main Flask application & scheduler logic (~2200 lines)
 ├── templates/
 │   ├── index.html           # Main dashboard UI (~1920 lines)
 │   ├── login.html           # Authentication page (~185 lines)
@@ -11,6 +11,20 @@ chrontainer/
 │   ├── settings.html        # Discord webhook & settings (~320 lines)
 │   ├── logs.html            # Activity logs page (~175 lines)
 │   └── error.html           # Error page (~80 lines)
+├── tests/                   # pytest test suite
+│   ├── __init__.py
+│   ├── conftest.py          # Test fixtures (app, client, authenticated_client)
+│   ├── test_health.py       # Tests for /health and /api/version endpoints
+│   └── test_auth.py         # Tests for authentication endpoints
+├── migrations/              # Alembic database migrations
+│   ├── env.py               # Migration environment config
+│   ├── script.py.mako       # Migration script template
+│   ├── README               # Migration instructions
+│   └── versions/
+│       └── 001_initial_schema.py  # Baseline schema migration
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # GitHub Actions CI pipeline
 ├── static/                  # (empty - CSS is inline in templates)
 ├── data/                    # Created at runtime
 │   └── chrontainer.db       # SQLite database (auto-created)
@@ -23,9 +37,12 @@ chrontainer/
 ├── docker-compose.yml       # Easy deployment configuration
 ├── docker-compose.macvlan.yml # Deployment with macvlan + static IP (example)
 ├── requirements.txt         # Python dependencies
+├── pytest.ini               # pytest configuration
+├── alembic.ini              # Alembic configuration
 ├── README.md                # Full documentation
 ├── DEPLOYMENT.md            # Quick deployment guide
 ├── ROADMAP.md               # Feature roadmap & status
+├── TRACKING_LOG.md          # Session change tracking
 ├── CLAUDE.md                # AI assistant context file
 ├── .gitignore              # Git ignore rules
 └── .dockerignore           # Docker ignore rules
@@ -243,10 +260,10 @@ Estimated resource usage on Raspberry Pi 5:
    - Bulk operations (multi-select)
 
 5. **Database & DevOps**
-   - Alembic migrations
+   - ✅ Alembic migrations
    - Backup/restore schedules
-   - pytest test suite
-   - CI/CD pipeline
+   - ✅ pytest test suite (22 tests)
+   - ✅ CI/CD pipeline (GitHub Actions)
 
 ## Performance Optimization
 

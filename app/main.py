@@ -2102,6 +2102,80 @@ def user_settings_page():
     """Redirect to unified settings page (account tab)"""
     return redirect('/settings#account')
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint for container orchestration and monitoring"""
+    health = {
+        'status': 'healthy',
+        'version': VERSION,
+        'checks': {}
+    }
+
+    # Check database connectivity
+    try:
+        conn = sqlite3.connect(DATABASE_PATH, timeout=5)
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1')
+        conn.close()
+        health['checks']['database'] = {'status': 'ok'}
+    except Exception as e:
+        health['status'] = 'unhealthy'
+        health['checks']['database'] = {'status': 'error', 'message': str(e)}
+
+    # Check scheduler status
+    try:
+        if scheduler.running:
+            health['checks']['scheduler'] = {'status': 'ok', 'jobs': len(scheduler.get_jobs())}
+        else:
+            health['status'] = 'unhealthy'
+            health['checks']['scheduler'] = {'status': 'error', 'message': 'Scheduler not running'}
+    except Exception as e:
+        health['status'] = 'degraded'
+        health['checks']['scheduler'] = {'status': 'error', 'message': str(e)}
+
+    # Check at least one Docker host is reachable
+    try:
+        clients = docker_manager.get_all_clients()
+        if clients:
+            health['checks']['docker'] = {'status': 'ok', 'hosts_connected': len(clients)}
+        else:
+            health['status'] = 'degraded'
+            health['checks']['docker'] = {'status': 'warning', 'message': 'No Docker hosts connected'}
+    except Exception as e:
+        health['status'] = 'degraded'
+        health['checks']['docker'] = {'status': 'error', 'message': str(e)}
+
+    status_code = 200 if health['status'] == 'healthy' else 503 if health['status'] == 'unhealthy' else 200
+    return jsonify(health), status_code
+
+
+@app.route('/api/version')
+def get_version():
+    """Get application version and build info"""
+    import sys
+
+    # Count schedules and hosts
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM schedules WHERE enabled = 1')
+        active_schedules = cursor.fetchone()[0]
+        cursor.execute('SELECT COUNT(*) FROM hosts WHERE enabled = 1')
+        active_hosts = cursor.fetchone()[0]
+        conn.close()
+    except:
+        active_schedules = 0
+        active_hosts = 0
+
+    return jsonify({
+        'version': VERSION,
+        'python_version': sys.version.split()[0],
+        'api_version': 'v1',
+        'active_schedules': active_schedules,
+        'active_hosts': active_hosts
+    })
+
+
 @app.route('/api/user/change-password', methods=['POST'])
 @login_required
 def change_password():
