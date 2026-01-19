@@ -21,6 +21,7 @@ chrontainer/
 ├── gunicorn.conf.py         # Gunicorn configuration
 ├── Dockerfile               # Container build instructions
 ├── docker-compose.yml       # Easy deployment configuration
+├── docker-compose.macvlan.yml # Deployment with macvlan + static IP (example)
 ├── requirements.txt         # Python dependencies
 ├── README.md                # Full documentation
 ├── DEPLOYMENT.md            # Quick deployment guide

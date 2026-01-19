@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  chrontainer:
+    build: .
+    container_name: chrontainer
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
+    environment:
+      - SECRET_KEY=your-secret-key-here
+    networks:
+      macvlan_net:
+        ipv4_address: 192.168.1.100
+
+networks:
+  macvlan_net:
+    driver: macvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      config:
+        - subnet: 192.168.1.100/24
+          gateway: 192.168.1.100

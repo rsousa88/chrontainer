@@ -194,6 +194,60 @@
             padding: 4px 10px;
             font-size: 12px;
         }
+
+        .icon-btn,
+        .icon-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .icon-btn:hover,
+        .icon-link:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .health-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            margin-left: 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .health-badge.healthy {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .health-badge.unhealthy {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .health-badge.starting {
+            background: #fff3cd;
+            color: #856404;
+        }
         
         .form-group {
             margin-bottom: 20px;
@@ -732,6 +786,8 @@
                     <option value="exited">Exited</option>
                     <option value="paused">Paused</option>
                     <option value="restarting">Restarting</option>
+                    <option value="unhealthy">Unhealthy</option>
+                    <option value="starting">Starting</option>
                 </select>
                 <select id="filterHost" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
                     <option value="">All Hosts</option>
@@ -752,6 +808,7 @@
                     Select all
                 </label>
                 <span id="selectedCount" style="font-size: 13px; color: #555;">0 selected</span>
+                <button class="btn btn-info btn-small" onclick="checkSelectedUpdates()" id="bulk-check-updates" disabled>Check Updates</button>
                 <button class="btn btn-warning btn-small" onclick="bulkAction('restart')" id="bulk-restart" disabled>Restart</button>
                 <button class="btn btn-danger btn-small" onclick="bulkAction('stop')" id="bulk-stop" disabled>Stop</button>
                 <button class="btn btn-success btn-small" onclick="bulkAction('start')" id="bulk-start" disabled>Start</button>
@@ -769,17 +826,16 @@
                         <th onclick="sortTable('stack')" style="cursor: pointer;">Stack <span id="sort-stack"></span></th>
                         <th>Tags</th>
                         <th onclick="sortTable('ip')" style="cursor: pointer;">IP Address <span id="sort-ip"></span></th>
-                        <th>Web UI</th>
                         <th onclick="sortTable('status')" style="cursor: pointer;">Status <span id="sort-status"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
                         <th>Version</th>
                         <th>Updates</th>
-                        <th>Actions</th>
+                        <th>Quick Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for container in containers %}
-                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image_display }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}">
+                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-health="{{ container.health or '' }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image_display }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}">
                         <td>
                             <input type="checkbox" class="container-select" data-id="{{ container.id }}" data-name="{{ container.name }}" data-host-id="{{ container.host_id }}" data-status="{{ container.status }}" onchange="updateSelectionState()">
                         </td>
@@ -802,18 +858,20 @@
                                 {% for tag in container.tags %}
                                 <span style="background: {{ tag.color }}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;">{{ tag.name }}</span>
                                 {% endfor %}
-                                <button class="btn btn-secondary btn-small" onclick="openTagModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" style="padding: 2px 6px; font-size: 11px;">+ Tag</button>
                             </div>
                         </td>
                         <td><span style="font-family: monospace; font-size: 12px; color: #555;">{{ container.ip_addresses }}</span></td>
                         <td>
-                            {% if container.webui_url %}
-                            <a href="{{ container.webui_url }}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 18px;" title="Open Web UI">🌐</a>
-                            {% endif %}
-                            <button class="btn btn-secondary btn-small" onclick="openWebUIModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }}, '{{ container.webui_url or '' }}')" style="padding: 2px 6px; font-size: 11px;">{% if container.webui_url %}Edit{% else %}Set{% endif %}</button>
-                        </td>
-                        <td>
                             <span class="status {{ container.status }}">{{ container.status }}</span>
+                            {% if container.health %}
+                                {% if container.health == 'healthy' %}
+                                <span class="health-badge healthy">healthy</span>
+                                {% elif container.health == 'unhealthy' %}
+                                <span class="health-badge unhealthy">unhealthy</span>
+                                {% else %}
+                                <span class="health-badge starting">{{ container.health }}</span>
+                                {% endif %}
+                            {% endif %}
                         </td>
                         <td>
                             <div style="display: flex; align-items: center; gap: 6px;">
@@ -839,21 +897,16 @@
                             {% endif %}
                         </td>
                         <td id="update-cell-{{ container.id }}-{{ container.host_id }}">
-                            <button class="btn btn-info btn-small" onclick="checkForUpdate('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Check</button>
+                            <button class="icon-btn" onclick="checkForUpdate('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" title="Check updates">⟳</button>
                         </td>
-                        <td>
-                            {% if container.status == 'running' %}
-                            <button class="btn btn-warning btn-small" onclick="restartContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Restart</button>
-                            <button class="btn btn-danger btn-small" onclick="stopContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Stop</button>
-                            <button class="btn btn-secondary btn-small" onclick="pauseContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Pause</button>
-                            {% elif container.status == 'paused' %}
-                            <button class="btn btn-success btn-small" onclick="unpauseContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Unpause</button>
-                            <button class="btn btn-danger btn-small" onclick="stopContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Stop</button>
-                            {% else %}
-                            <button class="btn btn-success btn-small" onclick="startContainer('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Start</button>
+                        <td class="quick-actions">
+                            <button class="icon-btn" onclick="openLogsModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" title="Logs">📜</button>
+                            <button class="icon-btn" onclick="openScheduleModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" title="Schedule">🗓️</button>
+                            <button class="icon-btn" onclick="openTagModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" title="Set tags">🏷️</button>
+                            {% if container.webui_url %}
+                            <a href="{{ container.webui_url }}" target="_blank" class="icon-link" title="Open Web UI">🌐</a>
                             {% endif %}
-                            <button class="btn btn-info btn-small" onclick="openLogsModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Logs</button>
-                            <button class="btn btn-primary btn-small" onclick="openScheduleModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">Schedule</button>
+                            <button class="icon-btn" onclick="openWebUIModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }}, '{{ container.webui_url or '' }}')" title="{% if container.webui_url %}Edit Web UI{% else %}Set Web UI{% endif %}">⚙️</button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -1436,6 +1489,56 @@
             }
         }
 
+        async function checkSelectedUpdates() {
+            const selected = getSelectedContainers();
+            if (selected.length === 0) {
+                showAlert('Select at least one container.', 'info');
+                return;
+            }
+
+            showAlert(`<span class="spinner"></span> Checking updates for ${selected.length} containers...`, 'info');
+
+            const results = await Promise.allSettled(selected.map(container => {
+                const cell = document.getElementById(`update-cell-${container.id}-${container.hostId}`);
+                if (cell) {
+                    renderUpdateCell(cell, {loading: true});
+                }
+                return fetch(`/api/container/${container.id}/check-update?host_id=${container.hostId}`)
+                    .then(response => response.json())
+                    .then(result => ({container, result}));
+            }));
+
+            let updatesAvailable = 0;
+            let errors = 0;
+            results.forEach(result => {
+                if (result.status !== 'fulfilled') {
+                    errors += 1;
+                    return;
+                }
+
+                const {container, result: payload} = result.value;
+                const cell = document.getElementById(`update-cell-${container.id}-${container.hostId}`);
+                if (!cell) {
+                    return;
+                }
+                if (payload.error) {
+                    errors += 1;
+                    renderUpdateCell(cell, {error: payload.error});
+                    return;
+                }
+                if (payload.has_update) {
+                    updatesAvailable += 1;
+                }
+                renderUpdateCell(cell, payload, container.id, container.name, container.hostId);
+            });
+
+            if (errors > 0) {
+                showAlert(`Update check complete: ${updatesAvailable} updates, ${errors} errors.`, 'error');
+            } else {
+                showAlert(`Update check complete: ${updatesAvailable} of ${selected.length} containers have updates available.`, 'success');
+            }
+        }
+
         let currentLogsContainerId = null;
         let currentLogsContainerName = null;
         let currentLogsHostId = null;
@@ -1626,12 +1729,20 @@
             rows.forEach(row => {
                 const name = row.dataset.name || '';
                 const status = row.dataset.status || '';
+                const health = row.dataset.health || '';
                 const host = row.dataset.host || '';
                 const stack = row.dataset.stack || '';
                 const tags = row.dataset.tags || '';
 
                 const matchesName = !nameFilter || name.includes(nameFilter);
-                const matchesStatus = !statusFilter || status === statusFilter;
+                let matchesStatus = false;
+                if (!statusFilter) {
+                    matchesStatus = true;
+                } else if (statusFilter === 'unhealthy' || statusFilter === 'starting' || statusFilter === 'healthy') {
+                    matchesStatus = health === statusFilter;
+                } else {
+                    matchesStatus = status === statusFilter;
+                }
                 const matchesHost = !hostFilter || host === hostFilter;
                 const matchesStack = !stackFilter || stack === stackFilter;
                 const matchesTag = !tagFilter || tags.split(',').includes(tagFilter);
@@ -1642,6 +1753,7 @@
                     row.style.display = 'none';
                 }
             });
+            updateSelectionState();
         }
 
         function clearFilters() {
@@ -1681,7 +1793,7 @@
             }
 
             const disable = selected.length === 0;
-            ['bulk-restart', 'bulk-stop', 'bulk-start', 'bulk-pause', 'bulk-unpause', 'bulk-update'].forEach(id => {
+            ['bulk-check-updates', 'bulk-restart', 'bulk-stop', 'bulk-start', 'bulk-pause', 'bulk-unpause', 'bulk-update'].forEach(id => {
                 const button = document.getElementById(id);
                 if (button) {
                     button.disabled = disable;

@@ -1133,6 +1133,15 @@ def get_containers():
                     except:
                         pass
 
+                    # Extract health status if available
+                    health_status = None
+                    try:
+                        health = container.attrs.get('State', {}).get('Health', {})
+                        if health:
+                            health_status = health.get('Status')
+                    except:
+                        pass
+
                     image_display = strip_image_tag(image_name)
                     image_version, version_source = get_image_version(container, image_name)
 
@@ -1140,6 +1149,7 @@ def get_containers():
                         'id': container.id[:12],
                         'name': container.name,
                         'status': container.status,
+                        'health': health_status,
                         'image': image_name,
                         'image_display': image_display,
                         'image_version': image_version,
