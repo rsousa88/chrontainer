@@ -533,6 +533,7 @@ def update_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.info(message)
         log_action(schedule_id, container_name, 'update', 'success', message, host_id)
         send_discord_notification(container_name, 'update', 'success', message, schedule_id)
+        send_ntfy_notification(container_name, 'update', 'success', message, schedule_id)
 
         # Update last_run in schedules
         if schedule_id:
@@ -552,6 +553,7 @@ def update_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.error(message)
         log_action(schedule_id, container_name, 'update', 'error', message, host_id)
         send_discord_notification(container_name, 'update', 'error', message, schedule_id)
+        send_ntfy_notification(container_name, 'update', 'error', message, schedule_id)
         return False, message
 
 # Initialize APScheduler
@@ -586,6 +588,8 @@ def init_db():
             container_name TEXT NOT NULL,
             action TEXT NOT NULL,
             cron_expression TEXT NOT NULL,
+            one_time INTEGER DEFAULT 0,
+            run_at TIMESTAMP,
             enabled INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_run TIMESTAMP,
@@ -686,6 +690,12 @@ def init_db():
     if 'host_id' not in columns:
         logger.info("Migrating schedules table - adding host_id column")
         cursor.execute('ALTER TABLE schedules ADD COLUMN host_id INTEGER NOT NULL DEFAULT 1')
+    if 'one_time' not in columns:
+        logger.info("Migrating schedules table - adding one_time column")
+        cursor.execute('ALTER TABLE schedules ADD COLUMN one_time INTEGER DEFAULT 0')
+    if 'run_at' not in columns:
+        logger.info("Migrating schedules table - adding run_at column")
+        cursor.execute('ALTER TABLE schedules ADD COLUMN run_at TIMESTAMP')
 
     # Migration: Add host_id column to existing logs if needed
     cursor.execute("PRAGMA table_info(logs)")
@@ -729,6 +739,7 @@ def restart_container(container_id, container_name, schedule_id=None, host_id=1)
         logger.info(message)
         log_action(schedule_id, container_name, 'restart', 'success', message, host_id)
         send_discord_notification(container_name, 'restart', 'success', message, schedule_id)
+        send_ntfy_notification(container_name, 'restart', 'success', message, schedule_id)
 
         # Update last_run in schedules
         if schedule_id:
@@ -747,6 +758,7 @@ def restart_container(container_id, container_name, schedule_id=None, host_id=1)
         logger.error(message)
         log_action(schedule_id, container_name, 'restart', 'error', message, host_id)
         send_discord_notification(container_name, 'restart', 'error', message, schedule_id)
+        send_ntfy_notification(container_name, 'restart', 'error', message, schedule_id)
         return False, message
 
 def start_container(container_id, container_name, schedule_id=None, host_id=1):
@@ -762,6 +774,7 @@ def start_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.info(message)
         log_action(schedule_id, container_name, 'start', 'success', message, host_id)
         send_discord_notification(container_name, 'start', 'success', message, schedule_id)
+        send_ntfy_notification(container_name, 'start', 'success', message, schedule_id)
 
         # Update last_run in schedules
         if schedule_id:
@@ -780,6 +793,7 @@ def start_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.error(message)
         log_action(schedule_id, container_name, 'start', 'error', message, host_id)
         send_discord_notification(container_name, 'start', 'error', message, schedule_id)
+        send_ntfy_notification(container_name, 'start', 'error', message, schedule_id)
         return False, message
 
 def stop_container(container_id, container_name, schedule_id=None, host_id=1):
@@ -795,6 +809,7 @@ def stop_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.info(message)
         log_action(schedule_id, container_name, 'stop', 'success', message, host_id)
         send_discord_notification(container_name, 'stop', 'success', message, schedule_id)
+        send_ntfy_notification(container_name, 'stop', 'success', message, schedule_id)
 
         # Update last_run in schedules
         if schedule_id:
@@ -813,6 +828,7 @@ def stop_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.error(message)
         log_action(schedule_id, container_name, 'stop', 'error', message, host_id)
         send_discord_notification(container_name, 'stop', 'error', message, schedule_id)
+        send_ntfy_notification(container_name, 'stop', 'error', message, schedule_id)
         return False, message
 
 def pause_container(container_id, container_name, schedule_id=None, host_id=1):
@@ -828,6 +844,7 @@ def pause_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.info(message)
         log_action(schedule_id, container_name, 'pause', 'success', message, host_id)
         send_discord_notification(container_name, 'pause', 'success', message, schedule_id)
+        send_ntfy_notification(container_name, 'pause', 'success', message, schedule_id)
 
         # Update last_run in schedules
         if schedule_id:
@@ -846,6 +863,7 @@ def pause_container(container_id, container_name, schedule_id=None, host_id=1):
         logger.error(message)
         log_action(schedule_id, container_name, 'pause', 'error', message, host_id)
         send_discord_notification(container_name, 'pause', 'error', message, schedule_id)
+        send_ntfy_notification(container_name, 'pause', 'error', message, schedule_id)
         return False, message
 
 def unpause_container(container_id, container_name, schedule_id=None, host_id=1):
@@ -861,6 +879,7 @@ def unpause_container(container_id, container_name, schedule_id=None, host_id=1)
         logger.info(message)
         log_action(schedule_id, container_name, 'unpause', 'success', message, host_id)
         send_discord_notification(container_name, 'unpause', 'success', message, schedule_id)
+        send_ntfy_notification(container_name, 'unpause', 'success', message, schedule_id)
 
         # Update last_run in schedules
         if schedule_id:
@@ -879,6 +898,7 @@ def unpause_container(container_id, container_name, schedule_id=None, host_id=1)
         logger.error(message)
         log_action(schedule_id, container_name, 'unpause', 'error', message, host_id)
         send_discord_notification(container_name, 'unpause', 'error', message, schedule_id)
+        send_ntfy_notification(container_name, 'unpause', 'error', message, schedule_id)
         return False, message
 
 def log_action(schedule_id, container_name, action, status, message, host_id=1):
@@ -965,56 +985,122 @@ def send_discord_notification(container_name, action, status, message, schedule_
     except Exception as e:
         logger.error(f"Failed to send Discord notification: {e}")
 
+def send_ntfy_notification(container_name, action, status, message, schedule_id=None):
+    """Send a ntfy.sh push notification"""
+    ntfy_enabled = get_setting('ntfy_enabled', 'false')
+    if ntfy_enabled != 'true':
+        return
+
+    ntfy_server = get_setting('ntfy_server', 'https://ntfy.sh')
+    ntfy_topic = get_setting('ntfy_topic')
+
+    if not ntfy_topic:
+        return
+
+    try:
+        import requests
+
+        if status == 'success':
+            emoji = 'white_check_mark'
+        else:
+            emoji = 'x'
+
+        title = f"Chrontainer: {action.capitalize()} {status.capitalize()}"
+        body = f"{container_name}: {message}"
+
+        url = f"{ntfy_server.rstrip('/')}/{ntfy_topic}"
+
+        response = requests.post(
+            url,
+            data=body.encode('utf-8'),
+            headers={
+                'Title': title,
+                'Priority': str(get_setting('ntfy_priority', '3')),
+                'Tags': emoji
+            },
+            timeout=10
+        )
+
+        if response.status_code not in [200, 204]:
+            logger.warning(f"ntfy notification returned status {response.status_code}")
+    except Exception as e:
+        logger.error(f"Failed to send ntfy notification: {e}")
+
 def load_schedules():
     """Load all enabled schedules from database and add to scheduler"""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, host_id, container_id, container_name, action, cron_expression FROM schedules WHERE enabled = 1')
+    cursor.execute('SELECT id, host_id, container_id, container_name, action, cron_expression, one_time, run_at FROM schedules WHERE enabled = 1')
     schedules = cursor.fetchall()
     conn.close()
 
     for schedule in schedules:
-        schedule_id, host_id, container_id, container_name, action, cron_expr = schedule
+        schedule_id, host_id, container_id, container_name, action, cron_expr, one_time, run_at = schedule
         try:
-            # Parse cron expression (minute hour day month day_of_week)
-            parts = cron_expr.split()
-            if len(parts) != 5:
-                logger.error(f"Invalid cron expression for schedule {schedule_id}: {cron_expr}")
-                continue
-
-            trigger = CronTrigger(
-                minute=parts[0],
-                hour=parts[1],
-                day=parts[2],
-                month=parts[3],
-                day_of_week=parts[4]
-            )
-
-            # Select the appropriate action function
-            if action == 'restart':
-                action_func = restart_container
-            elif action == 'start':
-                action_func = start_container
-            elif action == 'stop':
-                action_func = stop_container
-            elif action == 'pause':
-                action_func = pause_container
-            elif action == 'unpause':
-                action_func = unpause_container
-            elif action == 'update':
-                action_func = update_container
-            else:
+            action_map = {
+                'restart': restart_container,
+                'start': start_container,
+                'stop': stop_container,
+                'pause': pause_container,
+                'unpause': unpause_container,
+                'update': update_container
+            }
+            action_func = action_map.get(action)
+            if not action_func:
                 logger.error(f"Unknown action '{action}' for schedule {schedule_id}")
                 continue
 
-            scheduler.add_job(
-                action_func,
-                trigger,
-                args=[container_id, container_name, schedule_id, host_id],
-                id=f"schedule_{schedule_id}",
-                replace_existing=True
-            )
-            logger.info(f"Loaded schedule {schedule_id}: {container_name} - {action} - {cron_expr}")
+            if one_time and run_at:
+                from apscheduler.triggers.date import DateTrigger
+                run_at_dt = datetime.fromisoformat(run_at) if isinstance(run_at, str) else run_at
+
+                if run_at_dt <= datetime.now():
+                    logger.info(f"Skipping past one-time schedule {schedule_id}")
+                    continue
+
+                trigger = DateTrigger(run_date=run_at_dt)
+
+                def one_time_action(cid, cname, sid, hid, func=action_func):
+                    func(cid, cname, sid, hid)
+                    try:
+                        conn = get_db()
+                        cursor = conn.cursor()
+                        cursor.execute('DELETE FROM schedules WHERE id = ?', (sid,))
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Failed to delete one-time schedule {sid}: {e}")
+
+                scheduler.add_job(
+                    one_time_action,
+                    trigger,
+                    args=[container_id, container_name, schedule_id, host_id],
+                    id=f"schedule_{schedule_id}",
+                    replace_existing=True
+                )
+                logger.info(f"Loaded one-time schedule {schedule_id}: {container_name} at {run_at}")
+            else:
+                parts = cron_expr.split()
+                if len(parts) != 5:
+                    logger.error(f"Invalid cron expression for schedule {schedule_id}: {cron_expr}")
+                    continue
+
+                trigger = CronTrigger(
+                    minute=parts[0],
+                    hour=parts[1],
+                    day=parts[2],
+                    month=parts[3],
+                    day_of_week=parts[4]
+                )
+
+                scheduler.add_job(
+                    action_func,
+                    trigger,
+                    args=[container_id, container_name, schedule_id, host_id],
+                    id=f"schedule_{schedule_id}",
+                    replace_existing=True
+                )
+                logger.info(f"Loaded schedule {schedule_id}: {container_name} - {action} - {cron_expr}")
         except Exception as e:
             logger.error(f"Failed to load schedule {schedule_id}: {e}")
 
@@ -1146,7 +1232,7 @@ def index():
 
         # Get schedules with host info
         cursor.execute('''
-            SELECT s.id, s.container_name, s.action, s.cron_expression, s.enabled, s.last_run, h.name
+            SELECT s.id, s.container_name, s.action, s.cron_expression, s.enabled, s.last_run, h.name, s.one_time, s.run_at
             FROM schedules s
             LEFT JOIN hosts h ON s.host_id = h.id
         ''')
@@ -1454,6 +1540,112 @@ def api_get_container_logs(container_id):
         logger.error(f"Failed to get logs for container {container_id}: {e}")
         return jsonify({'error': 'Failed to retrieve container logs. Please try again.'}), 500
 
+@app.route('/api/container/<container_id>/stats', methods=['GET'])
+@login_required
+def api_get_container_stats(container_id):
+    """API endpoint to get container resource stats"""
+    host_id = request.args.get('host_id', 1, type=int)
+
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            return jsonify({'error': 'Cannot connect to Docker host'}), 500
+
+        container = docker_client.containers.get(container_id)
+
+        if container.status != 'running':
+            return jsonify({
+                'cpu_percent': None,
+                'memory_percent': None,
+                'memory_mb': None,
+                'status': container.status
+            })
+
+        stats = container.stats(stream=False)
+
+        cpu_percent = 0.0
+        try:
+            cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - stats['precpu_stats']['cpu_usage']['total_usage']
+            system_delta = stats['cpu_stats']['system_cpu_usage'] - stats['precpu_stats']['system_cpu_usage']
+            online_cpus = stats['cpu_stats'].get('online_cpus', 1)
+            if system_delta > 0:
+                cpu_percent = (cpu_delta / system_delta) * online_cpus * 100
+        except (KeyError, ZeroDivisionError):
+            cpu_percent = 0.0
+
+        memory_percent = 0.0
+        memory_mb = 0.0
+        try:
+            memory_usage = stats['memory_stats'].get('usage', 0)
+            memory_limit = stats['memory_stats'].get('limit', 1)
+            cache = stats['memory_stats'].get('stats', {}).get('cache', 0)
+            memory_usage = memory_usage - cache
+            memory_percent = (memory_usage / memory_limit) * 100
+            memory_mb = memory_usage / (1024 * 1024)
+        except (KeyError, ZeroDivisionError):
+            pass
+
+        return jsonify({
+            'cpu_percent': round(cpu_percent, 1),
+            'memory_percent': round(memory_percent, 1),
+            'memory_mb': round(memory_mb, 1),
+            'status': container.status
+        })
+
+    except docker.errors.NotFound:
+        return jsonify({'error': 'Container not found'}), 404
+    except Exception as e:
+        logger.error(f"Failed to get stats for container {container_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/containers/stats', methods=['GET'])
+@login_required
+def api_get_all_container_stats():
+    """API endpoint to get stats for all running containers"""
+    results = {}
+
+    for host_id, host_name, docker_client in docker_manager.get_all_clients():
+        try:
+            containers = docker_client.containers.list(all=False)
+            for container in containers:
+                container_id = container.id[:12]
+                try:
+                    stats = container.stats(stream=False)
+
+                    cpu_percent = 0.0
+                    try:
+                        cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - stats['precpu_stats']['cpu_usage']['total_usage']
+                        system_delta = stats['cpu_stats']['system_cpu_usage'] - stats['precpu_stats']['system_cpu_usage']
+                        online_cpus = stats['cpu_stats'].get('online_cpus', 1)
+                        if system_delta > 0:
+                            cpu_percent = (cpu_delta / system_delta) * online_cpus * 100
+                    except (KeyError, ZeroDivisionError):
+                        pass
+
+                    memory_percent = 0.0
+                    memory_mb = 0.0
+                    try:
+                        memory_usage = stats['memory_stats'].get('usage', 0)
+                        memory_limit = stats['memory_stats'].get('limit', 1)
+                        cache = stats['memory_stats'].get('stats', {}).get('cache', 0)
+                        memory_usage = memory_usage - cache
+                        memory_percent = (memory_usage / memory_limit) * 100
+                        memory_mb = memory_usage / (1024 * 1024)
+                    except (KeyError, ZeroDivisionError):
+                        pass
+
+                    results[f"{container_id}_{host_id}"] = {
+                        'cpu_percent': round(cpu_percent, 1),
+                        'memory_percent': round(memory_percent, 1),
+                        'memory_mb': round(memory_mb, 1)
+                    }
+                except Exception as e:
+                    logger.debug(f"Failed to get stats for {container.name}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to get containers from host {host_name}: {e}")
+
+    return jsonify(results)
+
 @app.route('/api/schedule', methods=['POST'])
 @login_required
 def add_schedule():
@@ -1464,6 +1656,8 @@ def add_schedule():
     action = sanitize_string(data.get('action', 'restart'), max_length=20)
     cron_expression = sanitize_string(data.get('cron_expression', ''), max_length=50)
     host_id = data.get('host_id', 1)
+    one_time = data.get('one_time', False)
+    run_at = data.get('run_at')
 
     # Validate container ID
     valid, error = validate_container_id(container_id)
@@ -1479,33 +1673,46 @@ def add_schedule():
     if action not in ['restart', 'start', 'stop', 'pause', 'unpause', 'update']:
         return jsonify({'error': 'Invalid action. Must be one of: restart, start, stop, pause, unpause, update'}), 400
 
-    # Validate cron expression
-    valid, error = validate_cron_expression(cron_expression)
-    if not valid:
-        return jsonify({'error': error}), 400
+    if one_time:
+        if not run_at:
+            return jsonify({'error': 'run_at is required for one-time schedules'}), 400
+        try:
+            run_at_dt = datetime.fromisoformat(run_at.replace('Z', '+00:00'))
+            if run_at_dt <= datetime.now(run_at_dt.tzinfo):
+                return jsonify({'error': 'run_at must be in the future'}), 400
+        except ValueError:
+            return jsonify({'error': 'Invalid run_at format. Use ISO format.'}), 400
+    else:
+        valid, error = validate_cron_expression(cron_expression)
+        if not valid:
+            return jsonify({'error': error}), 400
 
-    # Test cron expression parsing
-    try:
-        parts = cron_expression.split()
-        trigger = CronTrigger(
-            minute=parts[0],
-            hour=parts[1],
-            day=parts[2],
-            month=parts[3],
-            day_of_week=parts[4]
-        )
-    except ValueError as e:
-        return jsonify({'error': f'Invalid cron expression values. Please check your cron syntax. Common patterns: "0 2 * * *" (2 AM daily), "*/15 * * * *" (every 15 min)'}), 400
-    except Exception as e:
-        return jsonify({'error': 'Failed to parse cron expression. Please verify your syntax using a tool like crontab.guru'}), 400
+        try:
+            parts = cron_expression.split()
+            trigger = CronTrigger(
+                minute=parts[0],
+                hour=parts[1],
+                day=parts[2],
+                month=parts[3],
+                day_of_week=parts[4]
+            )
+        except ValueError:
+            return jsonify({'error': 'Invalid cron expression values. Please check your cron syntax. Common patterns: "0 2 * * *" (2 AM daily), "*/15 * * * *" (every 15 min)'}), 400
+        except Exception:
+            return jsonify({'error': 'Failed to parse cron expression. Please verify your syntax using a tool like crontab.guru'}), 400
 
     # Save to database
     try:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO schedules (host_id, container_id, container_name, action, cron_expression) VALUES (?, ?, ?, ?, ?)',
-            (host_id, container_id, container_name, action, cron_expression)
+            '''INSERT INTO schedules
+               (host_id, container_id, container_name, action, cron_expression, one_time, run_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (host_id, container_id, container_name, action,
+             cron_expression if not one_time else '',
+             1 if one_time else 0,
+             run_at if one_time else None)
         )
         schedule_id = cursor.lastrowid
         conn.commit()
@@ -1524,15 +1731,39 @@ def add_schedule():
         if not action_func:
             return jsonify({'error': f'Invalid action: {action}'}), 400
 
-        scheduler.add_job(
-            action_func,
-            trigger,
-            args=[container_id, container_name, schedule_id, host_id],
-            id=f"schedule_{schedule_id}",
-            replace_existing=True
-        )
+        if one_time:
+            from apscheduler.triggers.date import DateTrigger
+            trigger = DateTrigger(run_date=run_at_dt)
 
-        logger.info(f"Added schedule {schedule_id}: {container_name} - {action} - {cron_expression}")
+            def one_time_action(cid, cname, sid, hid, func=action_func):
+                func(cid, cname, sid, hid)
+                try:
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM schedules WHERE id = ?', (sid,))
+                    conn.commit()
+                    conn.close()
+                    logger.info(f"One-time schedule {sid} executed and deleted")
+                except Exception as e:
+                    logger.error(f"Failed to delete one-time schedule {sid}: {e}")
+
+            scheduler.add_job(
+                one_time_action,
+                trigger,
+                args=[container_id, container_name, schedule_id, host_id],
+                id=f"schedule_{schedule_id}",
+                replace_existing=True
+            )
+        else:
+            scheduler.add_job(
+                action_func,
+                trigger,
+                args=[container_id, container_name, schedule_id, host_id],
+                id=f"schedule_{schedule_id}",
+                replace_existing=True
+            )
+
+        logger.info(f"Added {'one-time' if one_time else 'recurring'} schedule {schedule_id}")
         return jsonify({'success': True, 'schedule_id': schedule_id})
     except Exception as e:
         logger.error(f"Failed to add schedule: {e}")
@@ -1567,13 +1798,13 @@ def toggle_schedule(schedule_id):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT enabled, host_id, container_id, container_name, cron_expression FROM schedules WHERE id = ?', (schedule_id,))
+        cursor.execute('SELECT enabled, host_id, container_id, container_name, action, cron_expression, one_time, run_at FROM schedules WHERE id = ?', (schedule_id,))
         result = cursor.fetchone()
 
         if not result:
             return jsonify({'error': 'Schedule not found'}), 404
 
-        enabled, host_id, container_id, container_name, cron_expression = result
+        enabled, host_id, container_id, container_name, action, cron_expression, one_time, run_at = result
         new_enabled = 0 if enabled else 1
 
         cursor.execute('UPDATE schedules SET enabled = ? WHERE id = ?', (new_enabled, schedule_id))
@@ -1582,21 +1813,61 @@ def toggle_schedule(schedule_id):
 
         # Update scheduler
         if new_enabled:
-            parts = cron_expression.split()
-            trigger = CronTrigger(
-                minute=parts[0],
-                hour=parts[1],
-                day=parts[2],
-                month=parts[3],
-                day_of_week=parts[4]
-            )
-            scheduler.add_job(
-                restart_container,
-                trigger,
-                args=[container_id, container_name, schedule_id, host_id],
-                id=f"schedule_{schedule_id}",
-                replace_existing=True
-            )
+            action_map = {
+                'restart': restart_container,
+                'start': start_container,
+                'stop': stop_container,
+                'pause': pause_container,
+                'unpause': unpause_container,
+                'update': update_container
+            }
+            action_func = action_map.get(action)
+            if not action_func:
+                return jsonify({'error': f'Invalid action: {action}'}), 400
+
+            if one_time and run_at:
+                from apscheduler.triggers.date import DateTrigger
+                run_at_dt = datetime.fromisoformat(run_at) if isinstance(run_at, str) else run_at
+
+                if run_at_dt <= datetime.now():
+                    return jsonify({'error': 'run_at must be in the future'}), 400
+
+                trigger = DateTrigger(run_date=run_at_dt)
+
+                def one_time_action(cid, cname, sid, hid, func=action_func):
+                    func(cid, cname, sid, hid)
+                    try:
+                        conn = get_db()
+                        cursor = conn.cursor()
+                        cursor.execute('DELETE FROM schedules WHERE id = ?', (sid,))
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Failed to delete one-time schedule {sid}: {e}")
+
+                scheduler.add_job(
+                    one_time_action,
+                    trigger,
+                    args=[container_id, container_name, schedule_id, host_id],
+                    id=f"schedule_{schedule_id}",
+                    replace_existing=True
+                )
+            else:
+                parts = cron_expression.split()
+                trigger = CronTrigger(
+                    minute=parts[0],
+                    hour=parts[1],
+                    day=parts[2],
+                    month=parts[3],
+                    day_of_week=parts[4]
+                )
+                scheduler.add_job(
+                    action_func,
+                    trigger,
+                    args=[container_id, container_name, schedule_id, host_id],
+                    id=f"schedule_{schedule_id}",
+                    replace_existing=True
+                )
         else:
             try:
                 scheduler.remove_job(f"schedule_{schedule_id}")
@@ -1614,7 +1885,11 @@ def get_settings():
     try:
         webhook_url = get_setting('discord_webhook_url', '')
         return jsonify({
-            'discord_webhook_url': webhook_url
+            'discord_webhook_url': webhook_url,
+            'ntfy_enabled': get_setting('ntfy_enabled', 'false'),
+            'ntfy_server': get_setting('ntfy_server', 'https://ntfy.sh'),
+            'ntfy_topic': get_setting('ntfy_topic', ''),
+            'ntfy_priority': get_setting('ntfy_priority', '3')
         })
     except Exception as e:
         logger.error(f"Failed to get settings: {e}")
@@ -1639,6 +1914,70 @@ def update_discord_settings():
     except Exception as e:
         logger.error(f"Failed to update Discord settings: {e}")
         return jsonify({'error': 'Failed to save Discord webhook settings. Please try again.'}), 500
+
+@app.route('/api/settings/ntfy', methods=['POST'])
+@login_required
+def update_ntfy_settings():
+    """Update ntfy notification settings"""
+    try:
+        data = request.json
+
+        ntfy_enabled = data.get('enabled', False)
+        ntfy_server = sanitize_string(data.get('server', 'https://ntfy.sh'), max_length=500).strip()
+        ntfy_topic = sanitize_string(data.get('topic', ''), max_length=100).strip()
+        ntfy_priority = data.get('priority', 3)
+
+        if ntfy_enabled and not ntfy_topic:
+            return jsonify({'error': 'Topic is required when ntfy is enabled'}), 400
+
+        if not isinstance(ntfy_priority, int) or ntfy_priority < 1 or ntfy_priority > 5:
+            return jsonify({'error': 'Priority must be 1-5'}), 400
+
+        if ntfy_server and not ntfy_server.startswith('http'):
+            return jsonify({'error': 'Server must be a valid URL'}), 400
+
+        set_setting('ntfy_enabled', 'true' if ntfy_enabled else 'false')
+        set_setting('ntfy_server', ntfy_server)
+        set_setting('ntfy_topic', ntfy_topic)
+        set_setting('ntfy_priority', str(ntfy_priority))
+
+        logger.info("ntfy settings updated")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Failed to update ntfy settings: {e}")
+        return jsonify({'error': 'Failed to save settings'}), 500
+
+@app.route('/api/settings/ntfy/test', methods=['POST'])
+@login_required
+def test_ntfy():
+    """Test ntfy notification"""
+    try:
+        ntfy_server = get_setting('ntfy_server', 'https://ntfy.sh')
+        ntfy_topic = get_setting('ntfy_topic')
+
+        if not ntfy_topic:
+            return jsonify({'error': 'ntfy topic not configured'}), 400
+
+        import requests
+        url = f"{ntfy_server.rstrip('/')}/{ntfy_topic}"
+
+        response = requests.post(
+            url,
+            data="This is a test notification from Chrontainer!".encode('utf-8'),
+            headers={
+                'Title': 'Chrontainer Test',
+                'Priority': '3',
+                'Tags': 'bell'
+            },
+            timeout=10
+        )
+
+        if response.status_code in [200, 204]:
+            return jsonify({'success': True, 'message': 'Test notification sent'})
+        return jsonify({'error': f'Server returned status {response.status_code}'}), 400
+    except Exception as e:
+        logger.error(f"Failed to test ntfy: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/settings/discord/test', methods=['POST'])
 def test_discord_webhook():

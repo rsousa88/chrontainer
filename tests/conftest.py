@@ -27,6 +27,7 @@ def app():
     flask_app.config.update({
         'TESTING': True,
         'WTF_CSRF_ENABLED': False,
+        'RATELIMIT_ENABLED': False,
     })
 
     # Initialize the test database
@@ -48,11 +49,10 @@ def client(app):
 @pytest.fixture
 def authenticated_client(app, client):
     """Create an authenticated test client"""
-    # Login with default admin credentials
-    response = client.post('/login', data={
-        'username': 'admin',
-        'password': 'admin'
-    }, follow_redirects=True)
+    # Force-login default admin user without hitting rate limits
+    with client.session_transaction() as sess:
+        sess['_user_id'] = '1'
+        sess['_fresh'] = True
     return client
 
 

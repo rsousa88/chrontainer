@@ -238,6 +238,20 @@
             margin-left: 4px;
         }
 
+        .cpu-value, .memory-value {
+            font-family: monospace;
+            font-size: 0.85em;
+        }
+
+        .cpu-value.high, .memory-value.high {
+            color: var(--danger-color, #e74c3c);
+            font-weight: 600;
+        }
+
+        .cpu-value.medium, .memory-value.medium {
+            color: var(--warning-color, #f39c12);
+        }
+
         .status-stack {
             display: inline-flex;
             align-items: center;
@@ -283,6 +297,14 @@
             font-weight: 600;
             color: #2c3e50;
             font-size: 14px;
+        }
+
+        .schedule-type-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: #2c3e50;
         }
         
         .form-group input,
@@ -860,6 +882,8 @@
                         <th>Tags</th>
                         <th onclick="sortTable('ip')" style="cursor: pointer;">IP Address <span id="sort-ip"></span></th>
                         <th onclick="sortTable('status')" style="cursor: pointer;">Status <span id="sort-status"></span></th>
+                        <th onclick="sortTable('cpu')" style="cursor: pointer; width: 70px;">CPU <span id="sort-cpu"></span></th>
+                        <th onclick="sortTable('memory')" style="cursor: pointer; width: 80px;">Memory <span id="sort-memory"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
                         <th>Version</th>
                         <th>Quick Actions</th>
@@ -867,7 +891,7 @@
                 </thead>
                 <tbody>
                     {% for container in containers %}
-                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-health="{{ container.health or '' }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image_display }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}">
+                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-health="{{ container.health or '' }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image_display }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}" data-cpu="0" data-memory="0">
                         <td>
                             <input type="checkbox" class="container-select" data-id="{{ container.id }}" data-name="{{ container.name }}" data-host-id="{{ container.host_id }}" data-status="{{ container.status }}" onchange="updateSelectionState()">
                         </td>
@@ -903,6 +927,12 @@
                                 <span class="tooltip-text">{{ container.health }}</span>
                             </span>
                             {% endif %}
+                        </td>
+                        <td class="stats-cell" data-container-id="{{ container.id }}" data-host-id="{{ container.host_id }}">
+                            <span class="cpu-value">-</span>
+                        </td>
+                        <td class="stats-cell" data-container-id="{{ container.id }}" data-host-id="{{ container.host_id }}">
+                            <span class="memory-value">-</span>
                         </td>
                         <td>
                             <div style="display: flex; align-items: center; gap: 6px;">
@@ -1039,7 +1069,13 @@
                     <tr>
                         <td><strong>{{ schedule[1] }}</strong></td>
                         <td>{{ schedule[2] }}</td>
-                        <td><code>{{ schedule[3] }}</code></td>
+                        <td>
+                            {% if schedule[7] %}
+                                <span style="background:#e8f4f8;padding:4px 8px;border-radius:12px;font-size:12px;color:#2c3e50;">One-time: {{ schedule[8] }}</span>
+                            {% else %}
+                                <code>{{ schedule[3] }}</code>
+                            {% endif %}
+                        </td>
                         <td>{{ schedule[5] if schedule[5] else 'Never' }}</td>
                         <td>
                             <label class="toggle-switch">
@@ -1048,10 +1084,12 @@
                             </label>
                         </td>
                         <td>
+                            {% if not schedule[7] %}
                             <span class="tooltip-container" style="margin-right: 5px;">
                                 <button class="btn btn-secondary btn-small" onclick="copySchedule('{{ schedule[3] }}')">📋 Copy</button>
                                 <span class="tooltip-text">Copy cron expression to clipboard</span>
                             </span>
+                            {% endif %}
                             <button class="btn btn-danger btn-small" onclick="deleteSchedule({{ schedule[0] }})">Delete</button>
                         </td>
                     </tr>
@@ -1095,10 +1133,24 @@
                         <option value="update">Update (pull latest image)</option>
                     </select>
                 </div>
-                
+
                 <div class="form-group">
-                    <label>Cron Expression:</label>
-                    <input type="text" id="cronExpression" name="cron_expression" placeholder="0 2 * * *" required>
+                    <label>Schedule Type:</label>
+                    <div class="schedule-type-toggle">
+                        <label>
+                            <input type="radio" name="scheduleType" value="recurring" checked onchange="toggleScheduleType()">
+                            Recurring (Cron)
+                        </label>
+                        <label style="margin-left: 12px;">
+                            <input type="radio" name="scheduleType" value="one_time" onchange="toggleScheduleType()">
+                            One-Time
+                        </label>
+                    </div>
+                </div>
+                
+                <div id="cronInputGroup" class="form-group">
+                    <label for="scheduleInput">Cron Expression:</label>
+                    <input type="text" id="scheduleInput" name="cron_expression" placeholder="0 2 * * *" required>
                     <div class="cron-helper">
                         <strong>Format:</strong> minute hour day month day_of_week<br>
                         <strong>Examples:</strong><br>
@@ -1107,6 +1159,11 @@
                         • <code>0 0 * * 0</code> - Weekly on Sunday at midnight<br>
                         • <code>*/30 * * * *</code> - Every 30 minutes
                     </div>
+                </div>
+
+                <div id="dateTimeInputGroup" class="form-group" style="display: none;">
+                    <label for="runAtInput">Run At:</label>
+                    <input type="datetime-local" id="runAtInput">
                 </div>
                 
                 <button type="submit" class="btn btn-success">Create Schedule</button>
@@ -1286,6 +1343,11 @@
                 document.body.classList.add('dark-mode');
                 updateDarkModeButton(true);
             }
+
+            if (document.querySelectorAll('.stats-cell').length > 0) {
+                fetchContainerStats();
+                setInterval(fetchContainerStats, 10000);
+            }
         });
 
         function showAlert(message, type) {
@@ -1299,30 +1361,103 @@
                 alert.remove();
             }, 5000);
         }
-        
+
+        function updateStatClass(element, baseClass, percent) {
+            if (!element) return;
+            let className = baseClass;
+            if (percent > 80) {
+                className += ' high';
+            } else if (percent > 50) {
+                className += ' medium';
+            }
+            element.className = className;
+        }
+
+        function fetchContainerStats() {
+            fetch('/api/containers/stats', {
+                headers: { 'X-CSRFToken': getCsrfToken() }
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.querySelectorAll('.stats-cell').forEach(cell => {
+                    const containerId = cell.dataset.containerId;
+                    const hostId = cell.dataset.hostId;
+                    const key = `${containerId}_${hostId}`;
+                    const stats = data[key];
+                    const row = cell.closest('tr');
+
+                    if (cell.querySelector('.cpu-value')) {
+                        if (stats && stats.cpu_percent !== null) {
+                            cell.querySelector('.cpu-value').textContent = `${stats.cpu_percent}%`;
+                            updateStatClass(cell.querySelector('.cpu-value'), 'cpu-value', stats.cpu_percent);
+                            if (row) row.dataset.cpu = stats.cpu_percent;
+                        } else {
+                            cell.querySelector('.cpu-value').textContent = '-';
+                            updateStatClass(cell.querySelector('.cpu-value'), 'cpu-value', 0);
+                            if (row) row.dataset.cpu = 0;
+                        }
+                    }
+
+                    if (cell.querySelector('.memory-value')) {
+                        if (stats && stats.memory_mb !== null) {
+                            const memValue = stats.memory_mb;
+                            const memStr = memValue > 1024
+                                ? `${(memValue / 1024).toFixed(1)} GB`
+                                : `${memValue.toFixed(0)} MB`;
+                            cell.querySelector('.memory-value').textContent = memStr;
+                            updateStatClass(cell.querySelector('.memory-value'), 'memory-value', stats.memory_percent);
+                            if (row) row.dataset.memory = memValue;
+                        } else {
+                            cell.querySelector('.memory-value').textContent = '-';
+                            updateStatClass(cell.querySelector('.memory-value'), 'memory-value', 0);
+                            if (row) row.dataset.memory = 0;
+                        }
+                    }
+                });
+            })
+            .catch(err => console.error('Failed to fetch stats:', err));
+        }
+
+        function toggleScheduleType() {
+            const isOneTime = document.querySelector('input[name="scheduleType"]:checked').value === 'one_time';
+            document.getElementById('cronInputGroup').style.display = isOneTime ? 'none' : 'block';
+            document.getElementById('dateTimeInputGroup').style.display = isOneTime ? 'block' : 'none';
+            document.getElementById('scheduleInput').required = !isOneTime;
+            document.getElementById('runAtInput').required = isOneTime;
+        }
+
         function openScheduleModal(containerId, containerName, hostId) {
             document.getElementById('containerId').value = containerId;
             document.getElementById('containerName').value = containerName;
             document.getElementById('hostId').value = hostId;
             document.getElementById('displayContainerName').value = containerName;
             document.getElementById('scheduleModal').style.display = 'block';
+            toggleScheduleType();
         }
 
         function closeScheduleModal() {
             document.getElementById('scheduleModal').style.display = 'none';
             document.getElementById('scheduleForm').reset();
+            toggleScheduleType();
         }
 
         document.getElementById('scheduleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            const isOneTime = document.querySelector('input[name="scheduleType"]:checked').value === 'one_time';
             const formData = {
                 container_id: document.getElementById('containerId').value,
                 container_name: document.getElementById('containerName').value,
                 host_id: parseInt(document.getElementById('hostId').value),
                 action: e.target.action.value,
-                cron_expression: e.target.cron_expression.value
+                one_time: isOneTime
             };
+
+            if (isOneTime) {
+                formData.run_at = document.getElementById('runAtInput').value;
+            } else {
+                formData.cron_expression = document.getElementById('scheduleInput').value;
+            }
             
             try {
                 const response = await fetch('/api/schedule', {

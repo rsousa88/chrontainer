@@ -249,6 +249,7 @@
         <div class="card">
             <div class="tabs">
                 <button class="tab active" onclick="showTab('discord')">Discord</button>
+                <button class="tab" onclick="showTab('ntfy')">ntfy.sh</button>
                 <button class="tab" onclick="showTab('hosts')">Docker Hosts</button>
                 <button class="tab" onclick="showTab('account')">Account</button>
             </div>
@@ -276,6 +277,50 @@
                         <li>Click <strong>Copy Webhook URL</strong></li>
                         <li>Paste the URL in the field above</li>
                     </ol>
+                </div>
+            </div>
+
+            <!-- ntfy Tab -->
+            <div id="ntfy-tab" class="tab-content">
+                <h2>ntfy.sh Notifications</h2>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="ntfyEnabled" onchange="toggleNtfyFields()">
+                        Enable ntfy notifications
+                    </label>
+                </div>
+                <div id="ntfyFields" style="display: none;">
+                    <div class="form-group">
+                        <label for="ntfyServer">Server URL</label>
+                        <input type="url" id="ntfyServer" value="https://ntfy.sh" placeholder="https://ntfy.sh">
+                        <small>Leave default for public server, or enter your self-hosted URL</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="ntfyTopic">Topic *</label>
+                        <input type="text" id="ntfyTopic" placeholder="my-chrontainer-alerts" required>
+                        <small>Choose a unique topic name. Anyone with this name can subscribe.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="ntfyPriority">Default Priority</label>
+                        <select id="ntfyPriority">
+                            <option value="1">1 - Min</option>
+                            <option value="2">2 - Low</option>
+                            <option value="3" selected>3 - Default</option>
+                            <option value="4">4 - High</option>
+                            <option value="5">5 - Max (urgent)</option>
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button type="button" class="btn btn-primary" onclick="saveNtfySettings()">Save</button>
+                        <button type="button" class="btn btn-secondary" onclick="testNtfy()">Test Notification</button>
+                    </div>
+                </div>
+                <div class="info-box">
+                    <h3>About ntfy.sh</h3>
+                    <p>
+                        <a href="https://ntfy.sh" target="_blank">ntfy.sh</a> is a simple pub-sub notification service.
+                        You can use the free public server or self-host your own.
+                    </p>
                 </div>
             </div>
 
@@ -374,6 +419,7 @@
 
             // Load hosts when switching to that tab
             if (tabName === 'hosts') loadHosts();
+            if (tabName === 'ntfy') loadNtfySettings();
 
             // Update URL hash
             window.location.hash = tabName;
@@ -382,7 +428,7 @@
         // Check URL hash on page load
         window.addEventListener('load', () => {
             const hash = window.location.hash.replace('#', '');
-            if (['discord', 'hosts', 'account'].includes(hash)) {
+            if (['discord', 'ntfy', 'hosts', 'account'].includes(hash)) {
                 showTab(hash);
             }
         });
@@ -432,6 +478,67 @@
             } finally {
                 testBtn.disabled = false;
                 testBtn.textContent = 'Send Test Notification';
+            }
+        }
+
+        function toggleNtfyFields() {
+            const enabled = document.getElementById('ntfyEnabled').checked;
+            document.getElementById('ntfyFields').style.display = enabled ? 'block' : 'none';
+        }
+
+        async function saveNtfySettings() {
+            const payload = {
+                enabled: document.getElementById('ntfyEnabled').checked,
+                server: document.getElementById('ntfyServer').value.trim(),
+                topic: document.getElementById('ntfyTopic').value.trim(),
+                priority: parseInt(document.getElementById('ntfyPriority').value, 10)
+            };
+
+            try {
+                const response = await fetch('/api/settings/ntfy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showAlert('ntfy settings saved successfully!', 'success');
+                } else {
+                    showAlert(data.error || 'Failed to save ntfy settings', 'error');
+                }
+            } catch (error) {
+                showAlert('Error saving ntfy settings: ' + error.message, 'error');
+            }
+        }
+
+        async function testNtfy() {
+            try {
+                const response = await fetch('/api/settings/ntfy/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    showAlert(data.message || 'Test notification sent!', 'success');
+                } else {
+                    showAlert(data.error || 'Test notification failed', 'error');
+                }
+            } catch (error) {
+                showAlert('Error sending test: ' + error.message, 'error');
+            }
+        }
+
+        async function loadNtfySettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+                document.getElementById('ntfyEnabled').checked = data.ntfy_enabled === 'true';
+                document.getElementById('ntfyServer').value = data.ntfy_server || 'https://ntfy.sh';
+                document.getElementById('ntfyTopic').value = data.ntfy_topic || '';
+                document.getElementById('ntfyPriority').value = data.ntfy_priority || '3';
+                toggleNtfyFields();
+            } catch (error) {
+                showAlert('Error loading ntfy settings: ' + error.message, 'error');
             }
         }
 

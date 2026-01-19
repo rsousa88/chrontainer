@@ -1072,37 +1072,37 @@ def get_settings():
 ## Summary Checklist for Developer
 
 ### Feature 1: Container Resource Monitoring
-- [ ] Add `/api/container/<id>/stats` endpoint
-- [ ] Add `/api/containers/stats` bulk endpoint
-- [ ] Add CPU/Memory columns to container table
-- [ ] Add JavaScript for periodic stats fetching (10s interval)
-- [ ] Add CSS for high/medium usage highlighting
-- [ ] Add tests in `tests/test_stats.py`
-- [ ] Run all existing tests to ensure no regressions
+- [x] Add `/api/container/<id>/stats` endpoint
+- [x] Add `/api/containers/stats` bulk endpoint
+- [x] Add CPU/Memory columns to container table
+- [x] Add JavaScript for periodic stats fetching (10s interval)
+- [x] Add CSS for high/medium usage highlighting
+- [x] Add tests in `tests/test_stats.py`
+- [x] Run all existing tests to ensure no regressions
 
 ### Feature 2: One-Time Schedules
-- [ ] Create Alembic migration `002_add_one_time_schedules.py`
-- [ ] Update `init_db()` with inline migration
-- [ ] Modify `add_schedule()` to handle one-time schedules
-- [ ] Modify `load_schedules()` to load one-time schedules
-- [ ] Add DateTrigger import from APScheduler
-- [ ] Update schedule modal with type toggle
-- [ ] Update schedule display to show one-time vs cron
-- [ ] Add tests in `tests/test_schedules.py`
+- [x] Create Alembic migration `002_add_one_time_schedules.py`
+- [x] Update `init_db()` with inline migration
+- [x] Modify `add_schedule()` to handle one-time schedules
+- [x] Modify `load_schedules()` to load one-time schedules
+- [x] Add DateTrigger import from APScheduler
+- [x] Update schedule modal with type toggle
+- [x] Update schedule display to show one-time vs cron
+- [x] Add tests in `tests/test_schedules.py`
 
 ### Feature 3: ntfy.sh Notifications
-- [ ] Add `send_ntfy_notification()` function
-- [ ] Call ntfy in all 6 action functions (restart, start, stop, pause, unpause, update)
-- [ ] Add `/api/settings/ntfy` POST endpoint
-- [ ] Add `/api/settings/ntfy/test` POST endpoint
-- [ ] Update `/api/settings` GET to include ntfy settings
-- [ ] Add ntfy tab to settings page
-- [ ] Add JavaScript for ntfy settings
+- [x] Add `send_ntfy_notification()` function
+- [x] Call ntfy in all 6 action functions (restart, start, stop, pause, unpause, update)
+- [x] Add `/api/settings/ntfy` POST endpoint
+- [x] Add `/api/settings/ntfy/test` POST endpoint
+- [x] Update `/api/settings` GET to include ntfy settings
+- [x] Add ntfy tab to settings page
+- [x] Add JavaScript for ntfy settings
 - [ ] Test with actual ntfy.sh server
 
 ### Final Steps
-- [ ] Run `pytest tests/ -v` - all tests must pass
-- [ ] Update ROADMAP.md to mark features complete
+- [x] Run `pytest tests/ -v` - all tests must pass
+- [x] Update ROADMAP.md to mark features complete
 - [ ] Update TRACKING_LOG.md with commit hashes
 - [ ] Commit with descriptive message
 - [ ] Push to GitHub (will trigger CI and release)

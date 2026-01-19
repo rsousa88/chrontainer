@@ -262,7 +262,7 @@ Estimated resource usage on Raspberry Pi 5:
 5. **Database & DevOps**
    - ✅ Alembic migrations
    - Backup/restore schedules
-   - ✅ pytest test suite (22 tests)
+   - ✅ pytest test suite (31 tests)
    - ✅ CI/CD pipeline (GitHub Actions)
 
 ## Performance Optimization
