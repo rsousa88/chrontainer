@@ -86,6 +86,7 @@ NON_VERSION_TAGS = {
     'latest', 'stable', 'edge', 'nightly', 'main', 'master', 'dev', 'develop'
 }
 VERSION_TAG_RE = re.compile(r'^v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*$')
+VERSION_IN_TEXT_RE = re.compile(r'v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*')
 
 def strip_image_tag(image_name):
     """Return image name without tag or digest for display."""
@@ -108,7 +109,9 @@ def get_image_version(container, image_name):
     """Best-effort version from image labels, falling back to version-like tags."""
     labels = {}
     try:
-        labels = container.image.attrs.get('Config', {}).get('Labels', {}) or {}
+        image_labels = container.image.attrs.get('Config', {}).get('Labels', {}) or {}
+        container_labels = container.attrs.get('Config', {}).get('Labels', {}) or {}
+        labels = {**container_labels, **image_labels}
     except Exception:
         labels = {}
 
@@ -117,12 +120,23 @@ def get_image_version(container, image_name):
         if value:
             return value.strip(), 'label'
 
+    ref_name = labels.get('org.opencontainers.image.ref.name', '')
+    if ref_name:
+        match = VERSION_IN_TEXT_RE.search(ref_name)
+        if match:
+            return match.group(0), 'label'
+
     tag = None
     if image_name and ':' in image_name:
         tag = image_name.rsplit(':', 1)[1].strip()
 
     if tag and tag.lower() not in NON_VERSION_TAGS and VERSION_TAG_RE.match(tag):
         return tag, 'tag'
+
+    if tag and tag.lower() not in NON_VERSION_TAGS:
+        match = VERSION_IN_TEXT_RE.search(tag)
+        if match:
+            return match.group(0), 'tag'
 
     return 'unknown', 'unknown'
 
