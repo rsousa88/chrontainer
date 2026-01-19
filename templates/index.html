@@ -442,7 +442,8 @@
                 <a href="/logs">Logs</a>
                 <a href="/settings">Settings</a>
                 <a href="/hosts">Hosts</a>
-                <button id="darkModeToggle" onclick="toggleDarkMode()" style="background: none; border: 1px solid #3498db; color: #3498db; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 10px;">🌙 Dark</button>
+                <button onclick="showKeyboardShortcuts()" style="background: none; border: 1px solid #3498db; color: #3498db; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 10px;" title="Keyboard Shortcuts (?)">⌨️</button>
+                <button id="darkModeToggle" onclick="toggleDarkMode()" style="background: none; border: 1px solid #3498db; color: #3498db; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 4px;">🌙 Dark</button>
             </div>
         </div>
     </header>
@@ -594,6 +595,7 @@
                             </label>
                         </td>
                         <td>
+                            <button class="btn btn-secondary btn-small" onclick="copySchedule('{{ schedule[3] }}')" title="Copy cron expression to clipboard" style="margin-right: 5px;">📋 Copy</button>
                             <button class="btn btn-danger btn-small" onclick="deleteSchedule({{ schedule[0] }})">Delete</button>
                         </td>
                     </tr>
@@ -748,6 +750,51 @@
             <div style="margin-top: 20px;">
                 <button class="btn btn-primary" onclick="saveWebUIUrl()">Save</button>
                 <button class="btn btn-secondary" onclick="closeWebUIModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="keyboardShortcutsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeKeyboardShortcuts()">&times;</span>
+                <h3>⌨️ Keyboard Shortcuts</h3>
+            </div>
+            <div style="margin-top: 20px;">
+                <table style="width: 100%;">
+                    <tr>
+                        <td style="padding: 8px; font-weight: 500;"><kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">?</kbd></td>
+                        <td style="padding: 8px;">Show keyboard shortcuts</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: 500;"><kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">r</kbd></td>
+                        <td style="padding: 8px;">Refresh page</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: 500;"><kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">f</kbd> or <kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">/</kbd></td>
+                        <td style="padding: 8px;">Focus search filter</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: 500;"><kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">m</kbd></td>
+                        <td style="padding: 8px;">Toggle dark mode</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: 500;"><kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">t</kbd></td>
+                        <td style="padding: 8px;">Open Manage Tags</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: 500;"><kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">c</kbd></td>
+                        <td style="padding: 8px;">Clear all filters</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; font-weight: 500;"><kbd style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; font-family: monospace;">Esc</kbd></td>
+                        <td style="padding: 8px;">Close modals</td>
+                    </tr>
+                </table>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeKeyboardShortcuts()">Close</button>
             </div>
         </div>
     </div>
@@ -1038,14 +1085,23 @@
                 const response = await fetch(`/api/schedule/${scheduleId}/toggle`, {
                     method: 'POST'
                 });
-                
+
                 const result = await response.json();
                 showAlert(`Schedule ${result.enabled ? 'enabled' : 'disabled'}!`, 'success');
             } catch (error) {
                 showAlert('Error: ' + error.message, 'error');
             }
         }
-        
+
+        async function copySchedule(cronExpression) {
+            try {
+                await navigator.clipboard.writeText(cronExpression);
+                showAlert('Cron expression copied to clipboard!', 'success');
+            } catch (error) {
+                showAlert('Failed to copy to clipboard: ' + error.message, 'error');
+            }
+        }
+
         // Close modal when clicking outside
         window.onclick = function(event) {
             const modal = document.getElementById('scheduleModal');
@@ -1439,6 +1495,73 @@
                 tagSelect.appendChild(option);
             });
         }
+
+        // Keyboard Shortcuts
+        function showKeyboardShortcuts() {
+            const modal = document.getElementById('keyboardShortcutsModal');
+            if (modal) {
+                modal.style.display = 'block';
+            }
+        }
+
+        function closeKeyboardShortcuts() {
+            const modal = document.getElementById('keyboardShortcutsModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            // Don't trigger shortcuts when typing in input fields
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+                // Allow Escape to close modals even in input fields
+                if (e.key === 'Escape') {
+                    closeScheduleModal();
+                    closeLogsModal();
+                    closeManageTagsModal();
+                    closeTagModal();
+                    closeWebUIModal();
+                    closeKeyboardShortcuts();
+                }
+                return;
+            }
+
+            switch(e.key) {
+                case '?':
+                    e.preventDefault();
+                    showKeyboardShortcuts();
+                    break;
+                case 'r':
+                    e.preventDefault();
+                    location.reload();
+                    break;
+                case 'f':
+                case '/':
+                    e.preventDefault();
+                    document.getElementById('filterName').focus();
+                    break;
+                case 'm':
+                    e.preventDefault();
+                    toggleDarkMode();
+                    break;
+                case 't':
+                    e.preventDefault();
+                    openManageTagsModal();
+                    break;
+                case 'c':
+                    e.preventDefault();
+                    clearFilters();
+                    break;
+                case 'Escape':
+                    closeScheduleModal();
+                    closeLogsModal();
+                    closeManageTagsModal();
+                    closeTagModal();
+                    closeWebUIModal();
+                    closeKeyboardShortcuts();
+                    break;
+            }
+        });
 
         // Initialize filters on page load
         document.addEventListener('DOMContentLoaded', function() {
