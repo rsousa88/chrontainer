@@ -983,6 +983,44 @@ def get_db():
     """Get database connection"""
     return sqlite3.connect(DATABASE_PATH)
 
+def resolve_container(docker_client, container_id, container_name=None):
+    try:
+        return docker_client.containers.get(container_id), False
+    except docker.errors.NotFound:
+        pass
+    except Exception:
+        pass
+
+    if not container_name:
+        return None, False
+
+    try:
+        matches = docker_client.containers.list(all=True, filters={'name': container_name}) or []
+        for candidate in matches:
+            if candidate.name == container_name:
+                return candidate, True
+        if len(matches) == 1:
+            return matches[0], True
+    except Exception:
+        pass
+
+    return None, False
+
+def update_schedule_container_id(schedule_id, container_id):
+    if not schedule_id or not container_id:
+        return
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            'UPDATE schedules SET container_id = ? WHERE id = ?',
+            (container_id, schedule_id)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
 def restart_container(container_id, container_name, schedule_id=None, host_id=1):
     """Restart a Docker container"""
     try:
@@ -990,8 +1028,12 @@ def restart_container(container_id, container_name, schedule_id=None, host_id=1)
         if not docker_client:
             raise Exception(f"Cannot connect to Docker host {host_id}")
 
-        container = docker_client.containers.get(container_id)
+        container, resolved_by_name = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
         container.restart()
+        if resolved_by_name:
+            update_schedule_container_id(schedule_id, container.id[:12])
         message = f"Container {container_name} restarted successfully"
         logger.info(message)
         log_action(schedule_id, container_name, 'restart', 'success', message, host_id)
@@ -1025,8 +1067,12 @@ def start_container(container_id, container_name, schedule_id=None, host_id=1):
         if not docker_client:
             raise Exception(f"Cannot connect to Docker host {host_id}")
 
-        container = docker_client.containers.get(container_id)
+        container, resolved_by_name = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
         container.start()
+        if resolved_by_name:
+            update_schedule_container_id(schedule_id, container.id[:12])
         message = f"Container {container_name} started successfully"
         logger.info(message)
         log_action(schedule_id, container_name, 'start', 'success', message, host_id)
@@ -1060,8 +1106,12 @@ def stop_container(container_id, container_name, schedule_id=None, host_id=1):
         if not docker_client:
             raise Exception(f"Cannot connect to Docker host {host_id}")
 
-        container = docker_client.containers.get(container_id)
+        container, resolved_by_name = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
         container.stop()
+        if resolved_by_name:
+            update_schedule_container_id(schedule_id, container.id[:12])
         message = f"Container {container_name} stopped successfully"
         logger.info(message)
         log_action(schedule_id, container_name, 'stop', 'success', message, host_id)
@@ -1095,8 +1145,12 @@ def pause_container(container_id, container_name, schedule_id=None, host_id=1):
         if not docker_client:
             raise Exception(f"Cannot connect to Docker host {host_id}")
 
-        container = docker_client.containers.get(container_id)
+        container, resolved_by_name = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
         container.pause()
+        if resolved_by_name:
+            update_schedule_container_id(schedule_id, container.id[:12])
         message = f"Container {container_name} paused successfully"
         logger.info(message)
         log_action(schedule_id, container_name, 'pause', 'success', message, host_id)
@@ -1130,8 +1184,12 @@ def unpause_container(container_id, container_name, schedule_id=None, host_id=1)
         if not docker_client:
             raise Exception(f"Cannot connect to Docker host {host_id}")
 
-        container = docker_client.containers.get(container_id)
+        container, resolved_by_name = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
         container.unpause()
+        if resolved_by_name:
+            update_schedule_container_id(schedule_id, container.id[:12])
         message = f"Container {container_name} unpaused successfully"
         logger.info(message)
         log_action(schedule_id, container_name, 'unpause', 'success', message, host_id)
