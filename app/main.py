@@ -35,6 +35,8 @@ HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
 CONTAINER_STATS_CACHE = {}
 CONTAINER_STATS_CACHE_TTL_SECONDS = 10
+DISK_USAGE_CACHE = {}
+DISK_USAGE_CACHE_TTL_SECONDS = 300
 
 
 def get_cached_host_metrics(host_id):
@@ -61,6 +63,19 @@ def get_cached_container_stats(cache_key):
 
 def set_cached_container_stats(cache_key, data):
     CONTAINER_STATS_CACHE[cache_key] = {'timestamp': time.time(), 'data': data}
+
+
+def get_cached_disk_usage(host_id):
+    entry = DISK_USAGE_CACHE.get(host_id)
+    if not entry:
+        return None
+    if time.time() - entry['timestamp'] > DISK_USAGE_CACHE_TTL_SECONDS:
+        return None
+    return entry['data']
+
+
+def set_cached_disk_usage(host_id, data):
+    DISK_USAGE_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
 
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):
@@ -2608,7 +2623,7 @@ def get_host_metrics(host_id):
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = executor.submit(fetch_disk_usage)
         try:
-            disk_usage = future.result(timeout=3)
+            disk_usage = future.result(timeout=2)
         except Exception:
             disk_usage = None
         executor.shutdown(wait=False, cancel_futures=True)
@@ -2661,6 +2676,15 @@ def get_host_metrics(host_id):
             cache_list = disk_usage.get('BuildCache', []) or []
 
         disk_available = any([images_list, containers_list, volumes_list, cache_list])
+        if not disk_available:
+            cached_disk = get_cached_disk_usage(host_id)
+            if cached_disk:
+                disk_usage = cached_disk
+                images_list = disk_usage.get('Images', []) or []
+                containers_list = disk_usage.get('Containers', []) or []
+                volumes_list = disk_usage.get('Volumes', []) or []
+                cache_list = disk_usage.get('BuildCache', []) or []
+                disk_available = any([images_list, containers_list, volumes_list, cache_list])
 
         if disk_available:
             for img in images_list:
@@ -2674,6 +2698,9 @@ def get_host_metrics(host_id):
 
             for cache in cache_list:
                 build_cache_size += cache.get('Size', 0) or 0
+
+            if disk_usage:
+                set_cached_disk_usage(host_id, disk_usage)
 
         response_payload = {
             'host_id': host_id,
