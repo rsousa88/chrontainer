@@ -29,7 +29,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.4.2"
+VERSION = "0.4.3"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -663,13 +663,13 @@ def check_for_update(container, client):
         image_name = container.image.tags[0] if container.image.tags else container.attrs.get('Config', {}).get('Image', '')
 
         if not image_name or ':' not in image_name:
-            return False, None, None, "Unable to determine image tag"
+            return False, None, None, None, "Unable to determine image tag"
 
         # Get local image digest
         local_image = container.image
         local_digest = local_image.attrs.get('RepoDigests', [])
         if not local_digest:
-            return False, None, None, "No local digest available"
+            return False, None, None, None, "No local digest available"
         local_digest = local_digest[0].split('@')[1] if '@' in local_digest[0] else None
 
         # Pull latest image info without actually pulling the image
@@ -682,22 +682,22 @@ def check_for_update(container, client):
             remote_version = get_registry_version(registry_data)
 
             if not remote_digest or not local_digest:
-                return False, None, None, "Unable to compare digests"
+                return False, None, None, None, "Unable to compare digests"
 
             # Compare digests
             has_update = (remote_digest != local_digest)
-            return has_update, remote_digest, remote_version, None
+            return has_update, remote_digest, remote_version, None, None
 
         except docker.errors.APIError as e:
             # Handle rate limits, authentication errors, etc.
             message = str(e)
             if 'distribution' in message and 'Forbidden' in message:
-                return False, None, None, "Registry error: socket-proxy forbids distribution endpoint. Enable DISTRIBUTION=1."
-            return False, None, None, f"Registry error: {message}"
+                return False, None, None, "Registry error: socket-proxy forbids distribution endpoint. Enable DISTRIBUTION=1.", None
+            return False, None, None, f"Registry error: {message}", None
 
     except Exception as e:
         logger.error(f"Error checking for update: {e}")
-        return False, None, None, str(e)
+        return False, None, None, str(e), None
 
 def update_container(container_id, container_name, schedule_id=None, host_id=1):
     """Update a container by pulling the latest image and recreating it"""
@@ -1781,7 +1781,7 @@ def api_check_container_update(container_id):
             return jsonify({'error': 'Cannot connect to Docker host'}), 500
 
         container = client.containers.get(container_id)
-        has_update, remote_digest, remote_version, error = check_for_update(container, client)
+        has_update, remote_digest, remote_version, error, note = check_for_update(container, client)
 
         if error:
             return jsonify({'has_update': False, 'error': error})
@@ -1789,7 +1789,8 @@ def api_check_container_update(container_id):
         return jsonify({
             'has_update': has_update,
             'remote_digest': remote_digest,
-            'remote_version': remote_version
+            'remote_version': remote_version,
+            'note': note
         })
 
     except docker.errors.NotFound:
@@ -1811,7 +1812,7 @@ def api_check_all_updates():
                 for container in containers:
                     container_id = container.id[:12]
                     try:
-                        has_update, remote_digest, remote_version, error = check_for_update(container, docker_client)
+                        has_update, remote_digest, remote_version, error, note = check_for_update(container, docker_client)
                         results.append({
                             'container_id': container_id,
                             'container_name': container.name,
@@ -1819,7 +1820,8 @@ def api_check_all_updates():
                             'host_name': host_name,
                             'has_update': has_update,
                             'remote_version': remote_version,
-                            'error': error
+                            'error': error,
+                            'note': note
                         })
                     except Exception as e:
                         results.append({
@@ -1829,7 +1831,8 @@ def api_check_all_updates():
                             'host_name': host_name,
                             'has_update': False,
                             'remote_version': None,
-                            'error': str(e)
+                            'error': str(e),
+                            'note': None
                         })
             except Exception as e:
                 logger.error(f"Error checking updates for host {host_name}: {e}")

@@ -1888,6 +1888,15 @@
                 return;
             }
 
+            if (result.note) {
+                const note = document.createElement('span');
+                note.style.fontSize = '11px';
+                note.style.color = '#7f8c8d';
+                note.textContent = result.note;
+                cell.appendChild(note);
+                return;
+            }
+
             if (result.has_update) {
                 const status = document.createElement('span');
                 status.style.color = '#27ae60';
