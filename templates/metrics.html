@@ -236,6 +236,8 @@
         const metricsRefreshIntervalMs = 30000;
         let metricsRefreshTimer = null;
         let metricsRefreshInFlight = false;
+        let lastHosts = null;
+        let lastDetailMap = {};
 
         function renderHosts(hosts, detailMap, showLoadingDetails) {
             return hosts.map(host => {
@@ -390,8 +392,15 @@
                         .catch(() => ({ host_id: h.host_id, error: true }))
                     );
 
-                const initialDetails = {};
-                container.innerHTML = renderHosts(hosts, initialDetails, true);
+                const cachedDetails = {};
+                hosts.forEach(host => {
+                    const cached = lastDetailMap[host.host_id];
+                    if (cached) {
+                        cachedDetails[host.host_id] = cached;
+                    }
+                });
+                const hasCachedDetails = Object.keys(cachedDetails).length > 0;
+                container.innerHTML = renderHosts(hosts, cachedDetails, !hasCachedDetails);
                 container.dataset.loaded = 'true';
 
                 Promise.all(detailPromises).then(details => {
@@ -403,6 +412,8 @@
 
                     container.innerHTML = renderHosts(hosts, detailMap, false);
                     container.dataset.loaded = 'true';
+                    lastHosts = hosts;
+                    lastDetailMap = detailMap;
                     updateLastRefresh();
                     metricsRefreshInFlight = false;
                     scheduleMetricsRefresh();

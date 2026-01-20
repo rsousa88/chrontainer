@@ -2606,7 +2606,10 @@ def get_host_metrics(host_id):
             try:
                 return docker_client.df()
             except Exception:
-                return None
+                try:
+                    return docker_client.api.df()
+                except Exception:
+                    return None
 
         def fetch_container_memory(container):
             try:
@@ -2666,14 +2669,14 @@ def get_host_metrics(host_id):
         containers_list = []
         volumes_list = []
         cache_list = []
-        if disk_usage:
+        if disk_usage is not None:
             images_list = disk_usage.get('Images', []) or []
             containers_list = disk_usage.get('Containers', []) or []
             volumes_list = disk_usage.get('Volumes', []) or []
             cache_list = disk_usage.get('BuildCache', []) or []
 
-        disk_available = any([images_list, containers_list, volumes_list, cache_list])
-        if not disk_available and not disk_usage:
+        disk_available = disk_usage is not None
+        if not disk_available:
             cached_disk = get_cached_disk_usage(host_id)
             if cached_disk:
                 disk_usage = cached_disk
@@ -2681,7 +2684,7 @@ def get_host_metrics(host_id):
                 containers_list = disk_usage.get('Containers', []) or []
                 volumes_list = disk_usage.get('Volumes', []) or []
                 cache_list = disk_usage.get('BuildCache', []) or []
-                disk_available = any([images_list, containers_list, volumes_list, cache_list])
+                disk_available = True
 
         if disk_available:
             for img in images_list:
