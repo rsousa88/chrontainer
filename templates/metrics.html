@@ -233,19 +233,47 @@
             document.getElementById('lastUpdated').textContent = 'Last updated: ' + now.toLocaleTimeString();
         }
 
+        const metricsRefreshIntervalMs = 30000;
+        let metricsRefreshTimer = null;
+        let metricsRefreshInFlight = false;
+
+        function scheduleMetricsRefresh() {
+            if (metricsRefreshTimer) {
+                clearTimeout(metricsRefreshTimer);
+            }
+            metricsRefreshTimer = setTimeout(loadMetrics, metricsRefreshIntervalMs);
+        }
+
         function loadMetrics() {
-            document.getElementById('metricsContainer').innerHTML = '<div class="loading">Loading metrics...</div>';
+            if (metricsRefreshInFlight) {
+                return;
+            }
+            metricsRefreshInFlight = true;
+            if (metricsRefreshTimer) {
+                clearTimeout(metricsRefreshTimer);
+            }
+
+            const container = document.getElementById('metricsContainer');
+            const lastUpdated = document.getElementById('lastUpdated');
+            const previousLastUpdated = lastUpdated.textContent;
+
+            if (container.dataset.loaded !== 'true') {
+                container.innerHTML = '<div class="loading">Loading metrics...</div>';
+            } else {
+                lastUpdated.textContent = 'Refreshing...';
+            }
 
             fetch('/api/hosts/metrics', {
                 headers: { 'X-CSRFToken': getCsrfToken() }
             })
             .then(response => response.json())
             .then(hosts => {
-                const container = document.getElementById('metricsContainer');
-
                 if (hosts.length === 0) {
                     container.innerHTML = '<div class="loading">No hosts configured</div>';
+                    container.dataset.loaded = 'true';
                     updateLastRefresh();
+                    metricsRefreshInFlight = false;
+                    scheduleMetricsRefresh();
                     return;
                 }
 
@@ -338,18 +366,27 @@
                         `;
                     }).join('');
 
+                    container.dataset.loaded = 'true';
                     updateLastRefresh();
+                    metricsRefreshInFlight = false;
+                    scheduleMetricsRefresh();
                 });
             })
             .catch(err => {
                 console.error('Failed to load metrics:', err);
-                document.getElementById('metricsContainer').innerHTML =
-                    '<div class="loading">Failed to load metrics</div>';
+                if (container.dataset.loaded !== 'true') {
+                    container.innerHTML = '<div class="loading">Failed to load metrics</div>';
+                } else if (previousLastUpdated) {
+                    lastUpdated.textContent = previousLastUpdated + ' (refresh failed)';
+                } else {
+                    lastUpdated.textContent = 'Refresh failed';
+                }
+                metricsRefreshInFlight = false;
+                scheduleMetricsRefresh();
             });
         }
 
         loadMetrics();
-        setInterval(loadMetrics, 30000);
 
         if (localStorage.getItem('darkMode') === 'true') {
             document.body.classList.add('dark-mode');
