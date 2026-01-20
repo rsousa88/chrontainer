@@ -2605,10 +2605,20 @@ def get_host_metrics(host_id):
         def fetch_disk_usage():
             try:
                 return docker_client.df()
-            except Exception:
+            except Exception as df_error:
+                logger.warning(
+                    "Disk usage df() failed for host %s: %s",
+                    host_id,
+                    df_error
+                )
                 try:
                     return docker_client.api.df()
-                except Exception:
+                except Exception as api_error:
+                    logger.warning(
+                        "Disk usage api.df() failed for host %s: %s",
+                        host_id,
+                        api_error
+                    )
                     return None
 
         def fetch_container_memory(container):
@@ -2619,6 +2629,7 @@ def get_host_metrics(host_id):
                 return 0
 
         disk_usage = get_cached_disk_usage(host_id)
+        disk_fetch_started = time.monotonic()
         if not disk_usage:
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             future = executor.submit(fetch_disk_usage)
@@ -2627,6 +2638,7 @@ def get_host_metrics(host_id):
             except Exception:
                 disk_usage = None
             executor.shutdown(wait=False, cancel_futures=True)
+        disk_fetch_elapsed = time.monotonic() - disk_fetch_started
 
         containers_running = info.get('ContainersRunning', 0)
         containers_paused = info.get('ContainersPaused', 0)
@@ -2685,6 +2697,32 @@ def get_host_metrics(host_id):
                 volumes_list = disk_usage.get('Volumes', []) or []
                 cache_list = disk_usage.get('BuildCache', []) or []
                 disk_available = True
+                logger.info(
+                    "Disk usage using cached df for host %s: images=%s containers=%s volumes=%s cache=%s",
+                    host_id,
+                    len(images_list),
+                    len(containers_list),
+                    len(volumes_list),
+                    len(cache_list)
+                )
+
+        if disk_usage is None:
+            logger.warning(
+                "Disk usage missing for host %s after %.2fs",
+                host_id,
+                disk_fetch_elapsed
+            )
+        else:
+            logger.info(
+                "Disk usage fetched for host %s in %.2fs: images=%s containers=%s volumes=%s cache=%s layers=%s",
+                host_id,
+                disk_fetch_elapsed,
+                len(images_list),
+                len(containers_list),
+                len(volumes_list),
+                len(cache_list),
+                disk_usage.get('LayersSize')
+            )
 
         if disk_available:
             for img in images_list:
