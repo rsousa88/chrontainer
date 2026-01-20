@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Host Metrics - Chrontainer</title>
     <style>
         :root {
             --bg-color: #f5f7fa;
             --card-bg: #ffffff;
             --text-color: #2c3e50;
+            --text-secondary: #666;
             --border-color: #e1e8ed;
             --primary-color: #3498db;
             --success-color: #27ae60;
@@ -21,6 +22,7 @@
             --bg-color: #1a1a2e;
             --card-bg: #16213e;
             --text-color: #eee;
+            --text-secondary: #aaa;
             --border-color: #333;
         }
 
@@ -40,6 +42,21 @@
         }
 
         .header h1 { font-size: 1.5em; }
+
+        .nav-links { margin-top: 10px; }
+        .nav-links a { color: var(--primary-color); text-decoration: none; margin-right: 20px; font-size: 14px; }
+        .nav-links a:hover { text-decoration: underline; }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .last-updated {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
 
         .hosts-grid {
             display: grid;
@@ -88,7 +105,7 @@
 
         .metric-label {
             font-size: 0.8em;
-            color: #666;
+            color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -154,25 +171,32 @@
             cursor: pointer;
         }
 
-        .back-link {
-            color: var(--primary-color);
-            text-decoration: none;
+        .refresh-btn:hover {
+            background: #2980b9;
         }
 
         .loading {
             text-align: center;
             padding: 40px;
-            color: #666;
+            color: var(--text-secondary);
         }
     </style>
 </head>
 <body class="{{ 'dark-mode' if dark_mode else '' }}">
     <div class="header">
         <div>
-            <a href="/" class="back-link"><- Back to Dashboard</a>
+            <div class="nav-links">
+                <a href="/">Dashboard</a>
+                <a href="/logs">Logs</a>
+                <a href="/metrics">Host Metrics</a>
+                <a href="/settings">Settings</a>
+            </div>
             <h1>Host Metrics</h1>
         </div>
-        <button class="refresh-btn" onclick="loadMetrics()">Refresh</button>
+        <div class="header-right">
+            <span id="lastUpdated" class="last-updated"></span>
+            <button class="refresh-btn" onclick="loadMetrics()">Refresh</button>
+        </div>
     </div>
 
     <div id="metricsContainer" class="hosts-grid">
@@ -180,7 +204,15 @@
     </div>
 
     <script>
-        const csrfToken = '{{ csrf_token }}';
+        function getCsrfToken() {
+            return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        }
+
+        function escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value ?? '';
+            return div.innerHTML;
+        }
 
         function formatBytes(bytes) {
             if (bytes === 0) return '0 B';
@@ -196,11 +228,16 @@
             return 'bar-success';
         }
 
+        function updateLastRefresh() {
+            const now = new Date();
+            document.getElementById('lastUpdated').textContent = 'Last updated: ' + now.toLocaleTimeString();
+        }
+
         function loadMetrics() {
             document.getElementById('metricsContainer').innerHTML = '<div class="loading">Loading metrics...</div>';
 
             fetch('/api/hosts/metrics', {
-                headers: { 'X-CSRFToken': csrfToken }
+                headers: { 'X-CSRFToken': getCsrfToken() }
             })
             .then(response => response.json())
             .then(hosts => {
@@ -208,13 +245,14 @@
 
                 if (hosts.length === 0) {
                     container.innerHTML = '<div class="loading">No hosts configured</div>';
+                    updateLastRefresh();
                     return;
                 }
 
                 const detailPromises = hosts
                     .filter(h => h.status === 'online')
                     .map(h => fetch(`/api/hosts/${h.host_id}/metrics`, {
-                        headers: { 'X-CSRFToken': csrfToken }
+                        headers: { 'X-CSRFToken': getCsrfToken() }
                     }).then(r => r.json()).catch(() => null));
 
                 Promise.all(detailPromises).then(details => {
@@ -228,10 +266,10 @@
                             return `
                                 <div class="host-card">
                                     <div class="host-header">
-                                        <span class="host-name">${host.name}</span>
-                                        <span class="host-status offline">${host.status}</span>
+                                        <span class="host-name">${escapeHtml(host.name)}</span>
+                                        <span class="host-status offline">${escapeHtml(host.status)}</span>
                                     </div>
-                                    <p>${host.error || 'Host is not reachable'}</p>
+                                    <p>${escapeHtml(host.error || 'Host is not reachable')}</p>
                                 </div>
                             `;
                         }
@@ -244,18 +282,18 @@
                         return `
                             <div class="host-card">
                                 <div class="host-header">
-                                    <span class="host-name">${host.name}</span>
+                                    <span class="host-name">${escapeHtml(host.name)}</span>
                                     <span class="host-status online">Online</span>
                                 </div>
 
                                 <div class="metrics-grid">
                                     <div class="metric-box">
                                         <div class="metric-label">Operating System</div>
-                                        <div class="metric-value" style="font-size: 1em;">${detail.os || host.os}</div>
+                                        <div class="metric-value" style="font-size: 1em;">${escapeHtml(detail.os || host.os)}</div>
                                     </div>
                                     <div class="metric-box">
                                         <div class="metric-label">Docker Version</div>
-                                        <div class="metric-value" style="font-size: 1em;">${detail.docker_version || 'N/A'}</div>
+                                        <div class="metric-value" style="font-size: 1em;">${escapeHtml(detail.docker_version || 'N/A')}</div>
                                     </div>
                                     <div class="metric-box">
                                         <div class="metric-label">CPUs</div>
@@ -299,6 +337,8 @@
                             </div>
                         `;
                     }).join('');
+
+                    updateLastRefresh();
                 });
             })
             .catch(err => {

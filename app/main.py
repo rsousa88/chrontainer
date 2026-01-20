@@ -768,11 +768,18 @@ def init_db():
             host_id INTEGER,
             action TEXT NOT NULL,
             enabled INTEGER DEFAULT 1,
+            locked INTEGER DEFAULT 0,
             last_triggered TIMESTAMP,
             trigger_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Add locked column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute('ALTER TABLE webhooks ADD COLUMN locked INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
     # Create default admin user if no users exist
     cursor.execute('SELECT COUNT(*) FROM users')
@@ -2241,13 +2248,14 @@ def delete_api_key(key_id):
 
 
 @app.route('/webhook/<token>', methods=['POST', 'GET'])
+@limiter.limit("30 per minute")
 def trigger_webhook(token):
     """Trigger a webhook action - no auth required, uses token"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, name, container_id, host_id, action, enabled
+            SELECT id, name, container_id, host_id, action, enabled, locked
             FROM webhooks WHERE token = ?
         ''', (token,))
         webhook = cursor.fetchone()
@@ -2256,7 +2264,7 @@ def trigger_webhook(token):
             conn.close()
             return jsonify({'error': 'Invalid webhook'}), 404
 
-        webhook_id, name, container_id, host_id, action, enabled = webhook
+        webhook_id, name, container_id, host_id, action, enabled, locked = webhook
 
         if not enabled:
             conn.close()
@@ -2265,13 +2273,15 @@ def trigger_webhook(token):
         override_container = None
         override_host = None
 
-        if request.method == 'POST' and request.is_json:
-            data = request.json or {}
-            override_container = data.get('container_id')
-            override_host = data.get('host_id')
-        else:
-            override_container = request.args.get('container_id')
-            override_host = request.args.get('host_id')
+        # Only allow overrides if webhook is not locked
+        if not locked:
+            if request.method == 'POST' and request.is_json:
+                data = request.json or {}
+                override_container = data.get('container_id')
+                override_host = data.get('host_id')
+            else:
+                override_container = request.args.get('container_id')
+                override_host = request.args.get('host_id')
 
         target_container = override_container or container_id
         target_host = int(override_host or host_id or 1)
@@ -2343,7 +2353,7 @@ def list_webhooks():
         cursor = conn.cursor()
         cursor.execute('''
             SELECT w.id, w.name, w.token, w.container_id, w.host_id, w.action,
-                   w.enabled, w.last_triggered, w.trigger_count, w.created_at, h.name
+                   w.enabled, w.locked, w.last_triggered, w.trigger_count, w.created_at, h.name
             FROM webhooks w
             LEFT JOIN hosts h ON w.host_id = h.id
             ORDER BY w.created_at DESC
@@ -2359,10 +2369,11 @@ def list_webhooks():
             'host_id': w[4],
             'action': w[5],
             'enabled': bool(w[6]),
-            'last_triggered': w[7],
-            'trigger_count': w[8],
-            'created_at': w[9],
-            'host_name': w[10]
+            'locked': bool(w[7]),
+            'last_triggered': w[8],
+            'trigger_count': w[9],
+            'created_at': w[10],
+            'host_name': w[11]
         } for w in webhooks])
     except Exception as e:
         logger.error(f"Failed to list webhooks: {e}")
@@ -2379,6 +2390,7 @@ def create_webhook():
         container_id = sanitize_string(data.get('container_id', ''), max_length=64) or None
         host_id = data.get('host_id')
         action = sanitize_string(data.get('action', 'restart'), max_length=20)
+        locked = 1 if data.get('locked') else 0
 
         if not name:
             return jsonify({'error': 'Name is required'}), 400
@@ -2391,9 +2403,9 @@ def create_webhook():
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO webhooks (name, token, container_id, host_id, action)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (name, token, container_id, host_id, action))
+            INSERT INTO webhooks (name, token, container_id, host_id, action, locked)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (name, token, container_id, host_id, action, locked))
         webhook_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -2407,7 +2419,8 @@ def create_webhook():
             'name': name,
             'token': token,
             'url': webhook_url,
-            'action': action
+            'action': action,
+            'locked': bool(locked)
         })
     except Exception as e:
         logger.error(f"Failed to create webhook: {e}")
@@ -2449,6 +2462,55 @@ def toggle_webhook(webhook_id):
     except Exception as e:
         logger.error(f"Failed to toggle webhook: {e}")
         return jsonify({'error': 'Failed to toggle webhook'}), 500
+
+
+@app.route('/api/webhooks/<int:webhook_id>/lock', methods=['POST'])
+@login_required
+def toggle_webhook_lock(webhook_id):
+    """Toggle lock status for a webhook (locked webhooks ignore container/host overrides)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE webhooks SET locked = NOT locked WHERE id = ?', (webhook_id,))
+        cursor.execute('SELECT locked FROM webhooks WHERE id = ?', (webhook_id,))
+        result = cursor.fetchone()
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'locked': bool(result[0])})
+    except Exception as e:
+        logger.error(f"Failed to toggle webhook lock: {e}")
+        return jsonify({'error': 'Failed to toggle webhook lock'}), 500
+
+
+@app.route('/api/webhooks/<int:webhook_id>/regenerate', methods=['POST'])
+@login_required
+def regenerate_webhook_token(webhook_id):
+    """Regenerate the token for a webhook"""
+    try:
+        new_token = secrets.token_urlsafe(24)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE webhooks SET token = ? WHERE id = ?', (new_token, webhook_id))
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'error': 'Webhook not found'}), 404
+        conn.commit()
+        conn.close()
+
+        webhook_url = f"{request.host_url}webhook/{new_token}"
+        logger.info(f"Webhook {webhook_id} token regenerated")
+
+        return jsonify({
+            'success': True,
+            'token': new_token,
+            'url': webhook_url
+        })
+    except Exception as e:
+        logger.error(f"Failed to regenerate webhook token: {e}")
+        return jsonify({'error': 'Failed to regenerate token'}), 500
+
 
 @app.route('/api/hosts/<int:host_id>/metrics', methods=['GET'])
 @api_key_or_login_required
@@ -2961,7 +3023,7 @@ def settings_page():
 def metrics_page():
     """Host metrics dashboard page"""
     dark_mode = request.cookies.get('darkMode', 'false') == 'true'
-    return render_template('metrics.html', dark_mode=dark_mode, csrf_token=generate_csrf())
+    return render_template('metrics.html', dark_mode=dark_mode)
 
 @app.route('/hosts')
 @login_required

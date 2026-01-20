@@ -490,6 +490,15 @@ response = requests.get(
                             <select id="webhookHost"></select>
                         </div>
                     </div>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="webhookLocked" style="width: auto;">
+                            <span>Lock to configured container (ignore overrides)</span>
+                        </label>
+                        <small class="help-text" style="margin-top: 5px; display: block;">
+                            When locked, the webhook will only affect the configured container and ignore any container_id/host_id overrides in requests.
+                        </small>
+                    </div>
                     <button class="btn btn-primary" onclick="createWebhook()">Create Webhook</button>
                 </div>
 
@@ -508,6 +517,7 @@ response = requests.get(
                             <th>Container</th>
                             <th>Triggered</th>
                             <th>Status</th>
+                            <th>Lock</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -932,7 +942,7 @@ Body: {"container_id": "optional_override"}</code></pre>
                 const tbody = document.getElementById('webhooksList');
 
                 if (!Array.isArray(webhooks) || webhooks.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty">No webhooks created yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty">No webhooks created yet</td></tr>';
                     return;
                 }
 
@@ -942,6 +952,8 @@ Body: {"container_id": "optional_override"}</code></pre>
                         : 'Any';
                     const statusLabel = webhook.enabled ? 'Enabled' : 'Disabled';
                     const statusClass = webhook.enabled ? 'enabled' : 'disabled';
+                    const lockLabel = webhook.locked ? 'Locked' : 'Unlocked';
+                    const lockClass = webhook.locked ? 'enabled' : 'disabled';
                     const lastTriggered = webhook.last_triggered ? formatDate(webhook.last_triggered) : 'Never';
                     return `
                         <tr>
@@ -950,10 +962,15 @@ Body: {"container_id": "optional_override"}</code></pre>
                             <td>${escapeHtml(containerLabel)}</td>
                             <td>${lastTriggered} (${webhook.trigger_count})</td>
                             <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+                            <td><span class="status-badge ${lockClass}">${lockLabel}</span></td>
                             <td>
                                 <button class="btn btn-sm btn-secondary" onclick="toggleWebhook(${webhook.id})">
                                     ${webhook.enabled ? 'Disable' : 'Enable'}
                                 </button>
+                                <button class="btn btn-sm btn-secondary" onclick="toggleWebhookLock(${webhook.id})" title="${webhook.locked ? 'Unlock to allow overrides' : 'Lock to prevent overrides'}">
+                                    ${webhook.locked ? 'Unlock' : 'Lock'}
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="regenerateWebhookToken(${webhook.id})" title="Generate new token">Regen</button>
                                 <button class="btn btn-sm btn-danger" onclick="deleteWebhook(${webhook.id})">Delete</button>
                             </td>
                         </tr>
@@ -970,6 +987,7 @@ Body: {"container_id": "optional_override"}</code></pre>
             const containerId = document.getElementById('webhookContainer').value || null;
             const hostValue = document.getElementById('webhookHost').value;
             const hostId = hostValue ? parseInt(hostValue, 10) : null;
+            const locked = document.getElementById('webhookLocked').checked;
 
             if (!name) {
                 showAlert('Webhook name is required', 'error');
@@ -987,7 +1005,8 @@ Body: {"container_id": "optional_override"}</code></pre>
                         name,
                         action,
                         container_id: containerId,
-                        host_id: hostId
+                        host_id: hostId,
+                        locked
                     })
                 });
                 const data = await response.json();
@@ -999,6 +1018,7 @@ Body: {"container_id": "optional_override"}</code></pre>
                 document.getElementById('newWebhookUrl').textContent = data.url;
                 document.getElementById('newWebhookDisplay').style.display = 'block';
                 document.getElementById('webhookName').value = '';
+                document.getElementById('webhookLocked').checked = false;
                 loadWebhooks();
                 showAlert('Webhook created', 'success');
             } catch (error) {
@@ -1048,6 +1068,47 @@ Body: {"container_id": "optional_override"}</code></pre>
                 }
             } catch (error) {
                 showAlert('Failed to toggle webhook: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleWebhookLock(webhookId) {
+            try {
+                const response = await fetch(`/api/webhooks/${webhookId}/lock`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    loadWebhooks();
+                    showAlert(data.locked ? 'Webhook locked - overrides disabled' : 'Webhook unlocked - overrides enabled', 'success');
+                } else {
+                    showAlert(data.error || 'Failed to toggle webhook lock', 'error');
+                }
+            } catch (error) {
+                showAlert('Failed to toggle webhook lock: ' + error.message, 'error');
+            }
+        }
+
+        async function regenerateWebhookToken(webhookId) {
+            if (!confirm('Regenerate this webhook token? The old URL will stop working immediately.')) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/webhooks/${webhookId}/regenerate`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrfToken() }
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    document.getElementById('newWebhookUrl').textContent = data.url;
+                    document.getElementById('newWebhookDisplay').style.display = 'block';
+                    loadWebhooks();
+                    showAlert('New token generated. Save the new URL!', 'success');
+                } else {
+                    showAlert(data.error || 'Failed to regenerate token', 'error');
+                }
+            } catch (error) {
+                showAlert('Failed to regenerate token: ' + error.message, 'error');
             }
         }
 

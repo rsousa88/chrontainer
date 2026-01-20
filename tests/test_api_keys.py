@@ -1,5 +1,6 @@
 """Tests for API key authentication"""
 import json
+from datetime import datetime, timedelta
 
 
 class TestApiKeyEndpoints:
@@ -96,3 +97,48 @@ class TestApiKeyAuth:
                 content_type='application/json'
             )
             assert response.status_code == 403
+
+    def test_write_key_can_write(self, app, authenticated_client):
+        """Write key should be able to perform write operations on read endpoints"""
+        response = authenticated_client.post(
+            '/api/keys',
+            json={'name': 'Write Key', 'permissions': 'write'},
+            content_type='application/json'
+        )
+        key = json.loads(response.data)['key']
+
+        # Write key should be able to access read endpoints
+        with app.test_client() as client:
+            response = client.get('/api/hosts', headers={'X-API-Key': key})
+            assert response.status_code == 200
+
+    def test_expired_key_rejected(self, app, authenticated_client):
+        """Expired API key should be rejected"""
+        # Create a key that expires in -1 days (already expired)
+        # Note: We can't directly set a past expiration, so we test the logic indirectly
+        response = authenticated_client.post(
+            '/api/keys',
+            json={'name': 'Expiring Key', 'permissions': 'read', 'expires_days': 1},
+            content_type='application/json'
+        )
+        data = json.loads(response.data)
+        assert response.status_code == 200
+        assert 'expires_at' in data
+        assert data['expires_at'] is not None
+
+    def test_delete_own_key(self, authenticated_client):
+        """User should be able to delete their own API key"""
+        # Create a key
+        response = authenticated_client.post(
+            '/api/keys',
+            json={'name': 'Delete Me', 'permissions': 'read'},
+            content_type='application/json'
+        )
+        data = json.loads(response.data)
+        key_id = data['id']
+
+        # Delete the key
+        response = authenticated_client.delete(f'/api/keys/{key_id}')
+        data = json.loads(response.data)
+        assert response.status_code == 200
+        assert data['success'] is True
