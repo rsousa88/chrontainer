@@ -29,7 +29,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.4.4"
+VERSION = "0.4.5"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -179,12 +179,8 @@ def get_image_links(image_name):
 
 VERSION_LABEL_KEYS = (
     'org.opencontainers.image.version',
-    'org.label-schema.version',
-    'version'
+    'org.label-schema.version'
 )
-VERSION_LABEL_IGNORE_KEYS = {
-    'com.docker.compose.version',
-}
 NON_VERSION_TAGS = {
     'latest', 'stable', 'edge', 'nightly', 'main', 'master', 'dev', 'develop'
 }
@@ -230,9 +226,7 @@ def _extract_version_from_labels(labels, source):
         if not value:
             continue
         key_lower = key.lower()
-        if key_lower in VERSION_LABEL_IGNORE_KEYS:
-            continue
-        if key_lower in VERSION_LABEL_KEYS or 'version' in key_lower:
+        if key_lower in VERSION_LABEL_KEYS:
             match = VERSION_IN_TEXT_RE.search(str(value))
             if match:
                 return match.group(0), source
