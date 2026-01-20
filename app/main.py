@@ -29,7 +29,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.4.3"
+VERSION = "0.4.4"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -182,6 +182,9 @@ VERSION_LABEL_KEYS = (
     'org.label-schema.version',
     'version'
 )
+VERSION_LABEL_IGNORE_KEYS = {
+    'com.docker.compose.version',
+}
 NON_VERSION_TAGS = {
     'latest', 'stable', 'edge', 'nightly', 'main', 'master', 'dev', 'develop'
 }
@@ -227,6 +230,8 @@ def _extract_version_from_labels(labels, source):
         if not value:
             continue
         key_lower = key.lower()
+        if key_lower in VERSION_LABEL_IGNORE_KEYS:
+            continue
         if key_lower in VERSION_LABEL_KEYS or 'version' in key_lower:
             match = VERSION_IN_TEXT_RE.search(str(value))
             if match:
@@ -669,7 +674,7 @@ def check_for_update(container, client):
         local_image = container.image
         local_digest = local_image.attrs.get('RepoDigests', [])
         if not local_digest:
-            return False, None, None, None, "No local digest available"
+            return False, None, None, None, "Update check unavailable: local image has no registry digest (likely built locally)."
         local_digest = local_digest[0].split('@')[1] if '@' in local_digest[0] else None
 
         # Pull latest image info without actually pulling the image
@@ -682,7 +687,7 @@ def check_for_update(container, client):
             remote_version = get_registry_version(registry_data)
 
             if not remote_digest or not local_digest:
-                return False, None, None, None, "Unable to compare digests"
+                return False, None, None, None, "Update check unavailable: missing digest for comparison."
 
             # Compare digests
             has_update = (remote_digest != local_digest)
