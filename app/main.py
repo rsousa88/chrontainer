@@ -37,6 +37,8 @@ CONTAINER_STATS_CACHE = {}
 CONTAINER_STATS_CACHE_TTL_SECONDS = 10
 DISK_USAGE_CACHE = {}
 DISK_USAGE_CACHE_TTL_SECONDS = 300
+IMAGE_VERSION_CACHE = {}
+IMAGE_VERSION_CACHE_TTL_SECONDS = 3600
 DISK_USAGE_INFLIGHT = set()
 DISK_USAGE_INFLIGHT_LOCK = threading.Lock()
 
@@ -78,6 +80,22 @@ def get_cached_disk_usage(host_id):
 
 def set_cached_disk_usage(host_id, data):
     DISK_USAGE_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
+
+
+def get_cached_image_version(cache_key):
+    entry = IMAGE_VERSION_CACHE.get(cache_key)
+    if not entry:
+        return None
+    if time.time() - entry['timestamp'] > IMAGE_VERSION_CACHE_TTL_SECONDS:
+        return None
+    return entry['data']
+
+
+def set_cached_image_version(cache_key, version, source):
+    IMAGE_VERSION_CACHE[cache_key] = {
+        'timestamp': time.time(),
+        'data': (version, source)
+    }
 
 
 def refresh_disk_usage_async(host_id, docker_client):
@@ -204,6 +222,18 @@ def strip_image_tag(image_name):
 
     return f"{prefix}/{last}" if prefix else last
 
+def _extract_version_from_labels(labels, source):
+    for key, value in (labels or {}).items():
+        if not value:
+            continue
+        key_lower = key.lower()
+        if key_lower in VERSION_LABEL_KEYS or 'version' in key_lower:
+            match = VERSION_IN_TEXT_RE.search(str(value))
+            if match:
+                return match.group(0), source
+    return None, None
+
+
 def get_image_version(container, image_name, docker_client=None):
     """Best-effort version from image labels, falling back to version-like tags."""
     labels = {}
@@ -214,10 +244,9 @@ def get_image_version(container, image_name, docker_client=None):
     except Exception:
         labels = {}
 
-    for key in VERSION_LABEL_KEYS:
-        value = labels.get(key)
-        if value:
-            return value.strip(), 'label'
+    version, source = _extract_version_from_labels(labels, 'label')
+    if version:
+        return version, source
 
     ref_name = labels.get('org.opencontainers.image.ref.name', '')
     if ref_name:
@@ -244,10 +273,9 @@ def get_image_version(container, image_name, docker_client=None):
             image_id = container.image.id if container.image else None
             image_obj = docker_client.images.get(image_id) if image_id else None
             image_labels = image_obj.attrs.get('Config', {}).get('Labels', {}) if image_obj else {}
-            for key in VERSION_LABEL_KEYS:
-                value = (image_labels or {}).get(key)
-                if value:
-                    return value.strip(), 'label'
+            version, source = _extract_version_from_labels(image_labels, 'label')
+            if version:
+                return version, source
             ref_name = (image_labels or {}).get('org.opencontainers.image.ref.name', '')
             if ref_name:
                 match = VERSION_IN_TEXT_RE.search(ref_name)
@@ -277,6 +305,20 @@ def get_image_version(container, image_name, docker_client=None):
         match = VERSION_IN_TEXT_RE.search(tag)
         if match:
             return match.group(0), 'tag'
+
+    if docker_client and image_name and ':' in image_name:
+        cache_key = image_name
+        cached = get_cached_image_version(cache_key)
+        if cached:
+            return cached
+        try:
+            registry_data = docker_client.images.get_registry_data(image_name)
+            registry_version = get_registry_version(registry_data)
+            if registry_version and registry_version != 'unknown':
+                set_cached_image_version(cache_key, registry_version, 'registry')
+                return registry_version, 'registry'
+        except Exception:
+            pass
 
     return 'unknown', 'unknown'
 
