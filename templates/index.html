@@ -1472,6 +1472,7 @@
                 return response.json();
             })
             .then(data => {
+                const missingRows = new Map();
                 document.querySelectorAll('.stats-cell').forEach(cell => {
                     const containerId = cell.dataset.containerId;
                     const hostId = cell.dataset.hostId;
@@ -1484,6 +1485,8 @@
                             cell.querySelector('.cpu-value').textContent = `${stats.cpu_percent}%`;
                             updateStatClass(cell.querySelector('.cpu-value'), 'cpu-value', stats.cpu_percent);
                             if (row) row.dataset.cpu = stats.cpu_percent;
+                        } else if (row) {
+                            missingRows.set(key, row);
                         }
                     }
 
@@ -1496,13 +1499,16 @@
                             cell.querySelector('.memory-value').textContent = memStr;
                             updateStatClass(cell.querySelector('.memory-value'), 'memory-value', stats.memory_percent);
                             if (row) row.dataset.memory = memValue;
+                        } else if (row) {
+                            missingRows.set(key, row);
                         }
                     }
                 });
+                fetchContainerStatsFallback(Array.from(missingRows.values()));
             })
             .catch(err => {
                 console.error('Failed to fetch stats:', err);
-                fetchContainerStatsFallback();
+                fetchContainerStatsFallback(Array.from(document.querySelectorAll('tr[data-host]')));
             })
             .finally(() => {
                 statsInFlight = false;
@@ -1514,50 +1520,66 @@
         let autoRefreshDurationMs = 0;
         let autoRefreshStartTime = 0;
 
-        function fetchContainerStatsFallback() {
-            const rows = document.querySelectorAll('tr[data-host]');
-            rows.forEach(row => {
-                const containerId = row.querySelector('.container-select')?.dataset?.id;
-                const hostId = row.querySelector('.container-select')?.dataset?.hostId;
-                if (!containerId || !hostId) return;
+        function fetchContainerStatsFallback(rows) {
+            if (!rows || rows.length === 0) {
+                return;
+            }
+            const queue = rows.slice();
+            const maxConcurrent = 4;
+            let active = 0;
 
-                fetch(`/api/container/${containerId}/stats?host_id=${hostId}`, {
-                    headers: { 'X-CSRFToken': getCsrfToken() },
-                    credentials: 'include'
-                })
-                .then(response => {
-                    const contentType = response.headers.get('content-type') || '';
-                    if (!response.ok || !contentType.includes('application/json')) {
-                        throw new Error('Fallback stats request failed');
-                    }
-                    return response.json();
-                })
-                .then(stats => {
-                    const cpuCell = row.querySelector('.cpu-value');
-                    const memCell = row.querySelector('.memory-value');
+            const runNext = () => {
+                while (active < maxConcurrent && queue.length > 0) {
+                    const row = queue.shift();
+                    const containerId = row.querySelector('.container-select')?.dataset?.id;
+                    const hostId = row.querySelector('.container-select')?.dataset?.hostId;
+                    if (!containerId || !hostId) continue;
 
-                    if (cpuCell) {
-                        if (stats && stats.cpu_percent !== null) {
-                            cpuCell.textContent = `${stats.cpu_percent}%`;
-                            updateStatClass(cpuCell, 'cpu-value', stats.cpu_percent);
-                            row.dataset.cpu = stats.cpu_percent;
+                    active += 1;
+                    fetch(`/api/container/${containerId}/stats?host_id=${hostId}`, {
+                        headers: { 'X-CSRFToken': getCsrfToken() },
+                        credentials: 'include'
+                    })
+                    .then(response => {
+                        const contentType = response.headers.get('content-type') || '';
+                        if (!response.ok || !contentType.includes('application/json')) {
+                            throw new Error('Fallback stats request failed');
                         }
-                    }
+                        return response.json();
+                    })
+                    .then(stats => {
+                        const cpuCell = row.querySelector('.cpu-value');
+                        const memCell = row.querySelector('.memory-value');
 
-                    if (memCell) {
-                        if (stats && stats.memory_mb !== null) {
-                            const memValue = stats.memory_mb;
-                            const memStr = memValue > 1024
-                                ? `${(memValue / 1024).toFixed(1)} GB`
-                                : `${memValue.toFixed(0)} MB`;
-                            memCell.textContent = memStr;
-                            updateStatClass(memCell, 'memory-value', stats.memory_percent);
-                            row.dataset.memory = memValue;
+                        if (cpuCell) {
+                            if (stats && stats.cpu_percent !== null) {
+                                cpuCell.textContent = `${stats.cpu_percent}%`;
+                                updateStatClass(cpuCell, 'cpu-value', stats.cpu_percent);
+                                row.dataset.cpu = stats.cpu_percent;
+                            }
                         }
-                    }
-                })
-                .catch(error => console.error('Fallback stats error:', error));
-            });
+
+                        if (memCell) {
+                            if (stats && stats.memory_mb !== null) {
+                                const memValue = stats.memory_mb;
+                                const memStr = memValue > 1024
+                                    ? `${(memValue / 1024).toFixed(1)} GB`
+                                    : `${memValue.toFixed(0)} MB`;
+                                memCell.textContent = memStr;
+                                updateStatClass(memCell, 'memory-value', stats.memory_percent);
+                                row.dataset.memory = memValue;
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Fallback stats error:', error))
+                    .finally(() => {
+                        active -= 1;
+                        runNext();
+                    });
+                }
+            };
+
+            runNext();
         }
 
         function updateSystemClock() {

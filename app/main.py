@@ -1833,20 +1833,16 @@ def api_get_all_container_stats():
                     logger.debug(f"Failed to get stats for {container.name}: {e}")
                     return container_id, None
 
-            max_workers = min(6, len(containers))
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-            futures = [executor.submit(fetch_stats, container) for container in containers]
-            start = time.monotonic()
-            try:
-                for future in concurrent.futures.as_completed(futures, timeout=3):
-                    container_id, stats = future.result()
-                    if stats is not None:
-                        results[f"{container_id}_{host_id}"] = stats
-                    if time.monotonic() - start >= 3:
-                        break
-            except concurrent.futures.TimeoutError:
-                pass
-            executor.shutdown(wait=False, cancel_futures=True)
+            max_workers = min(8, len(containers))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(fetch_stats, container) for container in containers]
+                try:
+                    for future in concurrent.futures.as_completed(futures, timeout=6):
+                        container_id, stats = future.result()
+                        if stats is not None:
+                            results[f"{container_id}_{host_id}"] = stats
+                except concurrent.futures.TimeoutError:
+                    pass
         except Exception as e:
             logger.error(f"Failed to get containers from host {host_name}: {e}")
 
@@ -2619,14 +2615,15 @@ def get_host_metrics(host_id):
             except Exception:
                 return 0
 
-        disk_usage = None
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(fetch_disk_usage)
-        try:
-            disk_usage = future.result(timeout=2)
-        except Exception:
-            disk_usage = None
-        executor.shutdown(wait=False, cancel_futures=True)
+        disk_usage = get_cached_disk_usage(host_id)
+        if not disk_usage:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(fetch_disk_usage)
+            try:
+                disk_usage = future.result(timeout=5)
+            except Exception:
+                disk_usage = None
+            executor.shutdown(wait=False, cancel_futures=True)
 
         containers_running = info.get('ContainersRunning', 0)
         containers_paused = info.get('ContainersPaused', 0)
@@ -2676,7 +2673,7 @@ def get_host_metrics(host_id):
             cache_list = disk_usage.get('BuildCache', []) or []
 
         disk_available = any([images_list, containers_list, volumes_list, cache_list])
-        if not disk_available:
+        if not disk_available and not disk_usage:
             cached_disk = get_cached_disk_usage(host_id)
             if cached_disk:
                 disk_usage = cached_disk
