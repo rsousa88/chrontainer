@@ -37,6 +37,8 @@ CONTAINER_STATS_CACHE = {}
 CONTAINER_STATS_CACHE_TTL_SECONDS = 10
 DISK_USAGE_CACHE = {}
 DISK_USAGE_CACHE_TTL_SECONDS = 300
+DISK_USAGE_INFLIGHT = set()
+DISK_USAGE_INFLIGHT_LOCK = threading.Lock()
 
 
 def get_cached_host_metrics(host_id):
@@ -76,6 +78,35 @@ def get_cached_disk_usage(host_id):
 
 def set_cached_disk_usage(host_id, data):
     DISK_USAGE_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
+
+
+def refresh_disk_usage_async(host_id, docker_client):
+    def run():
+        try:
+            disk = docker_client.api.df()
+            if disk:
+                set_cached_disk_usage(host_id, disk)
+                logger.info(
+                    "Disk usage async cached for host %s: images=%s containers=%s volumes=%s cache=%s layers=%s",
+                    host_id,
+                    len(disk.get('Images', []) or []),
+                    len(disk.get('Containers', []) or []),
+                    len(disk.get('Volumes', []) or []),
+                    len(disk.get('BuildCache', []) or []),
+                    disk.get('LayersSize')
+                )
+        except Exception as error:
+            logger.warning("Disk usage async df failed for host %s: %s", host_id, error)
+        finally:
+            with DISK_USAGE_INFLIGHT_LOCK:
+                DISK_USAGE_INFLIGHT.discard(host_id)
+
+    with DISK_USAGE_INFLIGHT_LOCK:
+        if host_id in DISK_USAGE_INFLIGHT:
+            return
+        DISK_USAGE_INFLIGHT.add(host_id)
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
 
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):
@@ -2628,9 +2659,10 @@ def get_host_metrics(host_id):
             except Exception:
                 return 0
 
-        disk_usage = get_cached_disk_usage(host_id)
+        cached_disk_usage = get_cached_disk_usage(host_id)
+        disk_usage = cached_disk_usage
         disk_fetch_started = time.monotonic()
-        if not disk_usage:
+        if disk_usage is None:
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             future = executor.submit(fetch_disk_usage)
             try:
@@ -2687,24 +2719,13 @@ def get_host_metrics(host_id):
             volumes_list = disk_usage.get('Volumes', []) or []
             cache_list = disk_usage.get('BuildCache', []) or []
 
-        disk_available = disk_usage is not None
-        if not disk_available:
-            cached_disk = get_cached_disk_usage(host_id)
-            if cached_disk:
-                disk_usage = cached_disk
-                images_list = disk_usage.get('Images', []) or []
-                containers_list = disk_usage.get('Containers', []) or []
-                volumes_list = disk_usage.get('Volumes', []) or []
-                cache_list = disk_usage.get('BuildCache', []) or []
-                disk_available = True
-                logger.info(
-                    "Disk usage using cached df for host %s: images=%s containers=%s volumes=%s cache=%s",
-                    host_id,
-                    len(images_list),
-                    len(containers_list),
-                    len(volumes_list),
-                    len(cache_list)
-                )
+        disk_available = None
+        if disk_usage is not None:
+            disk_available = True
+        elif cached_disk_usage is not None:
+            disk_available = True
+        else:
+            refresh_disk_usage_async(host_id, docker_client)
 
         if disk_usage is None:
             logger.warning(

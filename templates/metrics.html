@@ -268,10 +268,11 @@
                 const pausedCount = detail.containers?.paused ?? (showLoadingDetails ? '--' : 0);
                 const diskAvailable = detail.disk_available;
                 const showDiskSection = showLoadingDetails || detail.disk || diskAvailable === false || detailLoaded;
-                const diskUnavailable = detailLoaded && !detail.disk && diskAvailable !== true;
+                const diskUnavailable = detailLoaded && !detail.disk && diskAvailable === false;
+                const diskLoading = detailLoaded && !detail.disk && diskAvailable === null;
                 const diskSummary = detail.disk
                     ? `${detail.disk.total_gb} GB total`
-                    : (diskUnavailable ? 'Unavailable' : 'Loading...');
+                    : (diskUnavailable ? 'Unavailable' : (diskLoading || showLoadingDetails ? 'Loading...' : 'N/A'));
                 const diskImagesCount = detail.disk ? detail.images_count : (diskUnavailable ? 'N/A' : '--');
                 const diskImagesValue = detail.disk ? `${detail.disk.images_gb} GB` : (diskUnavailable ? 'N/A' : '--');
                 const diskContainersValue = detail.disk ? `${detail.disk.containers_gb} GB` : (diskUnavailable ? 'N/A' : '--');
