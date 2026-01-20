@@ -25,6 +25,9 @@
 ✅ One-time schedules
 ✅ ntfy.sh notifications
 ✅ GHCR Docker image publishing
+✅ Dashboard shows stopped/errored containers
+✅ Host metrics refresh keeps previous values
+✅ Host metrics cards aligned across hosts
 
 ---
 

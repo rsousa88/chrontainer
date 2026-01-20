@@ -1487,6 +1487,15 @@ def index():
                     except:
                         pass
 
+                    state = container.attrs.get('State', {}) or {}
+                    status = state.get('Status') or container.status
+                    exit_code = state.get('ExitCode')
+                    status_display = status
+                    status_class = status
+                    if status == 'exited' and exit_code not in (None, 0):
+                        status_display = 'error'
+                        status_class = 'error'
+
                     image_display = strip_image_tag(image_name)
                     image_version, version_source = get_image_version(container, image_name, docker_client)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
@@ -1495,7 +1504,10 @@ def index():
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
-                        'status': container.status,
+                        'status': status,
+                        'status_display': status_display,
+                        'status_class': status_class,
+                        'exit_code': exit_code,
                         'health': health_status,
                         'image': image_name,
                         'image_display': image_display,
@@ -1625,6 +1637,15 @@ def get_containers():
                     except:
                         pass
 
+                    state = container.attrs.get('State', {}) or {}
+                    status = state.get('Status') or container.status
+                    exit_code = state.get('ExitCode')
+                    status_display = status
+                    status_class = status
+                    if status == 'exited' and exit_code not in (None, 0):
+                        status_display = 'error'
+                        status_class = 'error'
+
                     image_display = strip_image_tag(image_name)
                     image_version, version_source = get_image_version(container, image_name, docker_client)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
@@ -1633,7 +1654,10 @@ def get_containers():
                     container_list.append({
                         'id': container.id[:12],
                         'name': container.name,
-                        'status': container.status,
+                        'status': status,
+                        'status_display': status_display,
+                        'status_class': status_class,
+                        'exit_code': exit_code,
                         'health': health_status,
                         'image': image_name,
                         'image_display': image_display,

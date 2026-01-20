@@ -95,12 +95,20 @@
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 15px;
+            grid-auto-rows: 1fr;
         }
 
         .metric-box {
             background: var(--bg-color);
             padding: 15px;
             border-radius: 8px;
+        }
+
+        .metrics-grid .metric-box {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 88px;
         }
 
         .metric-label {
@@ -405,10 +413,27 @@
                 container.dataset.loaded = 'true';
 
                 Promise.all(detailPromises).then(details => {
-                    const detailMap = {};
+                    const detailResults = {};
                     details.forEach(item => {
                         if (!item || !item.host_id) return;
-                        detailMap[item.host_id] = item.data || { error: true };
+                        if (item.data) {
+                            detailResults[item.host_id] = item.data;
+                        }
+                    });
+
+                    const detailMap = {};
+                    hosts.forEach(host => {
+                        if (host.status !== 'online') {
+                            return;
+                        }
+                        const nextDetail = detailResults[host.host_id];
+                        if (nextDetail) {
+                            detailMap[host.host_id] = nextDetail;
+                        } else if (lastDetailMap[host.host_id]) {
+                            detailMap[host.host_id] = lastDetailMap[host.host_id];
+                        } else {
+                            detailMap[host.host_id] = { error: true };
+                        }
                     });
 
                     container.innerHTML = renderHosts(hosts, detailMap, false);

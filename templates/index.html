@@ -162,10 +162,30 @@
             background: #f8d7da;
             color: #721c24;
         }
+
+        .status.error {
+            background: #f5c6cb;
+            color: #721c24;
+        }
         
         .status.created {
             background: #d1ecf1;
             color: #0c5460;
+        }
+
+        .status.paused {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status.restarting {
+            background: #fde2c9;
+            color: #8a4b08;
+        }
+
+        .status.dead {
+            background: #e2e3e5;
+            color: #383d41;
         }
         
         .btn {
@@ -916,6 +936,7 @@
                     <option value="">All Statuses</option>
                     <option value="running">Running</option>
                     <option value="exited">Exited</option>
+                    <option value="error">Error</option>
                     <option value="paused">Paused</option>
                     <option value="restarting">Restarting</option>
                     <option value="unhealthy">Unhealthy</option>
@@ -977,9 +998,9 @@
                 </thead>
                 <tbody>
                     {% for container in containers %}
-                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-health="{{ container.health or '' }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image_display }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}" data-cpu="0" data-memory="0">
+                    <tr data-name="{{ container.name|lower }}" data-status="{{ container.status }}" data-exit-code="{{ container.exit_code if container.exit_code is not none else '' }}" data-health="{{ container.health or '' }}" data-host="{{ container.host_name }}" data-stack="{{ container.stack }}" data-image="{{ container.image_display }}" data-ip="{{ container.ip_addresses }}" data-tags="{% for tag in container.tags %}{{ tag.name }}{% if not loop.last %},{% endif %}{% endfor %}" data-cpu="0" data-memory="0">
                         <td>
-                            <input type="checkbox" class="container-select" data-id="{{ container.id }}" data-name="{{ container.name }}" data-host-id="{{ container.host_id }}" data-status="{{ container.status }}" onchange="updateSelectionState()">
+                            <input type="checkbox" class="container-select" data-id="{{ container.id }}" data-name="{{ container.name }}" data-host-id="{{ container.host_id }}" data-status="{{ container.status }}" data-exit-code="{{ container.exit_code if container.exit_code is not none else '' }}" onchange="updateSelectionState()">
                         </td>
                         <td>
                             <div class="tooltip-container">
@@ -987,7 +1008,10 @@
                                 <span class="tooltip-text">
                                     <div><span class="tooltip-label">ID:</span> {{ container.id }}</div>
                                     <div><span class="tooltip-label">Image:</span> {{ container.image }}</div>
-                                    <div><span class="tooltip-label">Status:</span> {{ container.status }}</div>
+                                    <div><span class="tooltip-label">Status:</span> {{ container.status_display }}</div>
+                                    {% if container.exit_code is not none %}
+                                    <div><span class="tooltip-label">Exit code:</span> {{ container.exit_code }}</div>
+                                    {% endif %}
                                     <div><span class="tooltip-label">Created:</span> {{ container.created[:19].replace('T', ' ') }}</div>
                                     <div><span class="tooltip-label">Version:</span> {{ container.image_version }}</div>
                                 </span>
@@ -1005,7 +1029,7 @@
                         <td><span style="font-family: monospace; font-size: 12px; color: #555;">{{ container.ip_addresses }}</span></td>
                         <td class="status-cell">
                             <div class="status-stack">
-                                <span class="status {{ container.status }}">{{ container.status }}</span>
+                                <span class="status {{ container.status_class }}">{{ container.status_display }}</span>
                             </div>
                             {% if container.health %}
                             <span class="tooltip-container" style="position: absolute; top: 8px; right: 8px;">
@@ -2218,6 +2242,7 @@
             rows.forEach(row => {
                 const name = row.dataset.name || '';
                 const status = row.dataset.status || '';
+                const exitCode = row.dataset.exitCode || '';
                 const health = row.dataset.health || '';
                 const host = row.dataset.host || '';
                 const stack = row.dataset.stack || '';
@@ -2229,6 +2254,8 @@
                     matchesStatus = true;
                 } else if (statusFilter === 'unhealthy' || statusFilter === 'starting' || statusFilter === 'healthy') {
                     matchesStatus = health === statusFilter;
+                } else if (statusFilter === 'error') {
+                    matchesStatus = status === 'exited' && exitCode !== '' && exitCode !== '0';
                 } else {
                     matchesStatus = status === statusFilter;
                 }
