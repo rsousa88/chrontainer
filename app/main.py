@@ -204,7 +204,7 @@ def strip_image_tag(image_name):
 
     return f"{prefix}/{last}" if prefix else last
 
-def get_image_version(container, image_name):
+def get_image_version(container, image_name, docker_client=None):
     """Best-effort version from image labels, falling back to version-like tags."""
     labels = {}
     try:
@@ -238,6 +238,33 @@ def get_image_version(container, image_name):
                 return match.group(0), 'env'
     except Exception:
         pass
+
+    if docker_client:
+        try:
+            image_id = container.image.id if container.image else None
+            image_obj = docker_client.images.get(image_id) if image_id else None
+            image_labels = image_obj.attrs.get('Config', {}).get('Labels', {}) if image_obj else {}
+            for key in VERSION_LABEL_KEYS:
+                value = (image_labels or {}).get(key)
+                if value:
+                    return value.strip(), 'label'
+            ref_name = (image_labels or {}).get('org.opencontainers.image.ref.name', '')
+            if ref_name:
+                match = VERSION_IN_TEXT_RE.search(ref_name)
+                if match:
+                    return match.group(0), 'label'
+            tags = image_obj.tags if image_obj else []
+            for repo_tag in tags:
+                if ':' not in repo_tag:
+                    continue
+                tag_value = repo_tag.rsplit(':', 1)[1].strip()
+                if tag_value.lower() in NON_VERSION_TAGS:
+                    continue
+                match = VERSION_IN_TEXT_RE.search(tag_value)
+                if match:
+                    return match.group(0), 'tag'
+        except Exception:
+            pass
 
     tag = None
     if image_name and ':' in image_name:
@@ -1361,7 +1388,7 @@ def index():
                         pass
 
                     image_display = strip_image_tag(image_name)
-                    image_version, version_source = get_image_version(container, image_name)
+                    image_version, version_source = get_image_version(container, image_name, docker_client)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
                     host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 
@@ -1499,7 +1526,7 @@ def get_containers():
                         pass
 
                     image_display = strip_image_tag(image_name)
-                    image_version, version_source = get_image_version(container, image_name)
+                    image_version, version_source = get_image_version(container, image_name, docker_client)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
                     host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 
