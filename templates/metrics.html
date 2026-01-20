@@ -251,27 +251,34 @@
                     `;
                 }
 
+                const detailLoaded = Object.prototype.hasOwnProperty.call(detailMap, host.host_id);
                 const detail = detailMap[host.host_id] || {};
                 const memPercent = detail.memory
                     ? Math.round((detail.memory.used_by_containers_bytes / detail.memory.total_bytes) * 100)
                     : 0;
                 const osLabel = detail.os || host.os || (showLoadingDetails ? 'Loading...' : 'N/A');
-                const dockerVersion = detail.docker_version || (showLoadingDetails ? 'Loading...' : 'N/A');
+                const dockerVersion = detail.docker_version
+                    || (detailLoaded ? 'Unavailable' : (showLoadingDetails ? 'Loading...' : 'N/A'));
                 const cpuCount = detail.cpus || host.cpus || (showLoadingDetails ? '--' : '0');
                 const totalMemory = detail.memory ? detail.memory.total_gb : (host.memory_gb || (showLoadingDetails ? '--' : '0'));
                 const runningCount = detail.containers?.running ?? host.containers_running ?? (showLoadingDetails ? '--' : 0);
                 const stoppedCount = detail.containers?.stopped ?? (showLoadingDetails ? '--' : 0);
                 const pausedCount = detail.containers?.paused ?? (showLoadingDetails ? '--' : 0);
                 const diskAvailable = detail.disk_available;
-                const showDiskSection = showLoadingDetails || detail.disk || diskAvailable === false;
+                const showDiskSection = showLoadingDetails || detail.disk || diskAvailable === false || detailLoaded;
+                const diskUnavailable = detailLoaded && !detail.disk && diskAvailable !== true;
                 const diskSummary = detail.disk
                     ? `${detail.disk.total_gb} GB total`
-                    : (diskAvailable === false ? 'Unavailable' : 'Loading...');
-                const diskImagesCount = detail.disk ? detail.images_count : (diskAvailable === false ? 'N/A' : '--');
-                const diskImagesValue = detail.disk ? `${detail.disk.images_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
-                const diskContainersValue = detail.disk ? `${detail.disk.containers_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
-                const diskVolumesValue = detail.disk ? `${detail.disk.volumes_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
-                const diskCacheValue = detail.disk ? `${detail.disk.build_cache_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
+                    : (diskUnavailable ? 'Unavailable' : 'Loading...');
+                const diskImagesCount = detail.disk ? detail.images_count : (diskUnavailable ? 'N/A' : '--');
+                const diskImagesValue = detail.disk ? `${detail.disk.images_gb} GB` : (diskUnavailable ? 'N/A' : '--');
+                const diskContainersValue = detail.disk ? `${detail.disk.containers_gb} GB` : (diskUnavailable ? 'N/A' : '--');
+                const diskVolumesValue = detail.disk ? `${detail.disk.volumes_gb} GB` : (diskUnavailable ? 'N/A' : '--');
+                const diskCacheValue = detail.disk ? `${detail.disk.build_cache_gb} GB` : (diskUnavailable ? 'N/A' : '--');
+                const showMemorySection = showLoadingDetails || detail.memory || detailLoaded;
+                const memorySummary = detail.memory
+                    ? `${detail.memory.used_by_containers_gb} GB (${memPercent}%)`
+                    : (detailLoaded ? 'Unavailable' : 'Loading...');
 
                 return `
                     <div class="host-card">
@@ -299,10 +306,10 @@
                             </div>
                         </div>
 
-                        ${(detail.memory || showLoadingDetails) ? `
+                        ${showMemorySection ? `
                         <div class="metric-box" style="margin-top: 15px;">
                             <div class="metric-label">Memory Used by Containers</div>
-                            <div class="metric-value">${detail.memory ? `${detail.memory.used_by_containers_gb} GB (${memPercent}%)` : 'Loading...'}</div>
+                            <div class="metric-value">${memorySummary}</div>
                             <div class="metric-bar">
                                 <div class="metric-bar-fill ${getBarClass(memPercent)}" style="width: ${memPercent}%"></div>
                             </div>
