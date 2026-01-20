@@ -131,6 +131,11 @@ Once added, all containers from remote hosts will appear on your dashboard with 
 
 Chrontainer will send rich notifications with color-coded embeds when containers are restarted, started, or stopped (both manual and scheduled actions).
 
+### Host Metrics Requirements
+
+- **Raspberry Pi / Debian**: enable memory cgroups so Docker can report container memory usage. Edit `/boot/firmware/cmdline.txt` (single line) to remove `cgroup_disable=memory` and add `cgroup_enable=memory cgroup_memory=1`, then reboot.
+- **Remote hosts via socket-proxy**: set `SYSTEM=1` in docker-socket-proxy to allow Docker disk usage metrics (`/system/df`).
+
 ## Architecture
 
 ```

@@ -141,6 +141,25 @@ sudo systemctl status docker
 sudo systemctl start docker
 ```
 
+### Host Metrics Show 0B / 0B Memory
+
+If Docker reports `0B / 0B` in `docker stats`, memory cgroups are disabled.
+
+1. Edit `/boot/firmware/cmdline.txt` and ensure the file is **one line**.
+2. Remove `cgroup_disable=memory` if present.
+3. Add `cgroup_enable=memory cgroup_memory=1` at the end of the same line.
+4. Reboot the host.
+
+### Remote Host Disk Usage Shows 0 GB
+
+When using docker-socket-proxy, enable the system endpoint:
+
+```
+SYSTEM=1
+```
+
+This allows `/system/df` so Chrontainer can show Docker disk usage.
+
 ## Updating Chrontainer
 
 ```bash

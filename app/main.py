@@ -2552,17 +2552,29 @@ def get_host_metrics(host_id):
         volumes_size = 0
         build_cache_size = 0
 
+        images_list = []
+        containers_list = []
+        volumes_list = []
+        cache_list = []
         if disk_usage:
-            for img in disk_usage.get('Images', []) or []:
+            images_list = disk_usage.get('Images', []) or []
+            containers_list = disk_usage.get('Containers', []) or []
+            volumes_list = disk_usage.get('Volumes', []) or []
+            cache_list = disk_usage.get('BuildCache', []) or []
+
+        disk_available = any([images_list, containers_list, volumes_list, cache_list])
+
+        if disk_available:
+            for img in images_list:
                 images_size += img.get('Size', 0) or 0
 
-            for cont in disk_usage.get('Containers', []) or []:
+            for cont in containers_list:
                 containers_size += cont.get('SizeRw', 0) or 0
 
-            for vol in disk_usage.get('Volumes', []) or []:
+            for vol in volumes_list:
                 volumes_size += vol.get('UsageData', {}).get('Size', 0) or 0
 
-            for cache in disk_usage.get('BuildCache', []) or []:
+            for cache in cache_list:
                 build_cache_size += cache.get('Size', 0) or 0
 
         return jsonify({
@@ -2585,7 +2597,8 @@ def get_host_metrics(host_id):
                 'stopped': containers_stopped,
                 'total': containers_running + containers_paused + containers_stopped
             },
-            'disk': {
+            'disk_available': disk_available,
+            'disk': None if not disk_available else {
                 'images_bytes': images_size,
                 'images_gb': round(images_size / (1024**3), 2),
                 'containers_bytes': containers_size,

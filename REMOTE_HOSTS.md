@@ -60,7 +60,7 @@ services:
       - SERVICES=0        # Disable services
       - SESSION=0         # Disable session
       - SWARM=0           # Disable swarm
-      - SYSTEM=0          # Disable system
+      - SYSTEM=1          # Required for host metrics (disk usage via /system/df)
       - TASKS=0           # Disable tasks
       - VOLUMES=0         # Disable volumes
       - VERSION=1         # Allow version check
@@ -177,6 +177,12 @@ tcp+ssh://user@remote-host:22
 **Problem:** `POST=0` in socket-proxy configuration.
 
 **Solution:** Set `POST=1` in docker-socket-proxy environment and restart it.
+
+### Host Metrics Disk Usage Shows 0 GB
+
+**Problem:** `SYSTEM=0` in socket-proxy configuration.
+
+**Solution:** Set `SYSTEM=1` to allow `/system/df` and restart the socket-proxy container.
 
 ---
 

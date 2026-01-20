@@ -294,6 +294,7 @@ services:
       CONTAINERS: 1    # Allow container operations
       IMAGES: 1        # Allow image operations
       POST: 1          # Allow POST requests
+      SYSTEM: 1        # Allow /system/df for disk usage metrics
       NETWORKS: 0      # Deny network operations
       VOLUMES: 0       # Deny volume operations
       EXEC: 0          # Deny exec operations

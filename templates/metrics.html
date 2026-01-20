@@ -262,6 +262,16 @@
                 const runningCount = detail.containers?.running ?? host.containers_running ?? (showLoadingDetails ? '--' : 0);
                 const stoppedCount = detail.containers?.stopped ?? (showLoadingDetails ? '--' : 0);
                 const pausedCount = detail.containers?.paused ?? (showLoadingDetails ? '--' : 0);
+                const diskAvailable = detail.disk_available;
+                const showDiskSection = showLoadingDetails || detail.disk || diskAvailable === false;
+                const diskSummary = detail.disk
+                    ? `${detail.disk.total_gb} GB total`
+                    : (diskAvailable === false ? 'Unavailable' : 'Loading...');
+                const diskImagesCount = detail.disk ? detail.images_count : (diskAvailable === false ? 'N/A' : '--');
+                const diskImagesValue = detail.disk ? `${detail.disk.images_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
+                const diskContainersValue = detail.disk ? `${detail.disk.containers_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
+                const diskVolumesValue = detail.disk ? `${detail.disk.volumes_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
+                const diskCacheValue = detail.disk ? `${detail.disk.build_cache_gb} GB` : (diskAvailable === false ? 'N/A' : '--');
 
                 return `
                     <div class="host-card">
@@ -308,14 +318,14 @@
                             </div>
                         </div>
 
-                        ${(detail.disk || showLoadingDetails) ? `
+                        ${showDiskSection ? `
                         <div class="disk-breakdown">
                             <div class="metric-label">Docker Disk Usage</div>
-                            <div class="metric-value">${detail.disk ? `${detail.disk.total_gb} GB total` : 'Loading...'}</div>
-                            <div class="disk-item"><span>Images (${detail.disk ? detail.images_count : '--'})</span><span>${detail.disk ? `${detail.disk.images_gb} GB` : '--'}</span></div>
-                            <div class="disk-item"><span>Containers</span><span>${detail.disk ? `${detail.disk.containers_gb} GB` : '--'}</span></div>
-                            <div class="disk-item"><span>Volumes</span><span>${detail.disk ? `${detail.disk.volumes_gb} GB` : '--'}</span></div>
-                            <div class="disk-item"><span>Build Cache</span><span>${detail.disk ? `${detail.disk.build_cache_gb} GB` : '--'}</span></div>
+                            <div class="metric-value">${diskSummary}</div>
+                            <div class="disk-item"><span>Images (${diskImagesCount})</span><span>${diskImagesValue}</span></div>
+                            <div class="disk-item"><span>Containers</span><span>${diskContainersValue}</span></div>
+                            <div class="disk-item"><span>Volumes</span><span>${diskVolumesValue}</span></div>
+                            <div class="disk-item"><span>Build Cache</span><span>${diskCacheValue}</span></div>
                         </div>
                         ` : ''}
                     </div>
