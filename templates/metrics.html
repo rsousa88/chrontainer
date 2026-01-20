@@ -237,6 +237,92 @@
         let metricsRefreshTimer = null;
         let metricsRefreshInFlight = false;
 
+        function renderHosts(hosts, detailMap, showLoadingDetails) {
+            return hosts.map(host => {
+                if (host.status !== 'online') {
+                    return `
+                        <div class="host-card">
+                            <div class="host-header">
+                                <span class="host-name">${escapeHtml(host.name)}</span>
+                                <span class="host-status offline">${escapeHtml(host.status)}</span>
+                            </div>
+                            <p>${escapeHtml(host.error || 'Host is not reachable')}</p>
+                        </div>
+                    `;
+                }
+
+                const detail = detailMap[host.host_id] || {};
+                const memPercent = detail.memory
+                    ? Math.round((detail.memory.used_by_containers_bytes / detail.memory.total_bytes) * 100)
+                    : 0;
+                const osLabel = detail.os || host.os || (showLoadingDetails ? 'Loading...' : 'N/A');
+                const dockerVersion = detail.docker_version || (showLoadingDetails ? 'Loading...' : 'N/A');
+                const cpuCount = detail.cpus || host.cpus || (showLoadingDetails ? '--' : '0');
+                const totalMemory = detail.memory ? detail.memory.total_gb : (host.memory_gb || (showLoadingDetails ? '--' : '0'));
+                const runningCount = detail.containers?.running ?? host.containers_running ?? (showLoadingDetails ? '--' : 0);
+                const stoppedCount = detail.containers?.stopped ?? (showLoadingDetails ? '--' : 0);
+                const pausedCount = detail.containers?.paused ?? (showLoadingDetails ? '--' : 0);
+
+                return `
+                    <div class="host-card">
+                        <div class="host-header">
+                            <span class="host-name">${escapeHtml(host.name)}</span>
+                            <span class="host-status online">Online</span>
+                        </div>
+
+                        <div class="metrics-grid">
+                            <div class="metric-box">
+                                <div class="metric-label">Operating System</div>
+                                <div class="metric-value" style="font-size: 1em;">${escapeHtml(osLabel)}</div>
+                            </div>
+                            <div class="metric-box">
+                                <div class="metric-label">Docker Version</div>
+                                <div class="metric-value" style="font-size: 1em;">${escapeHtml(dockerVersion)}</div>
+                            </div>
+                            <div class="metric-box">
+                                <div class="metric-label">CPUs</div>
+                                <div class="metric-value">${cpuCount}</div>
+                            </div>
+                            <div class="metric-box">
+                                <div class="metric-label">Total Memory</div>
+                                <div class="metric-value">${totalMemory} GB</div>
+                            </div>
+                        </div>
+
+                        ${(detail.memory || showLoadingDetails) ? `
+                        <div class="metric-box" style="margin-top: 15px;">
+                            <div class="metric-label">Memory Used by Containers</div>
+                            <div class="metric-value">${detail.memory ? `${detail.memory.used_by_containers_gb} GB (${memPercent}%)` : 'Loading...'}</div>
+                            <div class="metric-bar">
+                                <div class="metric-bar-fill ${getBarClass(memPercent)}" style="width: ${memPercent}%"></div>
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        <div class="metric-box" style="margin-top: 15px;">
+                            <div class="metric-label">Containers</div>
+                            <div class="container-counts">
+                                <span class="count-badge count-running">${runningCount} running</span>
+                                <span class="count-badge count-stopped">${stoppedCount} stopped</span>
+                                <span class="count-badge count-paused">${pausedCount} paused</span>
+                            </div>
+                        </div>
+
+                        ${(detail.disk || showLoadingDetails) ? `
+                        <div class="disk-breakdown">
+                            <div class="metric-label">Docker Disk Usage</div>
+                            <div class="metric-value">${detail.disk ? `${detail.disk.total_gb} GB total` : 'Loading...'}</div>
+                            <div class="disk-item"><span>Images (${detail.disk ? detail.images_count : '--'})</span><span>${detail.disk ? `${detail.disk.images_gb} GB` : '--'}</span></div>
+                            <div class="disk-item"><span>Containers</span><span>${detail.disk ? `${detail.disk.containers_gb} GB` : '--'}</span></div>
+                            <div class="disk-item"><span>Volumes</span><span>${detail.disk ? `${detail.disk.volumes_gb} GB` : '--'}</span></div>
+                            <div class="disk-item"><span>Build Cache</span><span>${detail.disk ? `${detail.disk.build_cache_gb} GB` : '--'}</span></div>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
         function scheduleMetricsRefresh() {
             if (metricsRefreshTimer) {
                 clearTimeout(metricsRefreshTimer);
@@ -283,89 +369,17 @@
                         headers: { 'X-CSRFToken': getCsrfToken() }
                     }).then(r => r.json()).catch(() => null));
 
+                const initialDetails = {};
+                container.innerHTML = renderHosts(hosts, initialDetails, true);
+                container.dataset.loaded = 'true';
+
                 Promise.all(detailPromises).then(details => {
                     const detailMap = {};
                     details.forEach(d => {
                         if (d && d.host_id) detailMap[d.host_id] = d;
                     });
 
-                    container.innerHTML = hosts.map(host => {
-                        if (host.status !== 'online') {
-                            return `
-                                <div class="host-card">
-                                    <div class="host-header">
-                                        <span class="host-name">${escapeHtml(host.name)}</span>
-                                        <span class="host-status offline">${escapeHtml(host.status)}</span>
-                                    </div>
-                                    <p>${escapeHtml(host.error || 'Host is not reachable')}</p>
-                                </div>
-                            `;
-                        }
-
-                        const detail = detailMap[host.host_id] || {};
-                        const memPercent = detail.memory
-                            ? Math.round((detail.memory.used_by_containers_bytes / detail.memory.total_bytes) * 100)
-                            : 0;
-
-                        return `
-                            <div class="host-card">
-                                <div class="host-header">
-                                    <span class="host-name">${escapeHtml(host.name)}</span>
-                                    <span class="host-status online">Online</span>
-                                </div>
-
-                                <div class="metrics-grid">
-                                    <div class="metric-box">
-                                        <div class="metric-label">Operating System</div>
-                                        <div class="metric-value" style="font-size: 1em;">${escapeHtml(detail.os || host.os)}</div>
-                                    </div>
-                                    <div class="metric-box">
-                                        <div class="metric-label">Docker Version</div>
-                                        <div class="metric-value" style="font-size: 1em;">${escapeHtml(detail.docker_version || 'N/A')}</div>
-                                    </div>
-                                    <div class="metric-box">
-                                        <div class="metric-label">CPUs</div>
-                                        <div class="metric-value">${detail.cpus || host.cpus}</div>
-                                    </div>
-                                    <div class="metric-box">
-                                        <div class="metric-label">Total Memory</div>
-                                        <div class="metric-value">${detail.memory ? detail.memory.total_gb : host.memory_gb} GB</div>
-                                    </div>
-                                </div>
-
-                                ${detail.memory ? `
-                                <div class="metric-box" style="margin-top: 15px;">
-                                    <div class="metric-label">Memory Used by Containers</div>
-                                    <div class="metric-value">${detail.memory.used_by_containers_gb} GB (${memPercent}%)</div>
-                                    <div class="metric-bar">
-                                        <div class="metric-bar-fill ${getBarClass(memPercent)}" style="width: ${memPercent}%"></div>
-                                    </div>
-                                </div>
-                                ` : ''}
-
-                                <div class="metric-box" style="margin-top: 15px;">
-                                    <div class="metric-label">Containers</div>
-                                    <div class="container-counts">
-                                        <span class="count-badge count-running">${detail.containers?.running || host.containers_running} running</span>
-                                        <span class="count-badge count-stopped">${detail.containers?.stopped || 0} stopped</span>
-                                        <span class="count-badge count-paused">${detail.containers?.paused || 0} paused</span>
-                                    </div>
-                                </div>
-
-                                ${detail.disk ? `
-                                <div class="disk-breakdown">
-                                    <div class="metric-label">Docker Disk Usage</div>
-                                    <div class="metric-value">${detail.disk.total_gb} GB total</div>
-                                    <div class="disk-item"><span>Images (${detail.images_count})</span><span>${detail.disk.images_gb} GB</span></div>
-                                    <div class="disk-item"><span>Containers</span><span>${detail.disk.containers_gb} GB</span></div>
-                                    <div class="disk-item"><span>Volumes</span><span>${detail.disk.volumes_gb} GB</span></div>
-                                    <div class="disk-item"><span>Build Cache</span><span>${detail.disk.build_cache_gb} GB</span></div>
-                                </div>
-                                ` : ''}
-                            </div>
-                        `;
-                    }).join('');
-
+                    container.innerHTML = renderHosts(hosts, detailMap, false);
                     container.dataset.loaded = 'true';
                     updateLastRefresh();
                     metricsRefreshInFlight = false;
