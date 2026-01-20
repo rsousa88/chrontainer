@@ -3,6 +3,8 @@ Chrontainer - Docker Container Scheduler
 Main Flask application
 """
 import os
+import time
+import concurrent.futures
 import docker
 import sqlite3
 import bcrypt
@@ -28,6 +30,22 @@ load_dotenv()
 
 # Version
 VERSION = "0.4.0"
+
+HOST_METRICS_CACHE = {}
+HOST_METRICS_CACHE_TTL_SECONDS = 20
+
+
+def get_cached_host_metrics(host_id):
+    entry = HOST_METRICS_CACHE.get(host_id)
+    if not entry:
+        return None
+    if time.time() - entry['timestamp'] > HOST_METRICS_CACHE_TTL_SECONDS:
+        return None
+    return entry['data']
+
+
+def set_cached_host_metrics(host_id, data):
+    HOST_METRICS_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
 
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):
@@ -2517,16 +2535,37 @@ def regenerate_webhook_token(webhook_id):
 def get_host_metrics(host_id):
     """Get system metrics for a Docker host"""
     try:
+        cached = get_cached_host_metrics(host_id)
+        if cached:
+            return jsonify(cached)
+
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
             return jsonify({'error': 'Cannot connect to Docker host'}), 503
 
         info = docker_client.info()
 
+        def fetch_disk_usage():
+            try:
+                return docker_client.df()
+            except Exception:
+                return None
+
+        def fetch_container_memory(container):
+            try:
+                stats = container.stats(stream=False)
+                return stats.get('memory_stats', {}).get('usage', 0) or 0
+            except Exception:
+                return 0
+
+        disk_usage = None
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(fetch_disk_usage)
         try:
-            disk_usage = docker_client.df()
+            disk_usage = future.result(timeout=3)
         except Exception:
             disk_usage = None
+        executor.shutdown(wait=False, cancel_futures=True)
 
         containers_running = info.get('ContainersRunning', 0)
         containers_paused = info.get('ContainersPaused', 0)
@@ -2535,15 +2574,28 @@ def get_host_metrics(host_id):
         mem_total = info.get('MemTotal', 0)
 
         mem_used_by_containers = 0
+        containers = []
         try:
-            for container in docker_client.containers.list():
-                try:
-                    stats = container.stats(stream=False)
-                    mem_used_by_containers += stats.get('memory_stats', {}).get('usage', 0)
-                except Exception:
-                    pass
+            containers = docker_client.containers.list()
         except Exception:
-            pass
+            containers = []
+
+        if containers:
+            max_workers = min(4, len(containers))
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+            futures = [executor.submit(fetch_container_memory, container) for container in containers]
+            start = time.monotonic()
+            try:
+                for future in concurrent.futures.as_completed(futures, timeout=3):
+                    try:
+                        mem_used_by_containers += future.result()
+                    except Exception:
+                        pass
+                    if time.monotonic() - start >= 3:
+                        break
+            except concurrent.futures.TimeoutError:
+                pass
+            executor.shutdown(wait=False, cancel_futures=True)
 
         cpus = info.get('NCPU', 0)
 
@@ -2577,7 +2629,7 @@ def get_host_metrics(host_id):
             for cache in cache_list:
                 build_cache_size += cache.get('Size', 0) or 0
 
-        return jsonify({
+        response_payload = {
             'host_id': host_id,
             'name': info.get('Name', 'Unknown'),
             'os': info.get('OperatingSystem', 'Unknown'),
@@ -2611,7 +2663,10 @@ def get_host_metrics(host_id):
                 'total_gb': round((images_size + containers_size + volumes_size + build_cache_size) / (1024**3), 2)
             },
             'images_count': info.get('Images', 0)
-        })
+        }
+
+        set_cached_host_metrics(host_id, response_payload)
+        return jsonify(response_payload)
 
     except Exception as e:
         logger.error(f"Failed to get host metrics for host {host_id}: {e}")

@@ -384,7 +384,11 @@
                     .filter(h => h.status === 'online')
                     .map(h => fetch(`/api/hosts/${h.host_id}/metrics`, {
                         headers: { 'X-CSRFToken': getCsrfToken() }
-                    }).then(r => r.json()).catch(() => null));
+                    })
+                        .then(r => (r.ok ? r.json() : Promise.reject()))
+                        .then(data => ({ host_id: h.host_id, data }))
+                        .catch(() => ({ host_id: h.host_id, error: true }))
+                    );
 
                 const initialDetails = {};
                 container.innerHTML = renderHosts(hosts, initialDetails, true);
@@ -392,8 +396,9 @@
 
                 Promise.all(detailPromises).then(details => {
                     const detailMap = {};
-                    details.forEach(d => {
-                        if (d && d.host_id) detailMap[d.host_id] = d;
+                    details.forEach(item => {
+                        if (!item || !item.host_id) return;
+                        detailMap[item.host_id] = item.data || { error: true };
                     });
 
                     container.innerHTML = renderHosts(hosts, detailMap, false);
