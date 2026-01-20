@@ -33,6 +33,8 @@ VERSION = "0.4.0"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
+CONTAINER_STATS_CACHE = {}
+CONTAINER_STATS_CACHE_TTL_SECONDS = 10
 
 
 def get_cached_host_metrics(host_id):
@@ -46,6 +48,19 @@ def get_cached_host_metrics(host_id):
 
 def set_cached_host_metrics(host_id, data):
     HOST_METRICS_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
+
+
+def get_cached_container_stats(cache_key):
+    entry = CONTAINER_STATS_CACHE.get(cache_key)
+    if not entry:
+        return None
+    if time.time() - entry['timestamp'] > CONTAINER_STATS_CACHE_TTL_SECONDS:
+        return None
+    return entry['data']
+
+
+def set_cached_container_stats(cache_key, data):
+    CONTAINER_STATS_CACHE[cache_key] = {'timestamp': time.time(), 'data': data}
 
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):
@@ -1693,6 +1708,11 @@ def api_get_container_stats(container_id):
     host_id = request.args.get('host_id', 1, type=int)
 
     try:
+        cache_key = f"{container_id}_{host_id}"
+        cached = get_cached_container_stats(cache_key)
+        if cached:
+            return jsonify(cached)
+
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
             return jsonify({'error': 'Cannot connect to Docker host'}), 500
@@ -1731,12 +1751,14 @@ def api_get_container_stats(container_id):
         except (KeyError, ZeroDivisionError):
             pass
 
-        return jsonify({
+        payload = {
             'cpu_percent': round(cpu_percent, 1),
             'memory_percent': round(memory_percent, 1),
             'memory_mb': round(memory_mb, 1),
             'status': container.status
-        })
+        }
+        set_cached_container_stats(cache_key, payload)
+        return jsonify(payload)
 
     except docker.errors.NotFound:
         return jsonify({'error': 'Container not found'}), 404
@@ -1748,12 +1770,19 @@ def api_get_container_stats(container_id):
 @api_key_or_login_required
 def api_get_all_container_stats():
     """API endpoint to get stats for all running containers"""
+    cached = get_cached_container_stats('all')
+    if cached:
+        return jsonify(cached)
+
     results = {}
 
     for host_id, host_name, docker_client in docker_manager.get_all_clients():
         try:
             containers = docker_client.containers.list(all=False)
-            for container in containers:
+            if not containers:
+                continue
+
+            def fetch_stats(container):
                 container_id = container.id[:12]
                 try:
                     stats = container.stats(stream=False)
@@ -1780,16 +1809,33 @@ def api_get_all_container_stats():
                     except (KeyError, ZeroDivisionError):
                         pass
 
-                    results[f"{container_id}_{host_id}"] = {
+                    return container_id, {
                         'cpu_percent': round(cpu_percent, 1),
                         'memory_percent': round(memory_percent, 1),
                         'memory_mb': round(memory_mb, 1)
                     }
                 except Exception as e:
                     logger.debug(f"Failed to get stats for {container.name}: {e}")
+                    return container_id, None
+
+            max_workers = min(6, len(containers))
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+            futures = [executor.submit(fetch_stats, container) for container in containers]
+            start = time.monotonic()
+            try:
+                for future in concurrent.futures.as_completed(futures, timeout=3):
+                    container_id, stats = future.result()
+                    if stats is not None:
+                        results[f"{container_id}_{host_id}"] = stats
+                    if time.monotonic() - start >= 3:
+                        break
+            except concurrent.futures.TimeoutError:
+                pass
+            executor.shutdown(wait=False, cancel_futures=True)
         except Exception as e:
             logger.error(f"Failed to get containers from host {host_name}: {e}")
 
+    set_cached_container_stats('all', results)
     return jsonify(results)
 
 @app.route('/api/schedule', methods=['POST'])
