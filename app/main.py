@@ -29,7 +29,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -663,13 +663,13 @@ def check_for_update(container, client):
         image_name = container.image.tags[0] if container.image.tags else container.attrs.get('Config', {}).get('Image', '')
 
         if not image_name or ':' not in image_name:
-            return False, None, "Unable to determine image tag"
+            return False, None, None, "Unable to determine image tag"
 
         # Get local image digest
         local_image = container.image
         local_digest = local_image.attrs.get('RepoDigests', [])
         if not local_digest:
-            return False, None, "No local digest available"
+            return False, None, None, "No local digest available"
         local_digest = local_digest[0].split('@')[1] if '@' in local_digest[0] else None
 
         # Pull latest image info without actually pulling the image
