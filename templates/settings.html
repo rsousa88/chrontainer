@@ -594,6 +594,22 @@ Body: {"container_id": "optional_override"}</code></pre>
                     </div>
                     <button type="submit" class="btn btn-primary" id="submitBtn" style="margin-top: 20px;">Change Password</button>
                 </form>
+
+                <h2 style="margin-top: 30px;">Update Checks</h2>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="updateCheckEnabled">
+                        Enable automatic update checks
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="updateCheckCron">Cron Expression</label>
+                    <input type="text" id="updateCheckCron" placeholder="*/30 * * * *">
+                    <small>Controls how often Chrontainer checks for image updates.</small>
+                </div>
+                <div class="button-group">
+                    <button type="button" class="btn btn-primary" onclick="saveUpdateCheckSettings()">Save Update Check Settings</button>
+                </div>
             </div>
         </div>
     </div>
@@ -660,6 +676,7 @@ Body: {"container_id": "optional_override"}</code></pre>
             // Load hosts when switching to that tab
             if (tabName === 'hosts') loadHosts();
             if (tabName === 'ntfy') loadNtfySettings();
+            if (tabName === 'account') loadUpdateCheckSettings();
             if (tabName === 'apikeys') loadApiKeys();
             if (tabName === 'webhooks') {
                 loadWebhookOptions().then(() => loadWebhooks());
@@ -783,6 +800,41 @@ Body: {"container_id": "optional_override"}</code></pre>
                 toggleNtfyFields();
             } catch (error) {
                 showAlert('Error loading ntfy settings: ' + error.message, 'error');
+            }
+        }
+
+        async function loadUpdateCheckSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+                document.getElementById('updateCheckEnabled').checked = data.update_check_enabled === 'true';
+                document.getElementById('updateCheckCron').value = data.update_check_cron || '*/30 * * * *';
+            } catch (error) {
+                showAlert('Error loading update-check settings: ' + error.message, 'error');
+            }
+        }
+
+        async function saveUpdateCheckSettings() {
+            try {
+                const payload = {
+                    enabled: document.getElementById('updateCheckEnabled').checked,
+                    cron: document.getElementById('updateCheckCron').value.trim() || '*/30 * * * *'
+                };
+
+                const response = await fetch('/api/settings/update-check', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Update-check settings saved successfully!', 'success');
+                } else {
+                    showAlert(data.error || 'Failed to save update-check settings', 'error');
+                }
+            } catch (error) {
+                showAlert('Error saving update-check settings: ' + error.message, 'error');
             }
         }
 

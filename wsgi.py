@@ -8,7 +8,7 @@ import sys
 # Add app directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from app.main import app, init_db, load_schedules
+from app.main import app, init_db, load_schedules, configure_update_check_schedule
 
 # Initialize database and schedules on startup
 if __name__ != '__main__':
@@ -16,6 +16,7 @@ if __name__ != '__main__':
     try:
         init_db()
         load_schedules()
+        configure_update_check_schedule()
     except Exception as e:
         print(f"Error during initialization: {e}", file=sys.stderr)
         raise

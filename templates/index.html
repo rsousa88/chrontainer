@@ -455,11 +455,22 @@
             color: #000;
         }
         
+        #alertContainer {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 2000;
+        }
+
         .alert {
-            padding: 12px 20px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            font-size: 14px;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+            max-width: 320px;
         }
         
         .alert-success {
@@ -992,7 +1003,6 @@
                         <th onclick="sortTable('cpu')" style="cursor: pointer; width: 70px;">CPU <span id="sort-cpu"></span></th>
                         <th onclick="sortTable('memory')" style="cursor: pointer; width: 80px;">Memory <span id="sort-memory"></span></th>
                         <th onclick="sortTable('image')" style="cursor: pointer;">Image <span id="sort-image"></span></th>
-                        <th>Version</th>
                         <th style="width: 140px;">Quick Actions</th>
                     </tr>
                 </thead>
@@ -1013,7 +1023,6 @@
                                     <div><span class="tooltip-label">Exit code:</span> {{ container.exit_code }}</div>
                                     {% endif %}
                                     <div><span class="tooltip-label">Created:</span> {{ container.created[:19].replace('T', ' ') }}</div>
-                                    <div><span class="tooltip-label">Version:</span> {{ container.image_version }}</div>
                                 </span>
                             </div>
                         </td>
@@ -1072,28 +1081,15 @@
                                 {% endif %}
                             </div>
                         </td>
-                        <td>
-                            {% if container.image_version == 'unknown' %}
-                            <span class="tooltip-container">
-                                <span style="color: #888;">unknown</span>
-                                <span class="tooltip-text">No version label found on image. Consider using a versioned tag.</span>
-                            </span>
-                            {% else %}
-                            <span class="tooltip-container">
-                                <span>{{ container.image_version }}</span>
-                                <span class="tooltip-text">Source: {{ container.image_version_source }}</span>
-                            </span>
-                            {% endif %}
-                        </td>
                         <td class="quick-actions">
                             <span class="tooltip-container">
-                                <button class="icon-btn" onclick="checkForUpdate('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">
+                                <button class="icon-btn update-check-btn" data-container-id="{{ container.id }}" data-host-id="{{ container.host_id }}" data-has-update="false" onclick="checkForUpdate('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
                                         <path d="M21 12a9 9 0 1 1-3.3-6.9"/>
                                         <path d="M21 3v6h-6"/>
                                     </svg>
                                 </button>
-                                <span class="tooltip-text compact">Check updates</span>
+                                <span class="tooltip-text compact update-check-tooltip">Check updates</span>
                             </span>
                             <span class="tooltip-container">
                                 <button class="icon-btn" onclick="openLogsModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})">
@@ -1144,7 +1140,7 @@
                                 </button>
                                 <span class="tooltip-text compact">{% if container.webui_url %}Edit Web UI{% else %}Set Web UI{% endif %}</span>
                             </span>
-                            <span class="update-status" id="update-cell-{{ container.id }}-{{ container.host_id }}"></span>
+                            <span class="update-status" id="update-cell-{{ container.id }}-{{ container.host_id }}"{% if container.update_status %} data-update-status='{{ container.update_status | tojson }}'{% endif %}></span>
                         </td>
                     </tr>
                     {% endfor %}
@@ -1453,6 +1449,18 @@
                 document.body.classList.add('dark-mode');
                 updateDarkModeButton(true);
             }
+
+            document.querySelectorAll('.update-status[data-update-status]').forEach(cell => {
+                try {
+                    const payload = JSON.parse(cell.dataset.updateStatus);
+                    const match = cell.id.match(/^update-cell-([^-]+)-(\d+)$/);
+                    const containerId = match ? match[1] : null;
+                    const hostId = match ? match[2] : null;
+                    renderUpdateCell(cell, payload, containerId, null, hostId, {notify: false});
+                } catch (error) {
+                    console.warn('Failed to parse cached update status', error);
+                }
+            });
 
             if (document.querySelectorAll('.stats-cell').length > 0) {
                 fetchContainerStats();
@@ -1868,68 +1876,81 @@
             }
         }
 
-        function renderUpdateCell(cell, result, containerId, containerName, hostId) {
+        function renderUpdateCell(cell, result, containerId, containerName, hostId, options) {
+            const notify = options?.notify !== false;
             cell.innerHTML = '';
 
             if (result.loading) {
                 const spinner = document.createElement('span');
                 spinner.className = 'spinner';
                 cell.appendChild(spinner);
-                cell.appendChild(document.createTextNode(' Checking...'));
                 return;
             }
 
             if (result.error) {
-                const error = document.createElement('span');
-                error.style.fontSize = '11px';
-                error.style.color = '#e74c3c';
-                error.textContent = result.error;
-                cell.appendChild(error);
+                if (containerId && hostId) {
+                    updateCheckButtonState(containerId, hostId, false);
+                }
+                if (notify) {
+                    showAlert(result.error, 'error');
+                }
                 return;
             }
 
             if (result.note) {
-                const note = document.createElement('span');
-                note.style.fontSize = '11px';
-                note.style.color = '#7f8c8d';
-                note.textContent = result.note;
-                cell.appendChild(note);
+                if (containerId && hostId) {
+                    updateCheckButtonState(containerId, hostId, false);
+                }
+                if (notify) {
+                    showAlert(result.note, 'info');
+                }
                 return;
             }
 
             if (result.has_update) {
-                const status = document.createElement('span');
-                status.style.color = '#27ae60';
-                status.style.fontWeight = '600';
-                status.style.fontSize = '11px';
-                status.textContent = 'Update';
-                cell.appendChild(status);
-
-                if (result.remote_version) {
-                    const version = document.createElement('div');
-                    version.style.fontSize = '11px';
-                    version.style.color = '#555';
-                    version.textContent = `New: ${result.remote_version}`;
-                    cell.appendChild(version);
+                if (containerId && hostId) {
+                    updateCheckButtonState(containerId, hostId, true);
                 }
-
-                const updateButton = document.createElement('button');
-                updateButton.className = 'btn btn-success btn-small';
-                updateButton.style.marginTop = '4px';
-                updateButton.textContent = 'Update';
-                updateButton.addEventListener('click', () => updateContainer(containerId, containerName, hostId));
-                cell.appendChild(updateButton);
+                if (notify && containerName) {
+                    showAlert(`Update available for ${containerName}`, 'success');
+                }
                 return;
             }
 
-            const upToDate = document.createElement('span');
-            upToDate.style.color = '#7f8c8d';
-            upToDate.style.fontSize = '11px';
-            upToDate.textContent = 'Up to date';
-            cell.appendChild(upToDate);
+            if (containerId && hostId) {
+                updateCheckButtonState(containerId, hostId, false);
+            }
+            if (notify && containerName) {
+                showAlert(`No updates for ${containerName}`, 'info');
+            }
         }
 
-        async function checkForUpdate(containerId, containerName, hostId) {
+        const UPDATE_CHECK_ICON = `
+            <path d="M21 12a9 9 0 1 1-3.3-6.9"/>
+            <path d="M21 3v6h-6"/>
+        `;
+        const UPDATE_AVAILABLE_ICON = `
+            <path d="M12 19V5"/>
+            <path d="M7 10l5-5 5 5"/>
+        `;
+
+        function updateCheckButtonState(containerId, hostId, hasUpdate) {
+            const button = document.querySelector(`.update-check-btn[data-container-id="${containerId}"][data-host-id="${hostId}"]`);
+            if (!button) return;
+            const svg = button.querySelector('svg');
+            const tooltip = button.closest('.tooltip-container')?.querySelector('.update-check-tooltip');
+            button.dataset.hasUpdate = hasUpdate ? 'true' : 'false';
+            if (hasUpdate) {
+                if (svg) svg.innerHTML = UPDATE_AVAILABLE_ICON;
+                if (tooltip) tooltip.textContent = 'Update available';
+            } else {
+                if (svg) svg.innerHTML = UPDATE_CHECK_ICON;
+                if (tooltip) tooltip.textContent = 'Check updates';
+            }
+        }
+
+        async function checkForUpdate(containerId, containerName, hostId, options) {
+            const autoUpdate = options?.autoUpdate === true;
             const cell = document.getElementById(`update-cell-${containerId}-${hostId}`);
             renderUpdateCell(cell, {loading: true});
 
@@ -1938,13 +1959,16 @@
                 const result = await response.json();
 
                 if (result.error) {
-                    renderUpdateCell(cell, {error: result.error});
+                    renderUpdateCell(cell, {error: result.error}, containerId, containerName, hostId);
                     return;
                 }
 
                 renderUpdateCell(cell, result, containerId, containerName, hostId);
+                if (autoUpdate && result.has_update) {
+                    await updateContainer(containerId, containerName, hostId);
+                }
             } catch (error) {
-                renderUpdateCell(cell, {error: 'Check failed'});
+                renderUpdateCell(cell, {error: 'Check failed'}, containerId, containerName, hostId);
                 showAlert('Error checking for update: ' + error.message, 'error');
             }
         }
@@ -1993,10 +2017,10 @@
                             return;
                         }
                         if (r.error) {
-                            renderUpdateCell(cell, {error: r.error});
+                            renderUpdateCell(cell, {error: r.error}, r.container_id, r.container_name, r.host_id, {notify: false});
                             return;
                         }
-                        renderUpdateCell(cell, r, r.container_id, r.container_name, r.host_id);
+                        renderUpdateCell(cell, r, r.container_id, r.container_name, r.host_id, {notify: false});
                     });
 
                     showAlert(`Update check complete: ${result.updates_available} of ${result.total} containers have updates available`, 'success');
@@ -2023,7 +2047,7 @@
             const results = await Promise.allSettled(selected.map(container => {
                 const cell = document.getElementById(`update-cell-${container.id}-${container.hostId}`);
                 if (cell) {
-                    renderUpdateCell(cell, {loading: true});
+                    renderUpdateCell(cell, {loading: true}, container.id, container.name, container.hostId, {notify: false});
                 }
                 return fetch(`/api/container/${container.id}/check-update?host_id=${container.hostId}`)
                     .then(response => response.json())
@@ -2045,13 +2069,13 @@
                 }
                 if (payload.error) {
                     errors += 1;
-                    renderUpdateCell(cell, {error: payload.error});
+                    renderUpdateCell(cell, {error: payload.error}, container.id, container.name, container.hostId, {notify: false});
                     return;
                 }
                 if (payload.has_update) {
                     updatesAvailable += 1;
                 }
-                renderUpdateCell(cell, payload, container.id, container.name, container.hostId);
+                renderUpdateCell(cell, payload, container.id, container.name, container.hostId, {notify: false});
             });
 
             if (errors > 0) {

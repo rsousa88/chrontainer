@@ -29,7 +29,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.4.8"
+VERSION = "0.4.9"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -37,10 +37,10 @@ CONTAINER_STATS_CACHE = {}
 CONTAINER_STATS_CACHE_TTL_SECONDS = 10
 DISK_USAGE_CACHE = {}
 DISK_USAGE_CACHE_TTL_SECONDS = 300
-IMAGE_VERSION_CACHE = {}
-IMAGE_VERSION_CACHE_TTL_SECONDS = 3600
 DISK_USAGE_INFLIGHT = set()
 DISK_USAGE_INFLIGHT_LOCK = threading.Lock()
+UPDATE_STATUS_CACHE = {}
+UPDATE_STATUS_CACHE_TTL_SECONDS = 3600
 
 
 def get_cached_host_metrics(host_id):
@@ -82,21 +82,70 @@ def set_cached_disk_usage(host_id, data):
     DISK_USAGE_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
 
 
-def get_cached_image_version(cache_key):
-    entry = IMAGE_VERSION_CACHE.get(cache_key)
+def get_cached_update_status(container_id, host_id):
+    entry = UPDATE_STATUS_CACHE.get((container_id, host_id))
     if not entry:
         return None
-    if time.time() - entry['timestamp'] > IMAGE_VERSION_CACHE_TTL_SECONDS:
+    if time.time() - entry['timestamp'] > UPDATE_STATUS_CACHE_TTL_SECONDS:
         return None
     return entry['data']
 
 
-def set_cached_image_version(cache_key, version, source):
-    IMAGE_VERSION_CACHE[cache_key] = {
+def set_cached_update_status(container_id, host_id, data):
+    UPDATE_STATUS_CACHE[(container_id, host_id)] = {
         'timestamp': time.time(),
-        'data': (version, source)
+        'data': data
     }
 
+
+def write_update_status(container_id, host_id, payload):
+    set_cached_update_status(container_id, host_id, payload)
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO update_status (
+                container_id, host_id, has_update, remote_digest, error, note, checked_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            container_id,
+            host_id,
+            1 if payload.get('has_update') else 0,
+            payload.get('remote_digest'),
+            payload.get('error'),
+            payload.get('note'),
+            payload.get('checked_at')
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as error:
+        logger.warning("Failed to persist update status for %s/%s: %s", host_id, container_id, error)
+
+
+def load_update_status_map():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT container_id, host_id, has_update, remote_digest, error, note, checked_at
+            FROM update_status
+        ''')
+        rows = cursor.fetchall()
+        conn.close()
+    except Exception as error:
+        logger.warning("Failed to load cached update status: %s", error)
+        return {}
+
+    status_map = {}
+    for container_id, host_id, has_update, remote_digest, error, note, checked_at in rows:
+        status_map[(container_id, host_id)] = {
+            'has_update': bool(has_update),
+            'remote_digest': remote_digest,
+            'error': error,
+            'note': note,
+            'checked_at': checked_at
+        }
+    return status_map
 
 def refresh_disk_usage_async(host_id, docker_client):
     def run():
@@ -177,16 +226,8 @@ def get_image_links(image_name):
 
     return links
 
-VERSION_LABEL_KEYS = (
-    'org.opencontainers.image.version',
-    'org.label-schema.version'
-)
-NON_VERSION_TAGS = {
-    'latest', 'stable', 'edge', 'nightly', 'main', 'master', 'dev', 'develop'
-}
-VERSION_TAG_RE = re.compile(r'^v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*$')
-VERSION_IN_TEXT_RE = re.compile(r'v?\d+(?:\.\d+)+(?:[-._][0-9A-Za-z]+)*')
 HOST_DEFAULT_COLOR = '#e8f4f8'
+UPDATE_CHECK_CRON_DEFAULT = '*/30 * * * *'
 
 def validate_color(color):
     if not color:
@@ -221,104 +262,7 @@ def strip_image_tag(image_name):
 
     return f"{prefix}/{last}" if prefix else last
 
-def _extract_version_from_labels(labels, source):
-    for key, value in (labels or {}).items():
-        if not value:
-            continue
-        key_lower = key.lower()
-        if key_lower in VERSION_LABEL_KEYS:
-            match = VERSION_IN_TEXT_RE.search(str(value))
-            if match:
-                return match.group(0), source
-    return None, None
-
-
-def get_image_version(container, image_name, docker_client=None, allow_registry=True):
-    """Best-effort version from image labels, falling back to version-like tags."""
-    labels = {}
-    try:
-        image_labels = container.image.attrs.get('Config', {}).get('Labels', {}) or {}
-        container_labels = container.attrs.get('Config', {}).get('Labels', {}) or {}
-        labels = {**container_labels, **image_labels}
-    except Exception:
-        labels = {}
-
-    version, source = _extract_version_from_labels(labels, 'label')
-    if version:
-        return version, source
-
-    ref_name = labels.get('org.opencontainers.image.ref.name', '')
-    if ref_name:
-        match = VERSION_IN_TEXT_RE.search(ref_name)
-        if match:
-            return match.group(0), 'label'
-
-    if docker_client:
-        try:
-            image_id = container.image.id if container.image else None
-            image_obj = docker_client.images.get(image_id) if image_id else None
-            image_labels = image_obj.attrs.get('Config', {}).get('Labels', {}) if image_obj else {}
-            version, source = _extract_version_from_labels(image_labels, 'label')
-            if version:
-                return version, source
-            ref_name = (image_labels or {}).get('org.opencontainers.image.ref.name', '')
-            if ref_name:
-                match = VERSION_IN_TEXT_RE.search(ref_name)
-                if match:
-                    return match.group(0), 'label'
-            tags = image_obj.tags if image_obj else []
-            for repo_tag in tags:
-                if ':' not in repo_tag:
-                    continue
-                tag_value = repo_tag.rsplit(':', 1)[1].strip()
-                if tag_value.lower() in NON_VERSION_TAGS:
-                    continue
-                match = VERSION_IN_TEXT_RE.search(tag_value)
-                if match:
-                    return match.group(0), 'tag'
-        except Exception:
-            pass
-
-    tag = None
-    if image_name and ':' in image_name:
-        tag = image_name.rsplit(':', 1)[1].strip()
-
-    if tag and tag.lower() not in NON_VERSION_TAGS and VERSION_TAG_RE.match(tag):
-        return tag, 'tag'
-
-    if tag and tag.lower() not in NON_VERSION_TAGS:
-        match = VERSION_IN_TEXT_RE.search(tag)
-        if match:
-            return match.group(0), 'tag'
-
-    if docker_client and allow_registry and image_name and ':' in image_name:
-        cache_key = image_name
-        cached = get_cached_image_version(cache_key)
-        if cached:
-            return cached
-        try:
-            registry_data = docker_client.images.get_registry_data(image_name)
-            registry_version = get_registry_version(registry_data)
-            if registry_version and registry_version != 'unknown':
-                set_cached_image_version(cache_key, registry_version, 'registry')
-                return registry_version, 'registry'
-        except Exception:
-            pass
-
-    return 'unknown', 'unknown'
-
-def get_registry_version(registry_data):
-    """Best-effort version from registry metadata annotations."""
-    try:
-        descriptor = registry_data.attrs.get('Descriptor', {}) if registry_data else {}
-        annotations = descriptor.get('annotations') or descriptor.get('Annotations') or registry_data.attrs.get('Annotations') or {}
-        for key in VERSION_LABEL_KEYS:
-            value = annotations.get(key)
-            if value:
-                return value.strip()
-    except Exception as e:
-        logger.debug(f"Failed to parse registry version: {e}")
-    return None
+ 
 
 # Configure logging
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
@@ -648,41 +592,92 @@ def check_for_update(container, client):
         image_name = container.image.tags[0] if container.image.tags else container.attrs.get('Config', {}).get('Image', '')
 
         if not image_name or ':' not in image_name:
-            return False, None, None, None, "Unable to determine image tag"
+            return False, None, "Unable to determine image tag", None
 
         # Get local image digest
         local_image = container.image
         local_digest = local_image.attrs.get('RepoDigests', [])
         if not local_digest:
-            return False, None, None, None, "No local digest"
+            return False, None, None, "No local digest"
         local_digest = local_digest[0].split('@')[1] if '@' in local_digest[0] else None
-
-        # Pull latest image info without actually pulling the image
-        repository, tag = image_name.rsplit(':', 1) if ':' in image_name else (image_name, 'latest')
 
         try:
             # Get registry data for the image
             registry_data = client.images.get_registry_data(image_name)
             remote_digest = registry_data.attrs.get('Descriptor', {}).get('digest')
-            remote_version = get_registry_version(registry_data)
 
             if not remote_digest or not local_digest:
-                return False, None, None, None, "Digest missing"
+                return False, None, None, "Digest missing"
 
             # Compare digests
             has_update = (remote_digest != local_digest)
-            return has_update, remote_digest, remote_version, None, None
+            return has_update, remote_digest, None, None
 
         except docker.errors.APIError as e:
             # Handle rate limits, authentication errors, etc.
             message = str(e)
             if 'distribution' in message and 'Forbidden' in message:
-                return False, None, None, "Registry error: socket-proxy forbids distribution endpoint. Enable DISTRIBUTION=1.", None
-            return False, None, None, f"Registry error: {message}", None
+                return False, None, f"Registry error: socket-proxy forbids distribution endpoint. Enable DISTRIBUTION=1.", None
+            return False, None, f"Registry error: {message}", None
 
     except Exception as e:
         logger.error(f"Error checking for update: {e}")
-        return False, None, None, str(e), None
+        return False, None, str(e), None
+
+
+def run_update_check_job():
+    """System job that refreshes update status for all containers."""
+    try:
+        for host_id, host_name, docker_client in docker_manager.get_all_clients():
+            try:
+                containers = docker_client.containers.list(all=True)
+                for container in containers:
+                    container_id = container.id[:12]
+                    has_update, remote_digest, error, note = check_for_update(container, docker_client)
+                    payload = {
+                        'has_update': has_update,
+                        'remote_digest': remote_digest,
+                        'error': error,
+                        'note': note,
+                        'checked_at': datetime.utcnow().isoformat()
+                    }
+                    write_update_status(container_id, host_id, payload)
+            except Exception as error:
+                logger.error(f"Scheduled update check failed for host {host_name}: {error}")
+        logger.info("Scheduled update check completed")
+    except Exception as error:
+        logger.error(f"Scheduled update check failed: {error}")
+
+
+def configure_update_check_schedule():
+    """Configure or disable the system update-check job."""
+    job_id = 'system_update_check'
+    try:
+        scheduler.remove_job(job_id)
+    except Exception:
+        pass
+
+    enabled_setting = get_setting('update_check_enabled', 'true').lower()
+    cron_expression = get_setting('update_check_cron', UPDATE_CHECK_CRON_DEFAULT)
+    enabled = enabled_setting == 'true'
+
+    if not enabled:
+        return
+
+    valid, error = validate_cron_expression(cron_expression)
+    if not valid:
+        logger.warning("Invalid update-check cron expression %s: %s", cron_expression, error)
+        return
+
+    parts = cron_expression.split()
+    trigger = CronTrigger(
+        minute=parts[0],
+        hour=parts[1],
+        day=parts[2],
+        month=parts[3],
+        day_of_week=parts[4]
+    )
+    scheduler.add_job(run_update_check_job, trigger, id=job_id, replace_existing=True)
 
 def update_container(container_id, container_name, schedule_id=None, host_id=1):
     """Update a container by pulling the latest image and recreating it"""
@@ -822,6 +817,20 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Cache for update checks
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS update_status (
+            container_id TEXT NOT NULL,
+            host_id INTEGER NOT NULL,
+            has_update INTEGER DEFAULT 0,
+            remote_digest TEXT,
+            error TEXT,
+            note TEXT,
+            checked_at TIMESTAMP,
+            PRIMARY KEY (container_id, host_id)
         )
     ''')
 
@@ -1482,7 +1491,6 @@ def index():
                         status_class = 'error'
 
                     image_display = strip_image_tag(image_name)
-                    image_version, version_source = get_image_version(container, image_name, docker_client, allow_registry=False)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
                     host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 
@@ -1496,8 +1504,6 @@ def index():
                         'health': health_status,
                         'image': image_name,
                         'image_display': image_display,
-                        'image_version': image_version,
-                        'image_version_source': version_source,
                         'created': container.attrs['Created'],
                         'host_id': host_id,
                         'host_name': host_name,
@@ -1533,6 +1539,8 @@ def index():
         for row in cursor.fetchall():
             webui_map[(row[0], row[1])] = row[2]
 
+        update_status_map = load_update_status_map()
+
         # Attach tags, webui URLs, and image links to containers
         for container in container_list:
             key = (container['id'], container['host_id'])
@@ -1541,6 +1549,9 @@ def index():
             container['webui_url'] = webui_map.get(key) or container.get('webui_url_label')
             # Generate image registry/GitHub/docs links
             container['image_links'] = get_image_links(container['image'])
+            cached_status = update_status_map.get(key)
+            if cached_status:
+                container['update_status'] = cached_status
 
         # Get schedules with host info
         cursor.execute('''
@@ -1632,7 +1643,6 @@ def get_containers():
                         status_class = 'error'
 
                     image_display = strip_image_tag(image_name)
-                    image_version, version_source = get_image_version(container, image_name, docker_client, allow_registry=False)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
                     host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 
@@ -1646,8 +1656,6 @@ def get_containers():
                         'health': health_status,
                         'image': image_name,
                         'image_display': image_display,
-                        'image_version': image_version,
-                        'image_version_source': version_source,
                         'host_id': host_id,
                         'host_name': host_name,
                         'host_color': host_color,
@@ -1766,7 +1774,15 @@ def api_check_container_update(container_id):
             return jsonify({'error': 'Cannot connect to Docker host'}), 500
 
         container = client.containers.get(container_id)
-        has_update, remote_digest, remote_version, error, note = check_for_update(container, client)
+        has_update, remote_digest, error, note = check_for_update(container, client)
+        payload = {
+            'has_update': has_update,
+            'remote_digest': remote_digest,
+            'error': error,
+            'note': note,
+            'checked_at': datetime.utcnow().isoformat()
+        }
+        write_update_status(container_id, host_id, payload)
 
         if error:
             return jsonify({'has_update': False, 'error': error})
@@ -1774,7 +1790,6 @@ def api_check_container_update(container_id):
         return jsonify({
             'has_update': has_update,
             'remote_digest': remote_digest,
-            'remote_version': remote_version,
             'note': note
         })
 
@@ -1797,14 +1812,21 @@ def api_check_all_updates():
                 for container in containers:
                     container_id = container.id[:12]
                     try:
-                        has_update, remote_digest, remote_version, error, note = check_for_update(container, docker_client)
+                        has_update, remote_digest, error, note = check_for_update(container, docker_client)
+                        payload = {
+                            'has_update': has_update,
+                            'remote_digest': remote_digest,
+                            'error': error,
+                            'note': note,
+                            'checked_at': datetime.utcnow().isoformat()
+                        }
+                        write_update_status(container_id, host_id, payload)
                         results.append({
                             'container_id': container_id,
                             'container_name': container.name,
                             'host_id': host_id,
                             'host_name': host_name,
                             'has_update': has_update,
-                            'remote_version': remote_version,
                             'error': error,
                             'note': note
                         })
@@ -1815,7 +1837,6 @@ def api_check_all_updates():
                             'host_id': host_id,
                             'host_name': host_name,
                             'has_update': False,
-                            'remote_version': None,
                             'error': str(e),
                             'note': None
                         })
@@ -2270,7 +2291,9 @@ def get_settings():
             'ntfy_enabled': get_setting('ntfy_enabled', 'false'),
             'ntfy_server': get_setting('ntfy_server', 'https://ntfy.sh'),
             'ntfy_topic': get_setting('ntfy_topic', ''),
-            'ntfy_priority': get_setting('ntfy_priority', '3')
+            'ntfy_priority': get_setting('ntfy_priority', '3'),
+            'update_check_enabled': get_setting('update_check_enabled', 'true'),
+            'update_check_cron': get_setting('update_check_cron', UPDATE_CHECK_CRON_DEFAULT)
         })
     except Exception as e:
         logger.error(f"Failed to get settings: {e}")
@@ -2327,6 +2350,30 @@ def update_ntfy_settings():
     except Exception as e:
         logger.error(f"Failed to update ntfy settings: {e}")
         return jsonify({'error': 'Failed to save settings'}), 500
+
+
+@app.route('/api/settings/update-check', methods=['POST'])
+@login_required
+def update_update_check_settings():
+    """Update automatic update-check settings"""
+    try:
+        data = request.json or {}
+        enabled = bool(data.get('enabled', False))
+        cron_expression = sanitize_string(data.get('cron', UPDATE_CHECK_CRON_DEFAULT), max_length=50).strip()
+
+        if enabled:
+            valid, error = validate_cron_expression(cron_expression)
+            if not valid:
+                return jsonify({'error': error}), 400
+
+        set_setting('update_check_enabled', 'true' if enabled else 'false')
+        set_setting('update_check_cron', cron_expression or UPDATE_CHECK_CRON_DEFAULT)
+
+        configure_update_check_schedule()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Failed to update update-check settings: {e}")
+        return jsonify({'error': 'Failed to save update-check settings'}), 500
 
 @app.route('/api/settings/ntfy/test', methods=['POST'])
 @login_required
@@ -3571,13 +3618,20 @@ def change_password():
 
 if __name__ == '__main__':
     # Create data directory if it doesn't exist
-    os.makedirs('/data', exist_ok=True)
+    data_dir = os.path.dirname(DATABASE_PATH) or '.'
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+    except OSError as exc:
+        logger.warning("Failed to ensure database directory %s: %s", data_dir, exc)
     
     # Initialize database
     init_db()
     
     # Load existing schedules
     load_schedules()
+
+    # Configure update-check schedule
+    configure_update_check_schedule()
     
     # Run Flask app
     port = int(os.environ.get('PORT', 5000))
