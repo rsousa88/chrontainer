@@ -29,7 +29,7 @@ import re
 load_dotenv()
 
 # Version
-VERSION = "0.4.5"
+VERSION = "0.4.7"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -233,7 +233,7 @@ def _extract_version_from_labels(labels, source):
     return None, None
 
 
-def get_image_version(container, image_name, docker_client=None):
+def get_image_version(container, image_name, docker_client=None, allow_registry=True):
     """Best-effort version from image labels, falling back to version-like tags."""
     labels = {}
     try:
@@ -252,20 +252,6 @@ def get_image_version(container, image_name, docker_client=None):
         match = VERSION_IN_TEXT_RE.search(ref_name)
         if match:
             return match.group(0), 'label'
-
-    try:
-        envs = container.attrs.get('Config', {}).get('Env', []) or []
-        for entry in envs:
-            if '=' not in entry:
-                continue
-            key, value = entry.split('=', 1)
-            if 'VERSION' not in key.upper():
-                continue
-            match = VERSION_IN_TEXT_RE.search(value)
-            if match:
-                return match.group(0), 'env'
-    except Exception:
-        pass
 
     if docker_client:
         try:
@@ -305,7 +291,7 @@ def get_image_version(container, image_name, docker_client=None):
         if match:
             return match.group(0), 'tag'
 
-    if docker_client and image_name and ':' in image_name:
+    if docker_client and allow_registry and image_name and ':' in image_name:
         cache_key = image_name
         cached = get_cached_image_version(cache_key)
         if cached:
@@ -668,7 +654,7 @@ def check_for_update(container, client):
         local_image = container.image
         local_digest = local_image.attrs.get('RepoDigests', [])
         if not local_digest:
-            return False, None, None, None, "Update check unavailable: local image has no registry digest (likely built locally)."
+            return False, None, None, None, "No local digest"
         local_digest = local_digest[0].split('@')[1] if '@' in local_digest[0] else None
 
         # Pull latest image info without actually pulling the image
@@ -681,7 +667,7 @@ def check_for_update(container, client):
             remote_version = get_registry_version(registry_data)
 
             if not remote_digest or not local_digest:
-                return False, None, None, None, "Update check unavailable: missing digest for comparison."
+                return False, None, None, None, "Digest missing"
 
             # Compare digests
             has_update = (remote_digest != local_digest)
@@ -1496,7 +1482,7 @@ def index():
                         status_class = 'error'
 
                     image_display = strip_image_tag(image_name)
-                    image_version, version_source = get_image_version(container, image_name, docker_client)
+                    image_version, version_source = get_image_version(container, image_name, docker_client, allow_registry=False)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
                     host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 
@@ -1646,7 +1632,7 @@ def get_containers():
                         status_class = 'error'
 
                     image_display = strip_image_tag(image_name)
-                    image_version, version_source = get_image_version(container, image_name, docker_client)
+                    image_version, version_source = get_image_version(container, image_name, docker_client, allow_registry=False)
                     host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
                     host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
 

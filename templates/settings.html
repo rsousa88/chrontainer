@@ -45,7 +45,7 @@
             transition: background-color 0.3s, color 0.3s;
         }
 
-        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .container { max-width: 90%; width: 90%; margin: 0 auto; padding: 20px; }
 
         header {
             background: var(--bg-header);
@@ -57,8 +57,8 @@
 
         header h1 { font-size: 28px; font-weight: 600; }
 
-        .nav-links { margin-top: 10px; }
-        .nav-links a { color: #3498db; text-decoration: none; margin-right: 20px; font-size: 14px; }
+        .nav-links { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .nav-links a { color: #3498db; text-decoration: none; margin-right: 14px; font-size: 14px; }
         .nav-links a:hover { color: #5dade2; }
 
         .card {
@@ -294,6 +294,8 @@
                 <a href="/logs">Logs</a>
                 <a href="/metrics">Host Metrics</a>
                 <a href="/settings">Settings</a>
+                <a href="/hosts">Hosts</a>
+                <a href="/user-settings">User</a>
             </div>
         </div>
     </header>

@@ -21,7 +21,8 @@
         }
 
         .container {
-            max-width: 600px;
+            max-width: 90%;
+            width: 90%;
             margin: 0 auto;
             padding: 20px;
         }
@@ -41,12 +42,16 @@
 
         .nav-links {
             margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
         }
 
         .nav-links a {
             color: #3498db;
             text-decoration: none;
-            margin-right: 20px;
+            margin-right: 14px;
             font-size: 14px;
         }
 
@@ -173,7 +178,7 @@
 </head>
 <body>
     <header>
-        <div class="container" style="max-width: 900px;">
+        <div class="container">
             <h1>👤 User Settings <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
