@@ -1494,6 +1494,7 @@
         }
 
         let statsInFlight = false;
+        let statsFallbackInFlight = false;
 
         function fetchContainerStats() {
             if (statsInFlight) {
@@ -1564,6 +1565,11 @@
             if (!rows || rows.length === 0) {
                 return;
             }
+            // Prevent concurrent fallback operations
+            if (statsFallbackInFlight) {
+                return;
+            }
+            statsFallbackInFlight = true;
             const queue = rows.slice();
             const maxConcurrent = 4;
             let active = 0;
@@ -1617,6 +1623,10 @@
                         runNext();
                     });
                 }
+                // Clear in-flight flag when queue is exhausted and all active requests complete
+                if (queue.length === 0 && active === 0) {
+                    statsFallbackInFlight = false;
+                }
             };
 
             runNext();
@@ -1635,11 +1645,8 @@
         }
 
         function applyAutoRefreshInterval(seconds) {
-            if (autoRefreshTimer) {
-                clearInterval(autoRefreshTimer);
-                autoRefreshTimer = null;
-            }
-            stopAutoRefreshProgress();
+            // Always clear all timers first to prevent leaks
+            clearAllAutoRefreshTimers();
             if (Number.isFinite(seconds) && seconds > 0) {
                 autoRefreshDurationMs = seconds * 1000;
                 startAutoRefreshProgress();
@@ -1655,8 +1662,9 @@
             const select = document.getElementById('autoRefreshSelect');
             if (!select) return;
             const stored = localStorage.getItem('autoRefreshSeconds');
-            const seconds = stored ? parseInt(stored, 10) : 10;
-            select.value = Number.isFinite(seconds) ? String(seconds) : '10';
+            // Default to 0 (Off) for new users to reduce server load
+            const seconds = stored ? parseInt(stored, 10) : 0;
+            select.value = Number.isFinite(seconds) ? String(seconds) : '0';
             applyAutoRefreshInterval(parseInt(select.value, 10));
         }
 
@@ -1703,6 +1711,18 @@
             }
         }
 
+        function clearAllAutoRefreshTimers() {
+            // Centralized cleanup to prevent timer leaks
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+            if (autoRefreshProgressTimer) {
+                clearInterval(autoRefreshProgressTimer);
+                autoRefreshProgressTimer = null;
+            }
+        }
+
         function toggleScheduleType() {
             const isOneTime = document.querySelector('input[name="scheduleType"]:checked').value === 'one_time';
             document.getElementById('cronInputGroup').style.display = isOneTime ? 'none' : 'block';
@@ -1739,7 +1759,19 @@
             };
 
             if (isOneTime) {
-                formData.run_at = document.getElementById('runAtInput').value;
+                const runAtValue = document.getElementById('runAtInput').value;
+                if (!runAtValue) {
+                    showAlert('Please select a date and time for the schedule', 'error');
+                    return;
+                }
+                // Validate that the datetime is in the future
+                const runAtDate = new Date(runAtValue);
+                const now = new Date();
+                if (runAtDate <= now) {
+                    showAlert('Scheduled time must be in the future', 'error');
+                    return;
+                }
+                formData.run_at = runAtValue;
             } else {
                 formData.cron_expression = document.getElementById('scheduleInput').value;
             }

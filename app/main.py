@@ -10,6 +10,7 @@ import sqlite3
 import bcrypt
 import secrets
 import hashlib
+import hmac
 import threading
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -24,6 +25,7 @@ import logging
 from functools import wraps
 from dotenv import load_dotenv
 import re
+from typing import Tuple, Optional
 
 # Load environment variables
 load_dotenv()
@@ -42,60 +44,71 @@ DISK_USAGE_INFLIGHT_LOCK = threading.Lock()
 UPDATE_STATUS_CACHE = {}
 UPDATE_STATUS_CACHE_TTL_SECONDS = 3600
 
+# Global lock for all cache operations (prevents race conditions)
+_cache_lock = threading.RLock()
+
 
 def get_cached_host_metrics(host_id):
-    entry = HOST_METRICS_CACHE.get(host_id)
-    if not entry:
-        return None
-    if time.time() - entry['timestamp'] > HOST_METRICS_CACHE_TTL_SECONDS:
-        return None
-    return entry['data']
+    with _cache_lock:
+        entry = HOST_METRICS_CACHE.get(host_id)
+        if not entry:
+            return None
+        if time.time() - entry['timestamp'] > HOST_METRICS_CACHE_TTL_SECONDS:
+            return None
+        return entry['data']
 
 
 def set_cached_host_metrics(host_id, data):
-    HOST_METRICS_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
+    with _cache_lock:
+        HOST_METRICS_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
 
 
 def get_cached_container_stats(cache_key):
-    entry = CONTAINER_STATS_CACHE.get(cache_key)
-    if not entry:
-        return None
-    if time.time() - entry['timestamp'] > CONTAINER_STATS_CACHE_TTL_SECONDS:
-        return None
-    return entry['data']
+    with _cache_lock:
+        entry = CONTAINER_STATS_CACHE.get(cache_key)
+        if not entry:
+            return None
+        if time.time() - entry['timestamp'] > CONTAINER_STATS_CACHE_TTL_SECONDS:
+            return None
+        return entry['data']
 
 
 def set_cached_container_stats(cache_key, data):
-    CONTAINER_STATS_CACHE[cache_key] = {'timestamp': time.time(), 'data': data}
+    with _cache_lock:
+        CONTAINER_STATS_CACHE[cache_key] = {'timestamp': time.time(), 'data': data}
 
 
 def get_cached_disk_usage(host_id):
-    entry = DISK_USAGE_CACHE.get(host_id)
-    if not entry:
-        return None
-    if time.time() - entry['timestamp'] > DISK_USAGE_CACHE_TTL_SECONDS:
-        return None
-    return entry['data']
+    with _cache_lock:
+        entry = DISK_USAGE_CACHE.get(host_id)
+        if not entry:
+            return None
+        if time.time() - entry['timestamp'] > DISK_USAGE_CACHE_TTL_SECONDS:
+            return None
+        return entry['data']
 
 
 def set_cached_disk_usage(host_id, data):
-    DISK_USAGE_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
+    with _cache_lock:
+        DISK_USAGE_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
 
 
 def get_cached_update_status(container_id, host_id):
-    entry = UPDATE_STATUS_CACHE.get((container_id, host_id))
-    if not entry:
-        return None
-    if time.time() - entry['timestamp'] > UPDATE_STATUS_CACHE_TTL_SECONDS:
-        return None
-    return entry['data']
+    with _cache_lock:
+        entry = UPDATE_STATUS_CACHE.get((container_id, host_id))
+        if not entry:
+            return None
+        if time.time() - entry['timestamp'] > UPDATE_STATUS_CACHE_TTL_SECONDS:
+            return None
+        return entry['data']
 
 
 def set_cached_update_status(container_id, host_id, data):
-    UPDATE_STATUS_CACHE[(container_id, host_id)] = {
-        'timestamp': time.time(),
-        'data': data
-    }
+    with _cache_lock:
+        UPDATE_STATUS_CACHE[(container_id, host_id)] = {
+            'timestamp': time.time(),
+            'data': data
+        }
 
 
 def write_update_status(container_id, host_id, payload):
@@ -434,8 +447,9 @@ def hash_api_key(key):
     return hashlib.sha256(key.encode()).hexdigest()
 
 def verify_api_key(key, key_hash):
-    """Verify an API key against its hash"""
-    return hash_api_key(key) == key_hash
+    """Verify an API key against its hash using constant-time comparison"""
+    computed_hash = hash_api_key(key)
+    return hmac.compare_digest(computed_hash, key_hash)
 
 def api_key_or_login_required(f):
     """Allow either session auth or API key auth"""
@@ -448,40 +462,39 @@ def api_key_or_login_required(f):
 
             key_hash = hash_api_key(api_key)
             conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT ak.id, ak.user_id, ak.permissions, ak.expires_at, u.role
-                FROM api_keys ak
-                JOIN users u ON ak.user_id = u.id
-                WHERE ak.key_hash = ?
-            ''', (key_hash,))
-            result = cursor.fetchone()
+            try:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT ak.id, ak.user_id, ak.permissions, ak.expires_at, u.role
+                    FROM api_keys ak
+                    JOIN users u ON ak.user_id = u.id
+                    WHERE ak.key_hash = ?
+                ''', (key_hash,))
+                result = cursor.fetchone()
 
-            if not result:
+                if not result:
+                    return jsonify({'error': 'Invalid API key'}), 401
+
+                key_id, user_id, permissions, expires_at, user_role = result
+
+                if expires_at:
+                    try:
+                        expires_dt = datetime.fromisoformat(expires_at)
+                        if expires_dt < datetime.now():
+                            return jsonify({'error': 'API key expired'}), 401
+                    except ValueError:
+                        return jsonify({'error': 'Invalid API key expiry'}), 401
+
+                cursor.execute('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?', (key_id,))
+                conn.commit()
+
+                request.api_key_auth = True
+                request.api_key_permissions = permissions
+                request.api_key_user_id = user_id
+                request.api_key_user_role = user_role
+                return f(*args, **kwargs)
+            finally:
                 conn.close()
-                return jsonify({'error': 'Invalid API key'}), 401
-
-            key_id, user_id, permissions, expires_at, user_role = result
-
-            if expires_at:
-                try:
-                    expires_dt = datetime.fromisoformat(expires_at)
-                    if expires_dt < datetime.now():
-                        conn.close()
-                        return jsonify({'error': 'API key expired'}), 401
-                except ValueError:
-                    conn.close()
-                    return jsonify({'error': 'Invalid API key expiry'}), 401
-
-            cursor.execute('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?', (key_id,))
-            conn.commit()
-            conn.close()
-
-            request.api_key_auth = True
-            request.api_key_permissions = permissions
-            request.api_key_user_id = user_id
-            request.api_key_user_role = user_role
-            return f(*args, **kwargs)
 
         if current_user.is_authenticated:
             request.api_key_auth = False
@@ -585,8 +598,21 @@ class DockerHostManager:
 docker_manager = DockerHostManager()
 
 # Container update management functions
-def check_for_update(container, client):
-    """Check if a container has an update available"""
+def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+    """
+    Check if a container has an update available.
+
+    Args:
+        container: Docker container object
+        client: Docker client instance
+
+    Returns:
+        Tuple of (has_update, remote_digest, error, note):
+        - has_update (bool): True if update is available
+        - remote_digest (Optional[str]): Remote image digest if available
+        - error (Optional[str]): Error message if check failed
+        - note (Optional[str]): Informational message (e.g., missing digest)
+    """
     try:
         # Get the image used by the container
         image_name = container.image.tags[0] if container.image.tags else container.attrs.get('Config', {}).get('Image', '')
@@ -960,6 +986,10 @@ def init_db():
     columns = [col[1] for col in cursor.fetchall()]
     if 'color' not in columns:
         logger.info("Migrating hosts table - adding color column")
+        # Note: SQLite ALTER TABLE doesn't support parameterized DEFAULT values
+        # HOST_DEFAULT_COLOR is a compile-time constant (not user input), validated below
+        if not re.match(r'^#[0-9a-fA-F]{6}$', HOST_DEFAULT_COLOR):
+            raise ValueError(f"Invalid HOST_DEFAULT_COLOR constant: {HOST_DEFAULT_COLOR}")
         cursor.execute(f"ALTER TABLE hosts ADD COLUMN color TEXT DEFAULT '{HOST_DEFAULT_COLOR}'")
         cursor.execute('UPDATE hosts SET color = ? WHERE color IS NULL OR color = ""', (HOST_DEFAULT_COLOR,))
 
