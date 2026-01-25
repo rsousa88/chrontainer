@@ -32,6 +32,7 @@ Chrontainer v0.2.0+ includes the following security features:
 ### CSRF Protection
 - ✅ **Flask-WTF CSRF tokens** on all state-changing operations
 - ✅ **SameSite cookies** for additional protection
+- ⚠️ **Webhook endpoints exempt** from CSRF by design (see details below)
 
 ### Input Validation
 - ✅ **Strict validation** of container IDs, names, cron expressions
@@ -221,6 +222,41 @@ Current roles:
 - Sessions are invalidated on logout
 - Sessions are encrypted with SECRET_KEY
 - One session per user (no concurrent logins)
+
+### Webhook Authentication
+
+**Webhook endpoints bypass CSRF protection by design.**
+
+Webhooks use token-based authentication instead of CSRF tokens:
+
+**Security Model**:
+- Each webhook has a unique, cryptographically random token (UUID format)
+- Tokens are stored in the database and validated on every request
+- The `/webhook/<token>` endpoint accepts `POST` and `GET` requests without CSRF tokens
+- Rate limiting applies: **30 requests/minute per IP** (v0.4.9+)
+
+**Why CSRF exemption is safe**:
+1. Webhooks are designed for external systems (GitHub Actions, cron jobs, IoT devices)
+2. These external systems cannot obtain CSRF tokens (no browser session)
+3. Token secrecy provides authentication (similar to API keys)
+4. Rate limiting prevents brute-force token discovery
+
+**Security Recommendations**:
+- ✅ Keep webhook tokens secret (never commit to version control)
+- ✅ Use HTTPS when calling webhooks to prevent token interception
+- ✅ Enable the "locked" flag to prevent accidental triggers
+- ✅ Regenerate tokens if compromised
+- ✅ Delete unused webhooks
+- ⚠️ Webhook tokens are NOT the same as API keys (webhooks trigger specific actions only)
+
+**Example secure webhook usage**:
+```bash
+# Good: HTTPS with secret token
+curl -X POST https://chrontainer.example.com/webhook/550e8400-e29b-41d4-a716-446655440000
+
+# Bad: HTTP exposes token in transit
+curl -X POST http://chrontainer.example.com/webhook/550e8400-e29b-41d4-a716-446655440000
+```
 
 ---
 

@@ -942,7 +942,7 @@
             {% if containers %}
             <!-- Filter Bar -->
             <div style="margin-bottom: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                <input type="text" id="filterName" placeholder="Filter by name..." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; flex: 1; min-width: 200px;" onkeyup="filterContainers()">
+                <input type="text" id="filterName" placeholder="Filter by name..." style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; flex: 1; min-width: 200px;" onkeyup="debouncedFilter()">
                 <select id="filterStatus" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="filterContainers()">
                     <option value="">All Statuses</option>
                     <option value="running">Running</option>
@@ -2293,6 +2293,22 @@
                 stackSelect.appendChild(option);
             });
         }
+
+        // Debounce function to reduce filter calls on rapid input
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Debounced version of filterContainers for text input (300ms delay)
+        const debouncedFilter = debounce(filterContainers, 300);
 
         function filterContainers() {
             const nameFilter = document.getElementById('filterName').value.toLowerCase();
