@@ -31,7 +31,7 @@ from typing import Tuple, Optional
 load_dotenv()
 
 # Version
-VERSION = "0.4.9"
+VERSION = "0.4.10"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
