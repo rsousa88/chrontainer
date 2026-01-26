@@ -1013,6 +1013,37 @@ def init_db():
         VALUES (1, 'Local', 'unix://var/run/docker.sock', 1, ?, ?)
     ''', (HOST_DEFAULT_COLOR, datetime.now()))
 
+    # Create indexes for performance optimization
+    # These indexes significantly improve query performance on large datasets
+
+    # Schedules table indexes (filtered and joined frequently)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(enabled)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_schedules_host_id ON schedules(host_id)')
+
+    # Logs table indexes (queried with ORDER BY timestamp DESC, filtered by schedule_id)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_logs_schedule_id ON logs(schedule_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_logs_host_id ON logs(host_id)')
+
+    # Container tags indexes (frequent lookups for tag display and joins)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_container_tags_container ON container_tags(container_id, host_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_container_tags_tag_id ON container_tags(tag_id)')
+
+    # API keys indexes (authentication lookups)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash)')
+
+    # Webhooks indexes (token lookups for trigger endpoint)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_webhooks_token ON webhooks(token)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled)')
+
+    # Container webui URLs indexes (lookups by container_id and host_id)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_webui_urls_container ON container_webui_urls(container_id, host_id)')
+
+    # Update status indexes (frequent cache lookups)
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_update_status_checked_at ON update_status(checked_at)')
+
     conn.commit()
     conn.close()
     logger.info("Database initialized")
