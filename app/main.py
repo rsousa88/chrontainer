@@ -25,7 +25,7 @@ import logging
 from functools import wraps
 from dotenv import load_dotenv
 import re
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Dict, Any
 
 # Load environment variables
 load_dotenv()
@@ -46,6 +46,19 @@ UPDATE_STATUS_CACHE_TTL_SECONDS = 3600
 
 # Global lock for all cache operations (prevents race conditions)
 _cache_lock = threading.RLock()
+
+# Performance limits
+MAX_CONCURRENT_STATS_FETCH = 4
+BULK_STATS_TIMEOUT_SECONDS = 10
+DOCKER_OPERATION_TIMEOUT_SECONDS = 30
+DEFAULT_PAGE_SIZE = 100
+MAX_LOG_ENTRIES = 1000
+
+# Default cron expression for update checks (daily at 3 AM)
+UPDATE_CHECK_CRON_DEFAULT = '0 3 * * *'
+
+# Default host color
+HOST_DEFAULT_COLOR = '#3498db'
 
 
 def get_cached_host_metrics(host_id):
@@ -428,7 +441,7 @@ def validate_webhook_url(url):
         return False, "Invalid Discord webhook URL. Must start with https://discord.com/api/webhooks/"
     return validate_url(url)
 
-def sanitize_string(value, max_length=255):
+def sanitize_string(value: str, max_length: int = 255) -> str:
     """Sanitize string input"""
     if not value:
         return ""
@@ -706,7 +719,7 @@ def configure_update_check_schedule():
     )
     scheduler.add_job(run_update_check_job, trigger, id=job_id, replace_existing=True)
 
-def update_container(container_id, container_name, schedule_id=None, host_id=1):
+def update_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
     """Update a container by pulling the latest image and recreating it"""
     try:
         client = docker_manager.get_client(host_id)
@@ -1046,7 +1059,7 @@ def update_schedule_container_id(schedule_id, container_id):
     except Exception as e:
         logger.error(f"Failed to update schedule {schedule_id} container_id to {container_id}: {e}")
 
-def restart_container(container_id, container_name, schedule_id=None, host_id=1):
+def restart_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
     """Restart a Docker container"""
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -1085,7 +1098,7 @@ def restart_container(container_id, container_name, schedule_id=None, host_id=1)
         send_ntfy_notification(container_name, 'restart', 'error', message, schedule_id)
         return False, message
 
-def start_container(container_id, container_name, schedule_id=None, host_id=1):
+def start_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
     """Start a Docker container"""
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -1124,7 +1137,7 @@ def start_container(container_id, container_name, schedule_id=None, host_id=1):
         send_ntfy_notification(container_name, 'start', 'error', message, schedule_id)
         return False, message
 
-def stop_container(container_id, container_name, schedule_id=None, host_id=1):
+def stop_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
     """Stop a Docker container"""
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -1163,7 +1176,7 @@ def stop_container(container_id, container_name, schedule_id=None, host_id=1):
         send_ntfy_notification(container_name, 'stop', 'error', message, schedule_id)
         return False, message
 
-def pause_container(container_id, container_name, schedule_id=None, host_id=1):
+def pause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
     """Pause a Docker container"""
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -1202,7 +1215,7 @@ def pause_container(container_id, container_name, schedule_id=None, host_id=1):
         send_ntfy_notification(container_name, 'pause', 'error', message, schedule_id)
         return False, message
 
-def unpause_container(container_id, container_name, schedule_id=None, host_id=1):
+def unpause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
     """Unpause a Docker container"""
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -1241,7 +1254,7 @@ def unpause_container(container_id, container_name, schedule_id=None, host_id=1)
         send_ntfy_notification(container_name, 'unpause', 'error', message, schedule_id)
         return False, message
 
-def log_action(schedule_id, container_name, action, status, message, host_id=1):
+def log_action(schedule_id: Optional[int], container_name: str, action: str, status: str, message: str, host_id: int = 1) -> None:
     """Log an action to the database"""
     try:
         conn = get_db()
@@ -1255,7 +1268,7 @@ def log_action(schedule_id, container_name, action, status, message, host_id=1):
     except Exception as e:
         logger.error(f"Failed to log action: {e}")
 
-def get_setting(key, default=None):
+def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
     """Get a setting value from the database"""
     try:
         conn = get_db()
@@ -1268,7 +1281,7 @@ def get_setting(key, default=None):
         logger.error(f"Failed to get setting {key}: {e}")
         return default
 
-def set_setting(key, value):
+def set_setting(key: str, value: str) -> bool:
     """Set a setting value in the database"""
     try:
         conn = get_db()
@@ -1284,7 +1297,7 @@ def set_setting(key, value):
         logger.error(f"Failed to set setting {key}: {e}")
         return False
 
-def send_discord_notification(container_name, action, status, message, schedule_id=None):
+def send_discord_notification(container_name: str, action: str, status: str, message: str, schedule_id: Optional[int] = None) -> None:
     """Send a Discord webhook notification"""
     webhook_url = get_setting('discord_webhook_url')
     if not webhook_url:
@@ -1325,7 +1338,7 @@ def send_discord_notification(container_name, action, status, message, schedule_
     except Exception as e:
         logger.error(f"Failed to send Discord notification: {e}")
 
-def send_ntfy_notification(container_name, action, status, message, schedule_id=None):
+def send_ntfy_notification(container_name: str, action: str, status: str, message: str, schedule_id: Optional[int] = None) -> None:
     """Send a ntfy.sh push notification"""
     ntfy_enabled = get_setting('ntfy_enabled', 'false')
     if ntfy_enabled != 'true':
@@ -2905,7 +2918,7 @@ def get_host_metrics(host_id):
             containers = []
 
         if containers:
-            max_workers = min(4, len(containers))
+            max_workers = min(MAX_CONCURRENT_STATS_FETCH, len(containers))
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
             futures = [executor.submit(fetch_container_memory, container) for container in containers]
             start = time.monotonic()
@@ -3291,7 +3304,7 @@ def create_tag():
     try:
         data = request.json
         name = data.get('name', '').strip()
-        color = data.get('color', '#3498db').strip()
+        color = data.get('color', HOST_DEFAULT_COLOR).strip()
 
         if not name:
             return jsonify({'error': 'Tag name is required'}), 400
