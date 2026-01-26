@@ -148,6 +148,125 @@ def write_update_status(container_id, host_id, payload):
         logger.warning("Failed to persist update status for %s/%s: %s", host_id, container_id, error)
 
 
+# ============================================================================
+# Input Validation Functions
+# ============================================================================
+
+def validate_container_id(container_id: str) -> Tuple[bool, str]:
+    """
+    Validate Docker container ID format.
+
+    Args:
+        container_id: Container ID to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not container_id:
+        return False, "Container ID is required"
+
+    if not isinstance(container_id, str):
+        return False, "Container ID must be a string"
+
+    # Docker container IDs are 64 hex chars (full) or 12 hex chars (short)
+    if not re.match(r'^[a-f0-9]{12}$|^[a-f0-9]{64}$', container_id.lower()):
+        return False, "Container ID must be 12 or 64 hexadecimal characters"
+
+    return True, ""
+
+
+def validate_host_id(host_id: Any) -> Tuple[bool, str]:
+    """
+    Validate Docker host ID.
+
+    Args:
+        host_id: Host ID to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if host_id is None:
+        return False, "Host ID is required"
+
+    try:
+        host_id_int = int(host_id)
+        if host_id_int < 1:
+            return False, "Host ID must be a positive integer"
+        return True, ""
+    except (ValueError, TypeError):
+        return False, "Host ID must be a valid integer"
+
+
+def validate_cron_expression(expression: str) -> Tuple[bool, str]:
+    """
+    Validate cron expression format.
+
+    Args:
+        expression: Cron expression to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not expression:
+        return False, "Cron expression is required"
+
+    if not isinstance(expression, str):
+        return False, "Cron expression must be a string"
+
+    # Try to create a CronTrigger to validate the expression
+    try:
+        CronTrigger.from_crontab(expression)
+        return True, ""
+    except Exception as e:
+        return False, f"Invalid cron expression: {str(e)}"
+
+
+def validate_action(action: str) -> Tuple[bool, str]:
+    """
+    Validate container action type.
+
+    Args:
+        action: Action to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    valid_actions = ['restart', 'start', 'stop', 'pause', 'unpause', 'update']
+
+    if not action:
+        return False, "Action is required"
+
+    if not isinstance(action, str):
+        return False, "Action must be a string"
+
+    if action.lower() not in valid_actions:
+        return False, f"Action must be one of: {', '.join(valid_actions)}"
+
+    return True, ""
+
+
+def validate_required_fields(data: Dict, required_fields: List[str]) -> Tuple[bool, str]:
+    """
+    Validate that required fields are present in a dictionary.
+
+    Args:
+        data: Dictionary to validate
+        required_fields: List of required field names
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not isinstance(data, dict):
+        return False, "Request body must be a JSON object"
+
+    missing_fields = [field for field in required_fields if field not in data]
+
+    if missing_fields:
+        return False, f"Missing required fields: {', '.join(missing_fields)}"
+
+    return True, ""
+
+
 def load_update_status_map():
     try:
         conn = get_db()
@@ -409,16 +528,6 @@ def validate_container_name(name):
         return False, "Container name is too long (max 255 characters)"
     if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$', name):
         return False, "Container name contains invalid characters"
-    return True, None
-
-def validate_cron_expression(cron_expr):
-    """Validate cron expression format"""
-    if not cron_expr:
-        return False, "Cron expression is required"
-    parts = cron_expr.strip().split()
-    if len(parts) != 5:
-        return False, "Invalid cron expression format. Must be 5 fields: minute hour day month day_of_week"
-    # Additional validation is done by CronTrigger
     return True, None
 
 def validate_url(url, schemes=['http', 'https']):
@@ -1679,11 +1788,23 @@ def get_containers():
 @api_key_or_login_required
 def api_restart_container(container_id):
     """API endpoint to restart a container"""
+    # Validate container ID
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
+
     data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
+
+    # Validate host ID
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     success, message = restart_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
@@ -1691,11 +1812,23 @@ def api_restart_container(container_id):
 @api_key_or_login_required
 def api_start_container(container_id):
     """API endpoint to start a container"""
+    # Validate container ID
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
+
     data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
+
+    # Validate host ID
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     success, message = start_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
@@ -1703,11 +1836,23 @@ def api_start_container(container_id):
 @api_key_or_login_required
 def api_stop_container(container_id):
     """API endpoint to stop a container"""
+    # Validate container ID
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
+
     data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
+
+    # Validate host ID
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     success, message = stop_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
@@ -1715,11 +1860,23 @@ def api_stop_container(container_id):
 @api_key_or_login_required
 def api_pause_container(container_id):
     """API endpoint to pause a container"""
+    # Validate container ID
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
+
     data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
+
+    # Validate host ID
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     success, message = pause_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
@@ -1727,11 +1884,23 @@ def api_pause_container(container_id):
 @api_key_or_login_required
 def api_unpause_container(container_id):
     """API endpoint to unpause a container"""
+    # Validate container ID
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
+
     data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
+
+    # Validate host ID
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     success, message = unpause_container(container_id, container_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
@@ -1829,11 +1998,22 @@ def api_check_all_updates():
 @api_key_or_login_required
 def api_update_container(container_id):
     """API endpoint to update a container"""
+    # Validate container ID
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
+
     data = request.json or {}
     container_name = data.get('name', 'unknown')
     host_id = data.get('host_id', 1)
+
+    # Validate host ID
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
 
     try:
         success, message = update_container(container_id, container_name, host_id)
@@ -2037,9 +2217,15 @@ def add_schedule():
     if not valid:
         return jsonify({'error': error}), 400
 
+    # Validate host ID
+    valid, error = validate_host_id(host_id)
+    if not valid:
+        return jsonify({'error': error}), 400
+
     # Validate action
-    if action not in ['restart', 'start', 'stop', 'pause', 'unpause', 'update']:
-        return jsonify({'error': 'Invalid action. Must be one of: restart, start, stop, pause, unpause, update'}), 400
+    valid, error = validate_action(action)
+    if not valid:
+        return jsonify({'error': error}), 400
 
     if one_time:
         if not run_at:
