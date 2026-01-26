@@ -482,7 +482,8 @@ def api_key_or_login_required(f):
                         expires_dt = datetime.fromisoformat(expires_at)
                         if expires_dt < datetime.now():
                             return jsonify({'error': 'API key expired'}), 401
-                    except ValueError:
+                    except ValueError as e:
+                        logger.error(f"Invalid datetime format in API key {key_id} expiry: {expires_at} - {e}")
                         return jsonify({'error': 'Invalid API key expiry'}), 401
 
                 cursor.execute('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?', (key_id,))
@@ -680,8 +681,8 @@ def configure_update_check_schedule():
     job_id = 'system_update_check'
     try:
         scheduler.remove_job(job_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Could not remove job {job_id} (may not exist): {e}")
 
     enabled_setting = get_setting('update_check_enabled', 'true').lower()
     cron_expression = get_setting('update_check_cron', UPDATE_CHECK_CRON_DEFAULT)
@@ -1011,9 +1012,9 @@ def resolve_container(docker_client, container_id, container_name=None):
     try:
         return docker_client.containers.get(container_id), False
     except docker.errors.NotFound:
-        pass
-    except Exception:
-        pass
+        logger.debug(f"Container {container_id} not found by ID, will try by name")
+    except Exception as e:
+        logger.warning(f"Error getting container by ID {container_id}: {e}")
 
     if not container_name:
         return None, False
@@ -1025,8 +1026,8 @@ def resolve_container(docker_client, container_id, container_name=None):
                 return candidate, True
         if len(matches) == 1:
             return matches[0], True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Error resolving container by name {container_name}: {e}")
 
     return None, False
 
@@ -1042,8 +1043,8 @@ def update_schedule_container_id(schedule_id, container_id):
         )
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Failed to update schedule {schedule_id} container_id to {container_id}: {e}")
 
 def restart_container(container_id, container_name, schedule_id=None, host_id=1):
     """Restart a Docker container"""
@@ -1474,8 +1475,9 @@ def index():
                         # Fallback to image name from Config if available
                         try:
                             image_name = container.attrs['Config']['Image']
-                        except:
+                        except Exception as e:
                             # Last resort: use short image ID
+                            logger.debug(f"Could not get image name from Config for {container.id}: {e}")
                             image_name = container.image.short_id.replace('sha256:', '')[:12]
 
                     # Extract IP addresses from all networks
@@ -1485,8 +1487,8 @@ def index():
                         for network_name, network_info in networks.items():
                             if network_info.get('IPAddress'):
                                 ip_addresses.append(network_info['IPAddress'])
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Could not extract IP addresses for {container.id}: {e}")
 
                     # Extract stack/compose project name from labels
                     stack_name = 'N/A'
@@ -1499,8 +1501,8 @@ def index():
                         # Check for webui URL in labels
                         if 'chrontainer.webui.url' in labels:
                             webui_url_from_label = labels['chrontainer.webui.url']
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Could not extract labels for {container.id}: {e}")
 
                     # Extract health status if available
                     health_status = None
@@ -1508,8 +1510,8 @@ def index():
                         health = container.attrs.get('State', {}).get('Health', {})
                         if health:
                             health_status = health.get('Status')  # healthy, unhealthy, starting, or none
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Could not extract health status for {container.id}: {e}")
 
                     state = container.attrs.get('State', {}) or {}
                     status = state.get('Status') or container.status
@@ -1626,8 +1628,9 @@ def get_containers():
                         # Fallback to image name from Config if available
                         try:
                             image_name = container.attrs['Config']['Image']
-                        except:
+                        except Exception as e:
                             # Last resort: use short image ID
+                            logger.debug(f"Could not get image name from Config for {container.id}: {e}")
                             image_name = container.image.short_id.replace('sha256:', '')[:12]
 
                     # Extract IP addresses from all networks
@@ -1637,8 +1640,8 @@ def get_containers():
                         for network_name, network_info in networks.items():
                             if network_info.get('IPAddress'):
                                 ip_addresses.append(network_info['IPAddress'])
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Could not extract IP addresses for {container.id}: {e}")
 
                     # Extract stack/compose project name and webui URL from labels
                     stack_name = 'N/A'
@@ -3280,8 +3283,11 @@ def get_tags():
         return jsonify({'error': 'Failed to load tags. Please check the database connection.'}), 500
 
 @app.route('/api/tags', methods=['POST'])
+@api_key_or_login_required
 def create_tag():
     """Create a new tag"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
     try:
         data = request.json
         name = data.get('name', '').strip()
@@ -3305,8 +3311,11 @@ def create_tag():
         return jsonify({'error': 'Failed to create tag. Please try again.'}), 500
 
 @app.route('/api/tags/<int:tag_id>', methods=['DELETE'])
+@api_key_or_login_required
 def delete_tag(tag_id):
     """Delete a tag"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -3319,6 +3328,7 @@ def delete_tag(tag_id):
         return jsonify({'error': 'Failed to delete tag. Please try again.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/tags', methods=['GET'])
+@api_key_or_login_required
 def get_container_tags(container_id, host_id):
     """Get tags for a specific container"""
     try:
@@ -3338,8 +3348,11 @@ def get_container_tags(container_id, host_id):
         return jsonify({'error': 'Failed to load container tags.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/tags', methods=['POST'])
+@api_key_or_login_required
 def add_container_tag(container_id, host_id):
     """Add a tag to a container"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
     try:
         data = request.json
         tag_id = data.get('tag_id')
@@ -3361,8 +3374,11 @@ def add_container_tag(container_id, host_id):
         return jsonify({'error': 'Failed to add tag to container. Please try again.'}), 500
 
 @app.route('/api/containers/<container_id>/<int:host_id>/tags/<int:tag_id>', methods=['DELETE'])
+@api_key_or_login_required
 def remove_container_tag(container_id, host_id, tag_id):
     """Remove a tag from a container"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
     try:
         conn = get_db()
         cursor = conn.cursor()
