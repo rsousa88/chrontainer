@@ -1714,6 +1714,455 @@ class TestMetricsPage:
 
 ---
 
+# Technical Debt & Code Quality Improvements
+
+This section documents technical debt and code quality improvements identified during comprehensive codebase analysis (2026-01-26). These improvements should be tackled progressively during v0.5.0+ development.
+
+## Priority Classification
+
+- **HIGH** - Security, correctness, or significant performance issues
+- **MEDIUM** - Code quality, maintainability, or minor performance issues
+- **LOW** - Nice-to-have improvements, polish
+
+---
+
+## Phase 0: Critical Fixes (Week 1)
+
+### HIGH: Missing Authentication on Endpoints
+**Issue:** 4 endpoints lack `@login_required` decorator
+**Files:** `app/main.py`
+**Risk:** Unauthenticated users can access/modify data
+
+**Affected endpoints:**
+- `POST /api/tags` - Create tags without authentication
+- `DELETE /api/tags/<id>` - Delete tags without authentication
+- Container tag endpoints - Add/remove tags without auth
+
+**Fix:** Add `@login_required` decorator to all affected routes
+
+---
+
+### HIGH: SQL Injection Risk in Dynamic Queries
+**Issue:** Several endpoints construct SQL with f-strings
+**Files:** `app/main.py` (multiple locations)
+**Risk:** Potential SQL injection if user input reaches these queries
+
+**Examples:**
+- Container tag queries concatenate IDs
+- Schedule lookups use string formatting
+- Host queries build dynamic WHERE clauses
+
+**Fix:** Convert all SQL to parameterized queries using `?` placeholders
+
+---
+
+### HIGH: Missing Error Logging
+**Issue:** 8 locations catch exceptions without logging
+**Files:** `app/main.py`, `templates/index.html`
+**Impact:** Silent failures make debugging impossible
+
+**Critical locations:**
+- Container stats fetch failures
+- Docker host connection errors
+- Schedule execution errors
+- Webhook trigger failures
+
+**Fix:** Add `logger.error()` calls with full exception details
+
+---
+
+## Phase 1: Code Quality (Week 2)
+
+### HIGH: Massive Code Duplication (400+ lines)
+**Issue:** Nearly identical code blocks across multiple routes
+**Files:** `app/main.py`
+**Impact:** Bug fixes require changes in 3-4 places
+
+**Duplicated patterns:**
+
+1. **Container fetching logic** (150-200 lines duplicated)
+   - `index()` route: Lines 1450-1595
+   - `/api/containers` route: Lines 1600-1734
+   - Both fetch containers, apply filters, format data identically
+
+2. **Schedule validation** (100+ lines duplicated)
+   - `create_schedule()`
+   - `update_schedule()`
+   - Same cron validation, date parsing, conflict checks
+
+3. **Notification sending** (80+ lines duplicated)
+   - Discord notifications in 6 different action functions
+   - ntfy notifications in 6 different action functions
+   - Same embed building, error handling
+
+4. **Database connection pattern** (50+ lines duplicated)
+   - Every endpoint: `conn = get_db()` → query → `conn.close()`
+   - No context manager usage
+
+**Fix:** Extract shared functions:
+```python
+def fetch_containers_with_tags(filters=None) -> List[Dict]:
+    """Centralized container fetching with tag/webui enrichment"""
+
+def validate_schedule_data(data: Dict) -> Tuple[bool, str]:
+    """Validate schedule creation/update data"""
+
+def send_notification(message: str, level: str, channels: List[str]):
+    """Send to all configured notification channels"""
+
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections"""
+```
+
+---
+
+### MEDIUM: Magic Numbers Throughout Codebase
+**Issue:** 10+ hardcoded values without constants
+**Files:** `app/main.py`, `templates/index.html`
+**Impact:** Difficult to tune, easy to create inconsistencies
+
+**Examples:**
+- Cache TTL: `600` (10 minutes) - appears in 5 places
+- Stats concurrency: `4` workers - hardcoded
+- Timeouts: `5` seconds, `10` seconds, `30` seconds - scattered
+- Pagination: `100` items - no constant
+- Rate limits: various values per endpoint
+
+**Fix:** Create constants section at top of file:
+```python
+# Cache TTLs (seconds)
+CACHE_TTL_HOST_METRICS = 600
+CACHE_TTL_CONTAINER_STATS = 10
+CACHE_TTL_DISK_USAGE = 300
+CACHE_TTL_UPDATE_CHECK = 3600
+
+# Performance limits
+MAX_CONCURRENT_STATS_FETCH = 4
+BULK_STATS_TIMEOUT_SECONDS = 10
+DOCKER_OPERATION_TIMEOUT = 30
+
+# Pagination
+DEFAULT_PAGE_SIZE = 100
+MAX_LOG_ENTRIES = 1000
+```
+
+---
+
+### MEDIUM: Inconsistent Error Response Format
+**Issue:** API endpoints return errors in 3 different formats
+**Files:** `app/main.py`
+**Impact:** Client-side error handling requires multiple checks
+
+**Current formats:**
+```python
+# Format 1: Simple string
+return jsonify({'error': 'Container not found'}), 404
+
+# Format 2: With code
+return jsonify({'error': 'Invalid input', 'code': 'VALIDATION_ERROR'}), 400
+
+# Format 3: With details
+return jsonify({'success': False, 'message': 'Failed', 'details': str(e)}), 500
+```
+
+**Fix:** Standardize on single format:
+```python
+def error_response(message: str, code: str = None, status: int = 400, details: Dict = None):
+    """Standard error response format"""
+    payload = {
+        'error': True,
+        'message': message,
+        'code': code or 'ERROR',
+        'timestamp': datetime.now().isoformat()
+    }
+    if details:
+        payload['details'] = details
+    return jsonify(payload), status
+```
+
+---
+
+### MEDIUM: Long Functions (>100 lines)
+**Issue:** 3 functions exceed 100 lines
+**Files:** `app/main.py`
+**Impact:** Difficult to test, understand, and maintain
+
+**Offenders:**
+1. `index()` - 145 lines - renders dashboard, fetches containers, applies filters
+2. `check_for_update()` - 120 lines - checks registry, compares digests, handles errors
+3. `restart_container()` - 95 lines - gets container, restarts, logs, sends notifications
+
+**Fix:** Extract helper functions:
+```python
+# index() → Split into:
+def fetch_dashboard_data() -> Dict:
+def apply_container_filters(containers: List, filters: Dict) -> List:
+def render_dashboard(containers: List, stats: Dict) -> Response:
+
+# check_for_update() → Split into:
+def get_registry_digest(image: str, client) -> Optional[str]:
+def compare_image_digests(local: str, remote: str) -> bool:
+def format_update_result(has_update: bool, details: Dict) -> Tuple:
+```
+
+---
+
+### MEDIUM: Missing Type Hints
+**Issue:** 50+ functions lack type annotations
+**Files:** `app/main.py`
+**Impact:** No IDE assistance, runtime type errors possible
+
+**Examples:**
+```python
+# Current
+def restart_container(container_id, container_name, schedule_id, host_id):
+
+# Should be
+def restart_container(
+    container_id: str,
+    container_name: str,
+    schedule_id: Optional[int],
+    host_id: int
+) -> bool:
+```
+
+**Fix:** Add type hints to all public functions (use mypy for validation)
+
+---
+
+## Phase 2: Performance Optimizations (Week 3)
+
+### MEDIUM: Missing Database Indexes
+**Issue:** No evidence of indexes in schema
+**Files:** `app/main.py` - `init_db()`
+**Impact:** Slow queries on large datasets
+
+**Missing indexes:**
+```sql
+-- Frequently queried columns
+CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(enabled);
+CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run);
+CREATE INDEX IF NOT EXISTS idx_schedules_host_id ON schedules(host_id);
+CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_schedule_id ON logs(schedule_id);
+CREATE INDEX IF NOT EXISTS idx_container_tags_container ON container_tags(container_id, host_id);
+CREATE INDEX IF NOT EXISTS idx_container_tags_tag ON container_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_webhooks_token ON webhooks(token);
+```
+
+**Fix:** Add migration to create indexes
+
+---
+
+### MEDIUM: N+1 Query in Stats Fallback
+**Issue:** Fallback fetches stats individually for 100+ containers
+**Files:** `templates/index.html:561-621`
+**Impact:** 100 HTTP requests when bulk endpoint fails
+
+**Current behavior:**
+1. Bulk stats endpoint fails
+2. JavaScript fallback loops through ALL containers
+3. Makes individual `/api/container/<id>/stats` call for each
+4. With concurrency=4, takes 25+ seconds for 100 containers
+
+**Fix Options:**
+- Add retry logic to bulk endpoint with exponential backoff
+- Batch fallback requests (10 containers per batch)
+- Cache individual stats for longer TTL when bulk fails
+
+---
+
+### LOW: Inefficient CSS Variables
+**Issue:** Hardcoded colors instead of CSS variables
+**Files:** `templates/index.html`
+**Impact:** Dark mode requires duplicated rules
+
+**Current:**
+```css
+.badge { background: #3498db; }
+body.dark-mode .badge { background: #5dade2; }
+```
+
+**Better:**
+```css
+:root {
+    --badge-bg: #3498db;
+}
+body.dark-mode {
+    --badge-bg: #5dade2;
+}
+.badge { background: var(--badge-bg); }
+```
+
+**Fix:** Migrate all colors to CSS variables (already partially done)
+
+---
+
+## Phase 3: Robustness Improvements (Ongoing)
+
+### MEDIUM: No Request Timeout Configuration
+**Issue:** Docker API calls can hang indefinitely
+**Files:** `app/main.py` - DockerHostManager
+**Impact:** Slow/dead hosts block entire application
+
+**Fix:** Add timeout to all Docker client operations:
+```python
+def get_client(self, host_id: int, timeout: int = 30) -> Optional[docker.DockerClient]:
+    client = docker.DockerClient(base_url=url, timeout=timeout)
+```
+
+---
+
+### MEDIUM: Missing Input Validation
+**Issue:** Several endpoints trust user input
+**Files:** `app/main.py`
+**Risk:** Crashes, injection attacks
+
+**Examples:**
+- Container IDs not validated for format (should be 12 or 64 hex chars)
+- Host IDs not validated as integers
+- JSON payloads not validated for required fields
+- Cron expressions not validated before APScheduler
+
+**Fix:** Add validation functions:
+```python
+def validate_container_id(cid: str) -> bool:
+    return bool(re.match(r'^[a-f0-9]{12}$|^[a-f0-9]{64}$', cid))
+
+def validate_cron(expression: str) -> Tuple[bool, str]:
+    try:
+        CronTrigger.from_crontab(expression)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+```
+
+---
+
+### LOW: Inconsistent Naming Conventions
+**Issue:** Mixed naming styles in JavaScript
+**Files:** `templates/index.html`
+**Examples:**
+- Functions: `fetchContainers()` vs `fetch_container_stats()`
+- Variables: `containerData` vs `container_stats`
+- CSS classes: `container-row` vs `containerRow`
+
+**Fix:** Standardize on:
+- JavaScript functions/variables: camelCase
+- Python functions/variables: snake_case
+- CSS classes: kebab-case
+
+---
+
+### LOW: Missing Function Docstrings
+**Issue:** 30% of functions lack docstrings
+**Files:** `app/main.py`
+**Impact:** Difficult for new developers to understand
+
+**Fix:** Add docstrings to all public functions following NumPy format:
+```python
+def restart_container(container_id: str, container_name: str,
+                     schedule_id: Optional[int], host_id: int) -> bool:
+    """
+    Restart a Docker container and log the action.
+
+    Parameters
+    ----------
+    container_id : str
+        Docker container ID (12 or 64 hex chars)
+    container_name : str
+        Human-readable container name
+    schedule_id : int, optional
+        Schedule that triggered this restart, if any
+    host_id : int
+        Docker host ID from hosts table
+
+    Returns
+    -------
+    bool
+        True if restart successful, False otherwise
+
+    Raises
+    ------
+    docker.errors.NotFound
+        If container doesn't exist
+    docker.errors.APIError
+        If Docker daemon returns error
+    """
+```
+
+---
+
+## Phase 4: Testing Improvements
+
+### HIGH: Missing Test Coverage for New Features
+**Issue:** v0.4.x features have minimal tests
+**Files:** `tests/`
+**Current:** 54 tests, ~70% coverage
+
+**Missing tests:**
+- Webhook trigger scenarios (locked, disabled, invalid token)
+- API key permissions enforcement (read vs write vs admin)
+- Host metrics error handling (offline hosts, timeouts)
+- Update check edge cases (missing digests, registry errors)
+- Concurrent container actions (race conditions)
+
+**Target:** 80%+ coverage, 100+ tests
+
+---
+
+### MEDIUM: No Integration Tests
+**Issue:** Only unit tests exist, no end-to-end tests
+**Impact:** Breaking changes in workflows not caught
+
+**Needed tests:**
+1. Full schedule workflow: Create → Enable → Trigger → Verify logs
+2. Multi-host container management: Add host → List containers → Perform action
+3. Update flow: Check update → Apply update → Verify new image
+4. Webhook flow: Create webhook → Trigger → Verify action executed
+
+---
+
+### LOW: No Performance Benchmarks
+**Issue:** No baseline metrics for performance regression detection
+**Impact:** Can't measure if changes slow down the app
+
+**Needed benchmarks:**
+- Dashboard load time with 100 containers
+- Bulk stats fetch latency
+- API endpoint response times (p50, p95, p99)
+- Database query performance
+
+---
+
+## Implementation Strategy
+
+### Approach
+1. **Don't block v0.5.0 features** - Address technical debt alongside new feature development
+2. **Fix critical issues first** - Phase 0 must be completed before v0.5.0 release
+3. **Incremental improvement** - One technical debt item per feature PR
+4. **Test as you go** - Add tests for refactored code
+
+### Timeline
+- **Phase 0 (Critical):** Complete during v0.5.0 Phase 1 (weeks 1-2)
+- **Phase 1 (Code Quality):** Complete during v0.5.0 Phase 2 (weeks 3-5)
+- **Phase 2 (Performance):** Complete during v0.5.0 Phase 3 (weeks 6-8)
+- **Phase 3 (Robustness):** Ongoing throughout v0.5.0+ development
+- **Phase 4 (Testing):** Ongoing, aim for 80% coverage by v0.5.0 release
+
+### Priority Order
+When deciding which technical debt to tackle first within each phase:
+1. Security issues (authentication, injection)
+2. Data loss risks (error logging, connection leaks)
+3. Code duplication (blocks future development)
+4. Performance (user-facing impact)
+5. Code quality (developer experience)
+
+---
+
 # Future Phases (v0.5.0+)
 
 ## Remaining from Original Roadmap
