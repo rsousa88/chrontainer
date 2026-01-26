@@ -1457,148 +1457,169 @@ def load_schedules():
         except Exception as e:
             logger.error(f"Failed to load schedule {schedule_id}: {e}")
 
+
+def fetch_all_containers() -> List[Dict[str, Any]]:
+    """
+    Fetch all containers from all Docker hosts with enriched metadata.
+
+    Returns:
+        List of container dictionaries with tags, webui URLs, and update status.
+    """
+    container_list = []
+    host_color_map = {}
+    host_text_color_map = {}
+
+    # Load host colors
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, color FROM hosts')
+    for host_id_row, color in cursor.fetchall():
+        resolved_color = color or HOST_DEFAULT_COLOR
+        host_color_map[host_id_row] = resolved_color
+        host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
+    conn.close()
+
+    # Fetch containers from all hosts
+    for host_id, host_name, docker_client in docker_manager.get_all_clients():
+        try:
+            containers = docker_client.containers.list(all=True)
+            for container in containers:
+                # Try to get the best image name
+                if container.image.tags:
+                    image_name = container.image.tags[0]
+                else:
+                    # Fallback to image name from Config if available
+                    try:
+                        image_name = container.attrs['Config']['Image']
+                    except Exception as e:
+                        # Last resort: use short image ID
+                        logger.debug(f"Could not get image name from Config for {container.id}: {e}")
+                        image_name = container.image.short_id.replace('sha256:', '')[:12]
+
+                # Extract IP addresses from all networks
+                ip_addresses = []
+                try:
+                    networks = container.attrs['NetworkSettings']['Networks']
+                    for network_name, network_info in networks.items():
+                        if network_info.get('IPAddress'):
+                            ip_addresses.append(network_info['IPAddress'])
+                except Exception as e:
+                    logger.debug(f"Could not extract IP addresses for {container.id}: {e}")
+
+                # Extract stack/compose project name from labels
+                stack_name = 'N/A'
+                webui_url_from_label = None
+                try:
+                    labels = container.attrs.get('Config', {}).get('Labels', {})
+                    # Docker Compose adds this label
+                    if 'com.docker.compose.project' in labels:
+                        stack_name = labels['com.docker.compose.project']
+                    # Check for webui URL in labels
+                    if 'chrontainer.webui.url' in labels:
+                        webui_url_from_label = labels['chrontainer.webui.url']
+                except Exception as e:
+                    logger.debug(f"Could not extract labels for {container.id}: {e}")
+
+                # Extract health status if available
+                health_status = None
+                try:
+                    health = container.attrs.get('State', {}).get('Health', {})
+                    if health:
+                        health_status = health.get('Status')  # healthy, unhealthy, starting, or none
+                except Exception as e:
+                    logger.debug(f"Could not extract health status for {container.id}: {e}")
+
+                state = container.attrs.get('State', {}) or {}
+                status = state.get('Status') or container.status
+                exit_code = state.get('ExitCode')
+                status_display = status
+                status_class = status
+                if status == 'exited' and exit_code not in (None, 0):
+                    status_display = 'error'
+                    status_class = 'error'
+
+                image_display = strip_image_tag(image_name)
+                host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
+                host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
+
+                container_list.append({
+                    'id': container.id[:12],
+                    'name': container.name,
+                    'status': status,
+                    'status_display': status_display,
+                    'status_class': status_class,
+                    'exit_code': exit_code,
+                    'health': health_status,
+                    'image': image_name,
+                    'image_display': image_display,
+                    'created': container.attrs.get('Created'),
+                    'host_id': host_id,
+                    'host_name': host_name,
+                    'host_color': host_color,
+                    'host_text_color': host_text_color,
+                    'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
+                    'stack': stack_name,
+                    'webui_url_label': webui_url_from_label
+                })
+        except Exception as e:
+            logger.error(f"Error getting containers from host {host_name}: {e}")
+
+    # Load tags and manual webui URLs for all containers
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get all tags for containers
+    tags_map = {}  # Key: (container_id, host_id), Value: list of tags
+    cursor.execute('''
+        SELECT ct.container_id, ct.host_id, t.id, t.name, t.color
+        FROM container_tags ct
+        JOIN tags t ON ct.tag_id = t.id
+    ''')
+    for row in cursor.fetchall():
+        key = (row[0], row[1])
+        if key not in tags_map:
+            tags_map[key] = []
+        tags_map[key].append({'id': row[2], 'name': row[3], 'color': row[4]})
+
+    # Get all manual webui URLs
+    webui_map = {}  # Key: (container_id, host_id), Value: url
+    cursor.execute('SELECT container_id, host_id, url FROM container_webui_urls')
+    for row in cursor.fetchall():
+        webui_map[(row[0], row[1])] = row[2]
+
+    conn.close()
+
+    # Load update status from cache
+    update_status_map = load_update_status_map()
+
+    # Attach tags, webui URLs, image links, and update status to containers
+    for container in container_list:
+        key = (container['id'], container['host_id'])
+        container['tags'] = tags_map.get(key, [])
+        # Manual URL takes precedence over label URL
+        container['webui_url'] = webui_map.get(key) or container.get('webui_url_label')
+        # Generate image registry/GitHub/docs links
+        container['image_links'] = get_image_links(container['image'])
+        # Attach cached update status
+        cached_status = update_status_map.get(key)
+        if cached_status:
+            container['update_status'] = cached_status
+
+    return container_list
+
+
 # Routes
 @app.route('/')
 @login_required
 def index():
     """Main dashboard"""
     try:
-        container_list = []
-        host_color_map = {}
-        host_text_color_map = {}
-
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, color FROM hosts')
-        for host_id_row, color in cursor.fetchall():
-            resolved_color = color or HOST_DEFAULT_COLOR
-            host_color_map[host_id_row] = resolved_color
-            host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
-        conn.close()
-
-        # Get containers from all hosts
-        for host_id, host_name, docker_client in docker_manager.get_all_clients():
-            try:
-                containers = docker_client.containers.list(all=True)
-                for container in containers:
-                    # Try to get the best image name
-                    if container.image.tags:
-                        image_name = container.image.tags[0]
-                    else:
-                        # Fallback to image name from Config if available
-                        try:
-                            image_name = container.attrs['Config']['Image']
-                        except Exception as e:
-                            # Last resort: use short image ID
-                            logger.debug(f"Could not get image name from Config for {container.id}: {e}")
-                            image_name = container.image.short_id.replace('sha256:', '')[:12]
-
-                    # Extract IP addresses from all networks
-                    ip_addresses = []
-                    try:
-                        networks = container.attrs['NetworkSettings']['Networks']
-                        for network_name, network_info in networks.items():
-                            if network_info.get('IPAddress'):
-                                ip_addresses.append(network_info['IPAddress'])
-                    except Exception as e:
-                        logger.debug(f"Could not extract IP addresses for {container.id}: {e}")
-
-                    # Extract stack/compose project name from labels
-                    stack_name = 'N/A'
-                    webui_url_from_label = None
-                    try:
-                        labels = container.attrs.get('Config', {}).get('Labels', {})
-                        # Docker Compose adds this label
-                        if 'com.docker.compose.project' in labels:
-                            stack_name = labels['com.docker.compose.project']
-                        # Check for webui URL in labels
-                        if 'chrontainer.webui.url' in labels:
-                            webui_url_from_label = labels['chrontainer.webui.url']
-                    except Exception as e:
-                        logger.debug(f"Could not extract labels for {container.id}: {e}")
-
-                    # Extract health status if available
-                    health_status = None
-                    try:
-                        health = container.attrs.get('State', {}).get('Health', {})
-                        if health:
-                            health_status = health.get('Status')  # healthy, unhealthy, starting, or none
-                    except Exception as e:
-                        logger.debug(f"Could not extract health status for {container.id}: {e}")
-
-                    state = container.attrs.get('State', {}) or {}
-                    status = state.get('Status') or container.status
-                    exit_code = state.get('ExitCode')
-                    status_display = status
-                    status_class = status
-                    if status == 'exited' and exit_code not in (None, 0):
-                        status_display = 'error'
-                        status_class = 'error'
-
-                    image_display = strip_image_tag(image_name)
-                    host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
-                    host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
-
-                    container_list.append({
-                        'id': container.id[:12],
-                        'name': container.name,
-                        'status': status,
-                        'status_display': status_display,
-                        'status_class': status_class,
-                        'exit_code': exit_code,
-                        'health': health_status,
-                        'image': image_name,
-                        'image_display': image_display,
-                        'created': container.attrs['Created'],
-                        'host_id': host_id,
-                        'host_name': host_name,
-                        'host_color': host_color,
-                        'host_text_color': host_text_color,
-                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
-                        'stack': stack_name,
-                        'webui_url_label': webui_url_from_label
-                    })
-            except Exception as e:
-                logger.error(f"Error getting containers from host {host_name}: {e}")
-
-        # Load tags and manual webui URLs for all containers
-        conn = get_db()
-        cursor = conn.cursor()
-
-        # Get all tags for containers
-        tags_map = {}  # Key: (container_id, host_id), Value: list of tags
-        cursor.execute('''
-            SELECT ct.container_id, ct.host_id, t.id, t.name, t.color
-            FROM container_tags ct
-            JOIN tags t ON ct.tag_id = t.id
-        ''')
-        for row in cursor.fetchall():
-            key = (row[0], row[1])
-            if key not in tags_map:
-                tags_map[key] = []
-            tags_map[key].append({'id': row[2], 'name': row[3], 'color': row[4]})
-
-        # Get all manual webui URLs
-        webui_map = {}  # Key: (container_id, host_id), Value: url
-        cursor.execute('SELECT container_id, host_id, url FROM container_webui_urls')
-        for row in cursor.fetchall():
-            webui_map[(row[0], row[1])] = row[2]
-
-        update_status_map = load_update_status_map()
-
-        # Attach tags, webui URLs, and image links to containers
-        for container in container_list:
-            key = (container['id'], container['host_id'])
-            container['tags'] = tags_map.get(key, [])
-            # Manual URL takes precedence over label URL
-            container['webui_url'] = webui_map.get(key) or container.get('webui_url_label')
-            # Generate image registry/GitHub/docs links
-            container['image_links'] = get_image_links(container['image'])
-            cached_status = update_status_map.get(key)
-            if cached_status:
-                container['update_status'] = cached_status
+        # Fetch all containers with enriched metadata
+        container_list = fetch_all_containers()
 
         # Get schedules with host info
+        conn = get_db()
+        cursor = conn.cursor()
         cursor.execute('''
             SELECT s.id, s.container_name, s.action, s.cron_expression, s.enabled, s.last_run, h.name, s.one_time, s.run_at
             FROM schedules s
@@ -1617,134 +1638,8 @@ def index():
 def get_containers():
     """API endpoint to get all containers"""
     try:
-        container_list = []
-        host_color_map = {}
-        host_text_color_map = {}
-
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, color FROM hosts')
-        for host_id_row, color in cursor.fetchall():
-            resolved_color = color or HOST_DEFAULT_COLOR
-            host_color_map[host_id_row] = resolved_color
-            host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
-        conn.close()
-
-        for host_id, host_name, docker_client in docker_manager.get_all_clients():
-            try:
-                containers = docker_client.containers.list(all=True)
-                for container in containers:
-                    # Try to get the best image name
-                    if container.image.tags:
-                        image_name = container.image.tags[0]
-                    else:
-                        # Fallback to image name from Config if available
-                        try:
-                            image_name = container.attrs['Config']['Image']
-                        except Exception as e:
-                            # Last resort: use short image ID
-                            logger.debug(f"Could not get image name from Config for {container.id}: {e}")
-                            image_name = container.image.short_id.replace('sha256:', '')[:12]
-
-                    # Extract IP addresses from all networks
-                    ip_addresses = []
-                    try:
-                        networks = container.attrs['NetworkSettings']['Networks']
-                        for network_name, network_info in networks.items():
-                            if network_info.get('IPAddress'):
-                                ip_addresses.append(network_info['IPAddress'])
-                    except Exception as e:
-                        logger.debug(f"Could not extract IP addresses for {container.id}: {e}")
-
-                    # Extract stack/compose project name and webui URL from labels
-                    stack_name = 'N/A'
-                    webui_url_from_label = None
-                    try:
-                        labels = container.attrs.get('Config', {}).get('Labels', {})
-                        # Docker Compose adds this label
-                        if 'com.docker.compose.project' in labels:
-                            stack_name = labels['com.docker.compose.project']
-                        # Check for webui URL in labels
-                        if 'chrontainer.webui.url' in labels:
-                            webui_url_from_label = labels['chrontainer.webui.url']
-                    except:
-                        pass
-
-                    # Extract health status if available
-                    health_status = None
-                    try:
-                        health = container.attrs.get('State', {}).get('Health', {})
-                        if health:
-                            health_status = health.get('Status')
-                    except:
-                        pass
-
-                    state = container.attrs.get('State', {}) or {}
-                    status = state.get('Status') or container.status
-                    exit_code = state.get('ExitCode')
-                    status_display = status
-                    status_class = status
-                    if status == 'exited' and exit_code not in (None, 0):
-                        status_display = 'error'
-                        status_class = 'error'
-
-                    image_display = strip_image_tag(image_name)
-                    host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
-                    host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
-
-                    container_list.append({
-                        'id': container.id[:12],
-                        'name': container.name,
-                        'status': status,
-                        'status_display': status_display,
-                        'status_class': status_class,
-                        'exit_code': exit_code,
-                        'health': health_status,
-                        'image': image_name,
-                        'image_display': image_display,
-                        'host_id': host_id,
-                        'host_name': host_name,
-                        'host_color': host_color,
-                        'host_text_color': host_text_color,
-                        'ip_addresses': ', '.join(ip_addresses) if ip_addresses else 'N/A',
-                        'stack': stack_name,
-                        'webui_url_label': webui_url_from_label
-                    })
-            except Exception as e:
-                logger.error(f"Error getting containers from host {host_name}: {e}")
-
-        # Load tags and manual webui URLs
-        conn = get_db()
-        cursor = conn.cursor()
-
-        # Get all tags for containers
-        tags_map = {}
-        cursor.execute('''
-            SELECT ct.container_id, ct.host_id, t.id, t.name, t.color
-            FROM container_tags ct
-            JOIN tags t ON ct.tag_id = t.id
-        ''')
-        for row in cursor.fetchall():
-            key = (row[0], row[1])
-            if key not in tags_map:
-                tags_map[key] = []
-            tags_map[key].append({'id': row[2], 'name': row[3], 'color': row[4]})
-
-        # Get all manual webui URLs
-        webui_map = {}
-        cursor.execute('SELECT container_id, host_id, url FROM container_webui_urls')
-        for row in cursor.fetchall():
-            webui_map[(row[0], row[1])] = row[2]
-
-        conn.close()
-
-        # Attach tags, webui URLs, and image links to containers
-        for container in container_list:
-            key = (container['id'], container['host_id'])
-            container['tags'] = tags_map.get(key, [])
-            container['webui_url'] = webui_map.get(key) or container.get('webui_url_label')
-            container['image_links'] = get_image_links(container['image'])
-
+        # Fetch all containers with enriched metadata
+        container_list = fetch_all_containers()
         return jsonify(container_list)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
