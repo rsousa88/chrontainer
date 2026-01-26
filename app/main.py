@@ -828,8 +828,37 @@ def configure_update_check_schedule():
     )
     scheduler.add_job(run_update_check_job, trigger, id=job_id, replace_existing=True)
 
-def update_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
-    """Update a container by pulling the latest image and recreating it"""
+def update_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
+    """
+    Update a container by pulling the latest image and recreating it.
+
+    Performs a container update by:
+    1. Pulling the latest version of the container's image
+    2. Stopping and removing the current container
+    3. Creating a new container with the same configuration
+    4. Preserving volumes, ports, environment variables, labels, and restart policy
+
+    Logs the action to the database and sends notifications via configured channels.
+    Updates the schedule's last_run timestamp if executed as part of a schedule.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Human-readable container name for logging
+        schedule_id: Schedule ID that triggered this action (None if manual)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if update successful, False otherwise
+        - message: Description of the result or error
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        This operation requires the container to be recreated, which means a brief
+        downtime. All container configuration is preserved from the original container.
+    """
     try:
         client = docker_manager.get_client(host_id)
         if not client:
@@ -1199,8 +1228,32 @@ def update_schedule_container_id(schedule_id, container_id):
     except Exception as e:
         logger.error(f"Failed to update schedule {schedule_id} container_id to {container_id}: {e}")
 
-def restart_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
-    """Restart a Docker container"""
+def restart_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
+    """
+    Restart a Docker container and log the action.
+
+    Restarts the specified container on the given Docker host. Logs the action to
+    the database and sends notifications via configured channels (Discord, ntfy).
+    Updates the schedule's last_run timestamp if executed as part of a schedule.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Human-readable container name for logging
+        schedule_id: Schedule ID that triggered this action (None if manual)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if restart successful, False otherwise
+        - message: Description of the result or error
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        If the container is resolved by name (not ID), the schedule's container_id
+        is updated to the actual container ID for future executions.
+    """
     try:
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
@@ -1238,8 +1291,32 @@ def restart_container(container_id: str, container_name: str, schedule_id: Optio
         send_ntfy_notification(container_name, 'restart', 'error', message, schedule_id)
         return False, message
 
-def start_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
-    """Start a Docker container"""
+def start_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
+    """
+    Start a Docker container and log the action.
+
+    Starts the specified container on the given Docker host. Logs the action to
+    the database and sends notifications via configured channels (Discord, ntfy).
+    Updates the schedule's last_run timestamp if executed as part of a schedule.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Human-readable container name for logging
+        schedule_id: Schedule ID that triggered this action (None if manual)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if start successful, False otherwise
+        - message: Description of the result or error
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        If the container is resolved by name (not ID), the schedule's container_id
+        is updated to the actual container ID for future executions.
+    """
     try:
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
@@ -1277,8 +1354,32 @@ def start_container(container_id: str, container_name: str, schedule_id: Optiona
         send_ntfy_notification(container_name, 'start', 'error', message, schedule_id)
         return False, message
 
-def stop_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
-    """Stop a Docker container"""
+def stop_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
+    """
+    Stop a Docker container and log the action.
+
+    Stops the specified container on the given Docker host. Logs the action to
+    the database and sends notifications via configured channels (Discord, ntfy).
+    Updates the schedule's last_run timestamp if executed as part of a schedule.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Human-readable container name for logging
+        schedule_id: Schedule ID that triggered this action (None if manual)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if stop successful, False otherwise
+        - message: Description of the result or error
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        If the container is resolved by name (not ID), the schedule's container_id
+        is updated to the actual container ID for future executions.
+    """
     try:
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
@@ -1316,8 +1417,32 @@ def stop_container(container_id: str, container_name: str, schedule_id: Optional
         send_ntfy_notification(container_name, 'stop', 'error', message, schedule_id)
         return False, message
 
-def pause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
-    """Pause a Docker container"""
+def pause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
+    """
+    Pause a Docker container and log the action.
+
+    Pauses the specified container on the given Docker host (freezes all processes).
+    Logs the action to the database and sends notifications via configured channels.
+    Updates the schedule's last_run timestamp if executed as part of a schedule.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Human-readable container name for logging
+        schedule_id: Schedule ID that triggered this action (None if manual)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if pause successful, False otherwise
+        - message: Description of the result or error
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        If the container is resolved by name (not ID), the schedule's container_id
+        is updated to the actual container ID for future executions.
+    """
     try:
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
@@ -1355,8 +1480,32 @@ def pause_container(container_id: str, container_name: str, schedule_id: Optiona
         send_ntfy_notification(container_name, 'pause', 'error', message, schedule_id)
         return False, message
 
-def unpause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> None:
-    """Unpause a Docker container"""
+def unpause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
+    """
+    Unpause a Docker container and log the action.
+
+    Unpauses the specified container on the given Docker host (resumes frozen processes).
+    Logs the action to the database and sends notifications via configured channels.
+    Updates the schedule's last_run timestamp if executed as part of a schedule.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Human-readable container name for logging
+        schedule_id: Schedule ID that triggered this action (None if manual)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if unpause successful, False otherwise
+        - message: Description of the result or error
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        If the container is resolved by name (not ID), the schedule's container_id
+        is updated to the actual container ID for future executions.
+    """
     try:
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
