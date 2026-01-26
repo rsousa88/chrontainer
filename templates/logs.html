@@ -18,6 +18,11 @@
             color: #333;
             line-height: 1.6;
         }
+
+        body.dark-mode {
+            background: #1a1a1a;
+            color: #ecf0f1;
+        }
         
         .container {
             max-width: 90%;
@@ -65,6 +70,14 @@
             margin-bottom: 25px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
+
+        body.dark-mode header {
+            background: #1f2d3a;
+        }
+
+        body.dark-mode .section {
+            background: #2c3e50;
+        }
         
         .section h2 {
             font-size: 22px;
@@ -93,9 +106,17 @@
             border-bottom: 1px solid #ecf0f1;
             font-size: 14px;
         }
+
+        body.dark-mode td {
+            border-bottom: 1px solid #3d566e;
+        }
         
         tr:hover {
             background: #f8f9fa;
+        }
+
+        body.dark-mode tr:hover {
+            background: #34495e;
         }
         
         .status-badge {
@@ -134,6 +155,7 @@
             <h1>🐳 Chrontainer <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
+                <a href="/images">Images</a>
                 <a href="/logs">Logs</a>
                 <a href="/metrics">Host Metrics</a>
                 <a href="/settings">Settings</a>
@@ -174,5 +196,12 @@
             {% endif %}
         </div>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('darkMode') === 'enabled') {
+                document.body.classList.add('dark-mode');
+            }
+        });
+    </script>
 </body>
 </html>

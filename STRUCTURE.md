@@ -11,6 +11,7 @@ chrontainer/
 │   ├── settings.html        # Settings UI (Discord, ntfy, API keys, webhooks) (~1230 lines)
 │   ├── logs.html            # Activity logs page (~175 lines)
 │   ├── metrics.html         # Host metrics dashboard (~320 lines)
+│   ├── images.html          # Image management UI (~260 lines)
 │   └── error.html           # Error page (~80 lines)
 ├── tests/                   # pytest test suite
 │   ├── __init__.py
@@ -109,6 +110,10 @@ chrontainer/
 - Activity log viewer
 - Shows all scheduled & manual actions
 - Status indicators with timestamps
+
+### `templates/images.html` (~260 lines)
+- Image inventory with filters and host scope
+- Pull, prune, and delete image actions
 
 ### `docker-compose.yml`
 - Single-file deployment

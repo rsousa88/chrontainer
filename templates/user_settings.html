@@ -20,6 +20,11 @@
             line-height: 1.6;
         }
 
+        body.dark-mode {
+            background: #1a1a1a;
+            color: #ecf0f1;
+        }
+
         .container {
             max-width: 90%;
             width: 90%;
@@ -33,6 +38,10 @@
             padding: 20px 0;
             margin-bottom: 30px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        body.dark-mode header {
+            background: #1f2d3a;
         }
 
         header h1 {
@@ -65,6 +74,10 @@
             padding: 25px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        body.dark-mode .card {
+            background: #2c3e50;
         }
 
         .card h2 {
@@ -182,6 +195,7 @@
             <h1>👤 User Settings <span style="font-size: 14px; color: #3498db; font-weight: normal;">v{{ version }}</span></h1>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
+                <a href="/images">Images</a>
                 <a href="/logs">Logs</a>
                 <a href="/metrics">Host Metrics</a>
                 <a href="/settings">Settings</a>
@@ -245,6 +259,12 @@
     </div>
 
     <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('darkMode') === 'enabled') {
+                document.body.classList.add('dark-mode');
+            }
+        });
+
         function showAlert(message, type) {
             const alert = document.getElementById('alert');
             alert.textContent = message;

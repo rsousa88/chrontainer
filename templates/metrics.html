@@ -209,12 +209,13 @@
             <div class="header">
                 <div>
                     <h1>Host Metrics</h1>
-                    <div class="nav-links">
-                        <a href="/">Dashboard</a>
-                        <a href="/logs">Logs</a>
-                        <a href="/metrics">Host Metrics</a>
-                        <a href="/settings">Settings</a>
-                    </div>
+                <div class="nav-links">
+                    <a href="/">Dashboard</a>
+                    <a href="/images">Images</a>
+                    <a href="/logs">Logs</a>
+                    <a href="/metrics">Host Metrics</a>
+                    <a href="/settings">Settings</a>
+                </div>
                 </div>
                 <div class="header-right">
                     <span id="lastUpdated" class="last-updated"></span>
@@ -480,7 +481,7 @@
 
         loadMetrics();
 
-        if (localStorage.getItem('darkMode') === 'true') {
+        if (localStorage.getItem('darkMode') === 'enabled') {
             document.body.classList.add('dark-mode');
         }
     </script>

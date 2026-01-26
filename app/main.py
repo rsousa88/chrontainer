@@ -31,7 +31,7 @@ from typing import Tuple, Optional, List, Dict, Any
 load_dotenv()
 
 # Version
-VERSION = "0.4.13"
+VERSION = "0.4.14"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -41,6 +41,10 @@ DISK_USAGE_CACHE = {}
 DISK_USAGE_CACHE_TTL_SECONDS = 300
 DISK_USAGE_INFLIGHT = set()
 DISK_USAGE_INFLIGHT_LOCK = threading.Lock()
+IMAGE_USAGE_CACHE = {}
+IMAGE_USAGE_CACHE_TTL_SECONDS = 180
+IMAGE_USAGE_INFLIGHT = set()
+IMAGE_USAGE_INFLIGHT_LOCK = threading.Lock()
 UPDATE_STATUS_CACHE = {}
 UPDATE_STATUS_CACHE_TTL_SECONDS = 3600
 
@@ -406,6 +410,74 @@ def strip_image_tag(image_name):
         last = last.split(':', 1)[0]
 
     return f"{prefix}/{last}" if prefix else last
+
+def split_image_reference(image_ref: str) -> Tuple[str, str]:
+    """Split an image reference into repository and tag (if present)."""
+    if not image_ref:
+        return '', ''
+
+    base = image_ref.split('@', 1)[0]
+    if ':' in base:
+        repo, candidate = base.rsplit(':', 1)
+        if '/' not in candidate:
+            return repo, candidate
+
+    repository = base or '(none)'
+    return repository, '(none)'
+
+def extract_repository_from_digest(digest: str) -> str:
+    """Extract repository from a repo digest entry."""
+    if not digest:
+        return ''
+    base = digest.split('@', 1)[0]
+    return base or ''
+
+def set_cached_image_usage(host_id: int, data: Dict[str, Any]) -> None:
+    """Cache image usage data for a host."""
+    with _cache_lock:
+        IMAGE_USAGE_CACHE[host_id] = {
+            'data': data,
+            'timestamp': time.time()
+        }
+
+def get_cached_image_usage(host_id: int) -> Optional[Dict[str, Any]]:
+    """Return cached image usage data if fresh."""
+    with _cache_lock:
+        cached = IMAGE_USAGE_CACHE.get(host_id)
+        if not cached:
+            return None
+        if time.time() - cached['timestamp'] > IMAGE_USAGE_CACHE_TTL_SECONDS:
+            return None
+        return cached['data']
+
+def refresh_image_usage_async(host_id: int, client: docker.DockerClient, host_name: str) -> None:
+    """Fetch image usage data in background to avoid blocking page loads."""
+    def run():
+        try:
+            df_data = client.df()
+            set_cached_image_usage(host_id, df_data)
+            logger.info(
+                "Image usage cached for host %s: images=%s",
+                host_name,
+                len(df_data.get('Images', []) or [])
+            )
+        except Exception as error:
+            logger.warning("Image usage df failed for host %s: %s", host_name, error)
+        finally:
+            with IMAGE_USAGE_INFLIGHT_LOCK:
+                IMAGE_USAGE_INFLIGHT.discard(host_id)
+
+    with IMAGE_USAGE_INFLIGHT_LOCK:
+        if host_id in IMAGE_USAGE_INFLIGHT:
+            return
+        IMAGE_USAGE_INFLIGHT.add(host_id)
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+def clear_image_usage_cache() -> None:
+    """Clear cached image usage data."""
+    with _cache_lock:
+        IMAGE_USAGE_CACHE.clear()
 
  
 
@@ -1755,18 +1827,7 @@ def fetch_all_containers() -> List[Dict[str, Any]]:
         List of container dictionaries with tags, webui URLs, and update status.
     """
     container_list = []
-    host_color_map = {}
-    host_text_color_map = {}
-
-    # Load host colors
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, color FROM hosts')
-    for host_id_row, color in cursor.fetchall():
-        resolved_color = color or HOST_DEFAULT_COLOR
-        host_color_map[host_id_row] = resolved_color
-        host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
-    conn.close()
+    host_color_map, host_text_color_map = get_host_color_maps()
 
     # Fetch containers from all hosts
     for host_id, host_name, docker_client in docker_manager.get_all_clients():
@@ -1896,6 +1957,153 @@ def fetch_all_containers() -> List[Dict[str, Any]]:
 
     return container_list
 
+def get_host_color_maps() -> Tuple[Dict[int, str], Dict[int, str]]:
+    """Return host background and text colors keyed by host ID."""
+    host_color_map = {}
+    host_text_color_map = {}
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, color FROM hosts')
+    for host_id_row, color in cursor.fetchall():
+        resolved_color = color or HOST_DEFAULT_COLOR
+        host_color_map[host_id_row] = resolved_color
+        host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
+    conn.close()
+
+    return host_color_map, host_text_color_map
+
+def fetch_all_images() -> List[Dict[str, Any]]:
+    """
+    Fetch all images from all Docker hosts with basic metadata.
+
+    Returns:
+        List of image dictionaries with host info and tags.
+    """
+    image_list = []
+    host_color_map, host_text_color_map = get_host_color_maps()
+
+    for host_id, host_name, docker_client in docker_manager.get_all_clients():
+        df_images = {}
+        cached_df = get_cached_image_usage(host_id)
+        cached_from_images = cached_df is not None
+        if not cached_df:
+            cached_df = get_cached_disk_usage(host_id)
+        if cached_df:
+            df_images = {entry.get('Id'): entry for entry in (cached_df.get('Images', []) or [])}
+        if not cached_from_images:
+            refresh_image_usage_async(host_id, docker_client, host_name)
+
+        host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
+        host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
+
+        container_repo_map = {}
+        try:
+            containers = docker_client.containers.list(all=True)
+            for container in containers:
+                try:
+                    image_id = container.image.id
+                    if not image_id:
+                        continue
+                    image_name = None
+                    if container.image.tags:
+                        image_name = container.image.tags[0]
+                    else:
+                        image_name = container.attrs.get('Config', {}).get('Image')
+                    if image_name:
+                        repo, _ = split_image_reference(image_name)
+                        container_repo_map[image_id] = repo or container_repo_map.get(image_id)
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug("Failed to map container images for host %s: %s", host_name, e)
+
+        if df_images:
+            for entry in df_images.values():
+                image_id = entry.get('Id') or ''
+                short_id = image_id.replace('sha256:', '')[:12]
+                created = entry.get('Created')
+                size = entry.get('Size')
+                shared_size = entry.get('SharedSize')
+                containers_count = entry.get('Containers')
+                if containers_count is not None and containers_count < 0:
+                    containers_count = None
+                repo_tags = entry.get('RepoTags') or []
+                repo_digests = entry.get('RepoDigests') or []
+                if not repo_tags:
+                    repo_tags = ['(none):(none)']
+
+                for tag in repo_tags:
+                    repository, tag_name = split_image_reference(tag)
+                    if repository in ('', '(none)') and repo_digests:
+                        digest_repo = extract_repository_from_digest(repo_digests[0])
+                        repository = digest_repo or '(none)'
+                    if repository in ('', '(none)'):
+                        repository = container_repo_map.get(image_id) or repository
+                    repository = repository or '(none)'
+                    image_list.append({
+                        'id': image_id,
+                        'short_id': short_id,
+                        'image_id': image_id,
+                        'repository': repository,
+                        'tag': tag_name,
+                        'full_name': tag,
+                        'size_bytes': size,
+                        'shared_size_bytes': shared_size,
+                        'containers': containers_count,
+                        'created': created,
+                        'host_id': host_id,
+                        'host_name': host_name,
+                        'host_color': host_color,
+                        'host_text_color': host_text_color
+                    })
+            continue
+
+        try:
+            images = docker_client.api.images(all=True)
+            for entry in images:
+                image_id = entry.get('Id') or ''
+                short_id = image_id.replace('sha256:', '')[:12]
+                created = entry.get('Created')
+                size = entry.get('Size')
+                shared_size = entry.get('SharedSize')
+                containers_count = entry.get('Containers')
+                if containers_count is not None and containers_count < 0:
+                    containers_count = None
+                repo_tags = entry.get('RepoTags') or []
+                repo_digests = entry.get('RepoDigests') or []
+                if not repo_tags:
+                    repo_tags = ['(none):(none)']
+
+                for tag in repo_tags:
+                    repository, tag_name = split_image_reference(tag)
+                    if repository in ('', '(none)') and repo_digests:
+                        digest_repo = extract_repository_from_digest(repo_digests[0])
+                        repository = digest_repo or '(none)'
+                    if repository in ('', '(none)'):
+                        repository = container_repo_map.get(image_id) or repository
+                    repository = repository or '(none)'
+                    image_list.append({
+                        'id': image_id,
+                        'short_id': short_id,
+                        'image_id': image_id,
+                        'repository': repository,
+                        'tag': tag_name,
+                        'full_name': tag,
+                        'size_bytes': size,
+                        'shared_size_bytes': shared_size,
+                        'containers': containers_count,
+                        'created': created,
+                        'host_id': host_id,
+                        'host_name': host_name,
+                        'host_color': host_color,
+                        'host_text_color': host_text_color
+                    })
+        except Exception as e:
+            logger.error(f"Error getting images from host {host_name}: {e}")
+
+    return image_list
+
 
 # Routes
 @app.route('/')
@@ -1932,6 +2140,118 @@ def get_containers():
         return jsonify(container_list)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/images')
+@api_key_or_login_required
+def get_images():
+    """API endpoint to get all images"""
+    try:
+        refresh = request.args.get('refresh', '0') == '1'
+        if refresh:
+            clear_image_usage_cache()
+        images = fetch_all_images()
+        return jsonify(images)
+    except Exception as e:
+        logger.error(f"Failed to load images: {e}")
+        return jsonify({'error': 'Failed to load images'}), 500
+
+@app.route('/api/images/pull', methods=['POST'])
+@api_key_or_login_required
+def api_pull_image():
+    """API endpoint to pull an image"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+
+    data = request.json or {}
+    image_ref = sanitize_string(data.get('image', ''), max_length=255).strip()
+    host_id = data.get('host_id', 1)
+
+    if not image_ref:
+        return jsonify({'error': 'Image reference is required'}), 400
+
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    try:
+        client = docker_manager.get_client(host_id)
+        if not client:
+            return jsonify({'error': 'Cannot connect to Docker host'}), 500
+
+        client.images.pull(image_ref)
+        return jsonify({'success': True, 'message': f'Pulled {image_ref} successfully'})
+    except docker.errors.APIError as e:
+        logger.error(f"Failed to pull image {image_ref} on host {host_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Failed to pull image {image_ref} on host {host_id}: {e}")
+        return jsonify({'error': 'Failed to pull image'}), 500
+
+@app.route('/api/images/<image_id>', methods=['DELETE'])
+@api_key_or_login_required
+def api_delete_image(image_id):
+    """API endpoint to delete an image"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+
+    host_id = request.args.get('host_id', 1, type=int)
+    force = bool((request.json or {}).get('force', False))
+    image_id = sanitize_string(image_id, max_length=200).strip()
+
+    if not image_id:
+        return jsonify({'error': 'Image ID is required'}), 400
+
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    try:
+        client = docker_manager.get_client(host_id)
+        if not client:
+            return jsonify({'error': 'Cannot connect to Docker host'}), 500
+
+        client.images.remove(image_id, force=force)
+        return jsonify({'success': True, 'message': 'Image removed'})
+    except docker.errors.APIError as e:
+        logger.error(f"Failed to delete image {image_id} on host {host_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Failed to delete image {image_id} on host {host_id}: {e}")
+        return jsonify({'error': 'Failed to delete image'}), 500
+
+@app.route('/api/images/prune', methods=['POST'])
+@api_key_or_login_required
+def api_prune_images():
+    """API endpoint to prune unused images"""
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+
+    data = request.json or {}
+    host_id = data.get('host_id', 1)
+    dangling_only = data.get('dangling_only', False)
+
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    try:
+        client = docker_manager.get_client(host_id)
+        if not client:
+            return jsonify({'error': 'Cannot connect to Docker host. Check the host URL and socket availability.'}), 400
+
+        filters = {'dangling': True} if dangling_only else None
+        result = client.images.prune(filters=filters)
+        return jsonify({
+            'success': True,
+            'reclaimed': result.get('SpaceReclaimed', 0),
+            'images_deleted': result.get('ImagesDeleted', []) or []
+        })
+    except docker.errors.APIError as e:
+        logger.error(f"Failed to prune images on host {host_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Failed to prune images on host {host_id}: {e}")
+        return jsonify({'error': 'Failed to prune images'}), 500
 
 @app.route('/api/container/<container_id>/restart', methods=['POST'])
 @api_key_or_login_required
@@ -3531,7 +3851,16 @@ def test_host_connection(host_id):
             # Update last_seen
             conn = get_db()
             cursor = conn.cursor()
-            cursor.execute('UPDATE hosts SET last_seen = ? WHERE id = ?', (datetime.now(), host_id))
+            cursor.execute(
+                'UPDATE hosts SET last_seen = ?, enabled = 1 WHERE id = ?',
+                (datetime.now(), host_id)
+            )
+            conn.commit()
+            conn.close()
+        else:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE hosts SET enabled = 0 WHERE id = ?', (host_id,))
             conn.commit()
             conn.close()
 
@@ -3730,6 +4059,12 @@ def metrics_page():
     """Host metrics dashboard page"""
     dark_mode = request.cookies.get('darkMode', 'false') == 'true'
     return render_template('metrics.html', dark_mode=dark_mode)
+
+@app.route('/images')
+@login_required
+def images_page():
+    """Image management page"""
+    return render_template('images.html', version=VERSION)
 
 @app.route('/hosts')
 @login_required
