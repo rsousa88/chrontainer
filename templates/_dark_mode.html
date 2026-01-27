@@ -10,6 +10,21 @@
     }
 
     body.dark-mode {
+        /* Override all CSS variables for dark mode */
+        --bg-color: #0b111f;
+        --bg-primary: #0b111f;
+        --bg-secondary: #1d2a45;
+        --bg-header: #0d1526;
+        --card-bg: #1d2a45;
+        --text-color: #e2e8f0;
+        --text-primary: #e2e8f0;
+        --text-secondary: #9fb3cc;
+        --text-light: #e2e8f0;
+        --border-color: #384664;
+        --shadow: rgba(0,0,0,0.3);
+        --th-bg: #0d1526;
+        --hover-bg: rgba(255, 255, 255, 0.03);
+
         background: var(--dark-bg);
         color: var(--dark-text);
     }
@@ -21,6 +36,7 @@
 
     body.dark-mode .section,
     body.dark-mode .card,
+    body.dark-mode .host-card,
     body.dark-mode .hosts-card,
     body.dark-mode .action-group {
         background: var(--dark-panel);
@@ -50,6 +66,78 @@
 
     body.dark-mode .action-label {
         color: var(--dark-muted);
+    }
+
+    body.dark-mode .metric-label {
+        color: var(--dark-muted);
+    }
+
+    body.dark-mode .metric-value {
+        color: var(--dark-text);
+    }
+
+    body.dark-mode .host-name {
+        color: var(--dark-text);
+    }
+
+    body.dark-mode .disk-item {
+        color: var(--dark-text);
+    }
+
+    body.dark-mode .auto-refresh-separator {
+        background: #2a3f5f;
+    }
+
+    body.dark-mode .github-icon {
+        color: #d6e2f0;
+    }
+
+    body.dark-mode h1,
+    body.dark-mode h2,
+    body.dark-mode h3,
+    body.dark-mode h4,
+    body.dark-mode h5,
+    body.dark-mode h6 {
+        color: var(--dark-text);
+    }
+
+    body.dark-mode .section h2 {
+        color: var(--dark-text);
+    }
+
+    body.dark-mode input,
+    body.dark-mode select,
+    body.dark-mode textarea {
+        background: var(--dark-card);
+        color: var(--dark-text);
+        border-color: var(--dark-border);
+    }
+
+    body.dark-mode input:focus,
+    body.dark-mode select:focus,
+    body.dark-mode textarea:focus {
+        border-color: #3498db;
+    }
+
+    body.dark-mode .btn {
+        background: var(--dark-card);
+        color: var(--dark-text);
+        border-color: var(--dark-border);
+    }
+
+    body.dark-mode .btn:hover {
+        background: var(--dark-panel);
+    }
+
+    body.dark-mode .btn-primary,
+    body.dark-mode button[type="submit"] {
+        background: #3498db;
+        color: white;
+        border-color: #3498db;
+    }
+
+    body.dark-mode .btn-primary:hover {
+        background: #2980b9;
     }
 </style>
 

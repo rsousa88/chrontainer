@@ -145,6 +145,10 @@
             margin-top: 20px;
             border-radius: 4px;
         }
+        body.dark-mode .info-box {
+            background: #1f3a4a;
+            border-left-color: #5ad1ff;
+        }
         body.dark-mode .info-box { background: #1f3a4a; }
         .info-box h3 { font-size: 16px; margin-bottom: 10px; color: var(--text-primary); }
         .info-box ol { margin-left: 20px; }
@@ -268,6 +272,42 @@
         @media (max-width: 480px) {
             header h1 { font-size: 22px; }
             .tab { font-size: 13px; padding: 10px 12px; }
+        }
+
+        /* Dark mode adjustments scoped to settings */
+        body.dark-mode header {
+            background: #0d1526;
+        }
+
+        body.dark-mode .tabs {
+            border-color: rgba(255, 255, 255, 0.08);
+            background: #152037;
+        }
+
+        body.dark-mode .tab {
+            color: #d7e3ff;
+        }
+
+        body.dark-mode .tab.active {
+            color: #5ad1ff;
+            border-bottom-color: #5ad1ff;
+        }
+
+        body.dark-mode .tab-content {
+            background: #14203a;
+            border-radius: 0 0 8px 8px;
+        }
+
+        body.dark-mode .form-group label,
+        body.dark-mode .form-group small {
+            color: #c2d2e7;
+        }
+
+        body.dark-mode .form-group input,
+        body.dark-mode .form-group select {
+            background: #152037;
+            border-color: rgba(255, 255, 255, 0.15);
+            color: #f1f5ff;
         }
     </style>
     {% include '_dark_mode.html' %}
