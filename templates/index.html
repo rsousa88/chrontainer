@@ -327,6 +327,18 @@
             color: #555;
         }
 
+        .bulk-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .bulk-option input {
+            margin: 0;
+        }
+
         .status-cell {
             position: relative;
             padding-right: 22px;
@@ -540,6 +552,19 @@
         
         input:checked + .slider:before {
             transform: translateX(26px);
+        }
+
+        .confirm-message {
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .confirm-options {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 18px;
         }
 
         /* Loading spinner */
@@ -977,6 +1002,7 @@
                 <button class="btn btn-secondary btn-small" onclick="bulkAction('pause')" id="bulk-pause" disabled>Pause</button>
                 <button class="btn btn-secondary btn-small" onclick="bulkAction('unpause')" id="bulk-unpause" disabled>Unpause</button>
                 <button class="btn btn-success btn-small" onclick="bulkAction('update')" id="bulk-update" disabled>Update</button>
+                <button class="btn btn-danger btn-small" onclick="bulkAction('delete')" id="bulk-delete" disabled>Delete</button>
             </div>
             <div class="table-container">
             <table id="containersTable">
@@ -1366,6 +1392,28 @@
         </div>
     </div>
 
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal" onclick="handleConfirmOutsideClick(event)">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="cancelConfirm()">&times;</span>
+                <h3 id="confirmTitle">Confirm Action</h3>
+            </div>
+            <div id="confirmMessage" class="confirm-message"></div>
+            <div id="confirmVolumeToggle" class="confirm-options" style="display: none;">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="confirmRemoveVolumes">
+                    <span class="slider"></span>
+                </label>
+                <span>Remove volumes</span>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="cancelConfirm()">Cancel</button>
+                <button class="btn btn-primary" id="confirmOkBtn" onclick="confirmAction()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Keyboard Shortcuts Modal -->
     <div id="keyboardShortcutsModal" class="modal">
         <div class="modal-content">
@@ -1449,6 +1497,62 @@
             setTimeout(() => {
                 alert.remove();
             }, 5000);
+        }
+
+        let confirmResolver = null;
+
+        function openConfirmModal(options) {
+            const modal = document.getElementById('confirmModal');
+            const title = document.getElementById('confirmTitle');
+            const message = document.getElementById('confirmMessage');
+            const okBtn = document.getElementById('confirmOkBtn');
+            const volumeToggle = document.getElementById('confirmVolumeToggle');
+            const volumeCheckbox = document.getElementById('confirmRemoveVolumes');
+
+            title.textContent = options.title || 'Confirm Action';
+            message.innerHTML = options.message || 'Proceed with this action?';
+            okBtn.textContent = options.confirmText || 'Confirm';
+            okBtn.className = `btn ${options.confirmClass || 'btn-primary'}`;
+
+            if (options.showVolumeToggle) {
+                volumeToggle.style.display = 'flex';
+                volumeCheckbox.checked = !!options.volumeChecked;
+            } else {
+                volumeToggle.style.display = 'none';
+                volumeCheckbox.checked = false;
+            }
+
+            modal.classList.add('open');
+            document.body.classList.add('modal-open');
+
+            return new Promise(resolve => {
+                confirmResolver = resolve;
+            });
+        }
+
+        function closeConfirmModal(result) {
+            const modal = document.getElementById('confirmModal');
+            modal.classList.remove('open');
+            document.body.classList.remove('modal-open');
+            if (confirmResolver) {
+                confirmResolver(result);
+                confirmResolver = null;
+            }
+        }
+
+        function confirmAction() {
+            const volumeCheckbox = document.getElementById('confirmRemoveVolumes');
+            closeConfirmModal({confirmed: true, removeVolumes: !!volumeCheckbox?.checked});
+        }
+
+        function cancelConfirm() {
+            closeConfirmModal({confirmed: false, removeVolumes: false});
+        }
+
+        function handleConfirmOutsideClick(event) {
+            if (event.target && event.target.id === 'confirmModal') {
+                cancelConfirm();
+            }
         }
 
         function updateStatClass(element, baseClass, percent) {
@@ -1767,7 +1871,13 @@
         });
         
         async function restartContainer(containerId, containerName, hostId) {
-            if (!confirm(`Restart container ${containerName}?`)) return;
+            const confirmation = await openConfirmModal({
+                title: 'Restart container',
+                message: `Restart <strong>${containerName}</strong>?`,
+                confirmText: 'Restart',
+                confirmClass: 'btn-warning'
+            });
+            if (!confirmation.confirmed) return;
 
             showAlert('<span class="spinner"></span> Restarting container...', 'info');
 
@@ -1790,6 +1900,13 @@
         }
 
         async function startContainer(containerId, containerName, hostId) {
+            const confirmation = await openConfirmModal({
+                title: 'Start container',
+                message: `Start <strong>${containerName}</strong>?`,
+                confirmText: 'Start',
+                confirmClass: 'btn-success'
+            });
+            if (!confirmation.confirmed) return;
             showAlert('<span class="spinner"></span> Starting container...', 'info');
 
             try {
@@ -1811,7 +1928,13 @@
         }
 
         async function stopContainer(containerId, containerName, hostId) {
-            if (!confirm(`Stop container ${containerName}?`)) return;
+            const confirmation = await openConfirmModal({
+                title: 'Stop container',
+                message: `Stop <strong>${containerName}</strong>?`,
+                confirmText: 'Stop',
+                confirmClass: 'btn-danger'
+            });
+            if (!confirmation.confirmed) return;
 
             showAlert('<span class="spinner"></span> Stopping container...', 'info');
 
@@ -1834,7 +1957,13 @@
         }
 
         async function pauseContainer(containerId, containerName, hostId) {
-            if (!confirm(`Pause container ${containerName}?`)) return;
+            const confirmation = await openConfirmModal({
+                title: 'Pause container',
+                message: `Pause <strong>${containerName}</strong>?`,
+                confirmText: 'Pause',
+                confirmClass: 'btn-secondary'
+            });
+            if (!confirmation.confirmed) return;
 
             showAlert('<span class="spinner"></span> Pausing container...', 'info');
 
@@ -1857,6 +1986,13 @@
         }
 
         async function unpauseContainer(containerId, containerName, hostId) {
+            const confirmation = await openConfirmModal({
+                title: 'Unpause container',
+                message: `Unpause <strong>${containerName}</strong>?`,
+                confirmText: 'Unpause',
+                confirmClass: 'btn-secondary'
+            });
+            if (!confirmation.confirmed) return;
             showAlert('<span class="spinner"></span> Unpausing container...', 'info');
 
             try {
@@ -1975,9 +2111,18 @@
         }
 
         async function updateContainer(containerId, containerName, hostId) {
-            if (!confirm(`Update container "${containerName}"? This will:\n\n1. Stop the current container\n2. Pull the latest image\n3. Recreate the container with the same settings\n\nThis may take a few minutes.`)) {
-                return;
-            }
+            const confirmation = await openConfirmModal({
+                title: 'Update container',
+                message: `Update <strong>${containerName}</strong>?<br><br>
+                    This will:<br>
+                    1. Stop the current container<br>
+                    2. Pull the latest image<br>
+                    3. Recreate the container with the same settings<br><br>
+                    This may take a few minutes.`,
+                confirmText: 'Update',
+                confirmClass: 'btn-primary'
+            });
+            if (!confirmation.confirmed) return;
 
             showAlert('<span class="spinner"></span> Updating container...', 'info');
 
@@ -2158,7 +2303,13 @@
         }
 
         async function deleteSchedule(scheduleId) {
-            if (!confirm('Delete this schedule?')) return;
+            const confirmation = await openConfirmModal({
+                title: 'Delete schedule',
+                message: 'Delete this schedule?',
+                confirmText: 'Delete',
+                confirmClass: 'btn-danger'
+            });
+            if (!confirmation.confirmed) return;
 
             try {
                 const response = await fetch(`/api/schedule/${scheduleId}`, {
@@ -2359,12 +2510,13 @@
             }
 
             const disable = selected.length === 0;
-            ['bulk-check-updates', 'bulk-restart', 'bulk-stop', 'bulk-start', 'bulk-pause', 'bulk-unpause', 'bulk-update'].forEach(id => {
+            ['bulk-check-updates', 'bulk-restart', 'bulk-stop', 'bulk-start', 'bulk-pause', 'bulk-unpause', 'bulk-update', 'bulk-delete'].forEach(id => {
                 const button = document.getElementById(id);
                 if (button) {
                     button.disabled = disable;
                 }
             });
+
         }
 
         function toggleSelectAll(source) {
@@ -2385,6 +2537,7 @@
             if (action === 'pause') return status === 'running';
             if (action === 'unpause') return status === 'paused';
             if (action === 'update') return true;
+            if (action === 'delete') return true;
             return false;
         }
 
@@ -2402,8 +2555,31 @@
                 return;
             }
 
-            if (!confirm(`Apply "${action}" to ${applicable.length} container(s)?`)) {
-                return;
+            let removeVolumes = false;
+            const baseMessage = `Apply "${action}" to ${applicable.length} container(s)?`;
+            if (action === 'delete') {
+                const confirmation = await openConfirmModal({
+                    title: 'Delete containers',
+                    message: `Delete ${applicable.length} container(s)?`,
+                    confirmText: 'Delete',
+                    confirmClass: 'btn-danger',
+                    showVolumeToggle: true,
+                    volumeChecked: false
+                });
+                if (!confirmation.confirmed) {
+                    return;
+                }
+                removeVolumes = confirmation.removeVolumes;
+            } else {
+                const confirmation = await openConfirmModal({
+                    title: 'Confirm action',
+                    message: baseMessage,
+                    confirmText: 'Confirm',
+                    confirmClass: 'btn-primary'
+                });
+                if (!confirmation.confirmed) {
+                    return;
+                }
             }
 
             showAlert(`<span class="spinner"></span> Applying ${action} to ${applicable.length} containers...`, 'info');
@@ -2414,14 +2590,19 @@
                 start: 'start',
                 pause: 'pause',
                 unpause: 'unpause',
-                update: 'update'
+                update: 'update',
+                delete: 'delete'
             };
 
             const results = await Promise.allSettled(applicable.map(container => {
+                const payload = {name: container.name, host_id: container.hostId};
+                if (action === 'delete') {
+                    payload.remove_volumes = removeVolumes;
+                }
                 return fetch(`/api/container/${container.id}/${endpointMap[action]}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                    body: JSON.stringify({name: container.name, host_id: container.hostId})
+                    body: JSON.stringify(payload)
                 }).then(response => response.json().then(body => ({ok: response.ok, body})));
             }));
 
@@ -2593,7 +2774,13 @@
         }
 
         async function deleteTag(tagId) {
-            if (!confirm('Delete this tag? It will be removed from all containers.')) return;
+            const confirmation = await openConfirmModal({
+                title: 'Delete tag',
+                message: 'Delete this tag? It will be removed from all containers.',
+                confirmText: 'Delete',
+                confirmClass: 'btn-danger'
+            });
+            if (!confirmation.confirmed) return;
 
             try {
                 const response = await fetch(`/api/tags/${tagId}`, { method: 'DELETE', headers: {'X-CSRFToken': getCsrfToken()} });

@@ -31,7 +31,7 @@ from typing import Tuple, Optional, List, Dict, Any
 load_dotenv()
 
 # Version
-VERSION = "0.4.14"
+VERSION = "0.4.15"
 
 HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
@@ -1300,6 +1300,29 @@ def update_schedule_container_id(schedule_id, container_id):
     except Exception as e:
         logger.error(f"Failed to update schedule {schedule_id} container_id to {container_id}: {e}")
 
+def disable_container_schedules(container_id: str, container_name: str, host_id: int) -> int:
+    """Disable schedules linked to a container that has been removed."""
+    try:
+        short_id = (container_id or '')[:12]
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            UPDATE schedules
+            SET enabled = 0
+            WHERE host_id = ?
+              AND (container_id = ? OR container_id = ? OR container_name = ?)
+            ''',
+            (host_id, container_id, short_id, container_name)
+        )
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return affected
+    except Exception as e:
+        logger.error(f"Failed to disable schedules for container {container_name}: {e}")
+        return 0
+
 def restart_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
     """
     Restart a Docker container and log the action.
@@ -1487,6 +1510,52 @@ def stop_container(container_id: str, container_name: str, schedule_id: Optional
         log_action(schedule_id, container_name, 'stop', 'error', message, host_id)
         send_discord_notification(container_name, 'stop', 'error', message, schedule_id)
         send_ntfy_notification(container_name, 'stop', 'error', message, schedule_id)
+        return False, message
+
+def delete_container(container_id: str, container_name: str, remove_volumes: bool = False, force: bool = False, host_id: int = 1) -> Tuple[bool, str]:
+    """
+    Delete a Docker container and log the action.
+
+    Removes the specified container on the given Docker host. Optionally removes
+    associated volumes. If the container is running and force is False, it will
+    be stopped before removal. Any schedules linked to the container are disabled
+    to prevent future failures.
+    """
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            raise Exception(f"Cannot connect to Docker host {host_id}")
+
+        container, _ = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
+
+        container.reload()
+        if container.status == 'running' and not force:
+            container.stop()
+
+        container.remove(v=remove_volumes, force=force)
+
+        disabled = disable_container_schedules(container.id, container_name, host_id)
+
+        message = f"Container {container_name} deleted successfully"
+        if remove_volumes:
+            message += " (volumes removed)"
+        if disabled:
+            message += f"; disabled {disabled} schedule(s)"
+
+        logger.info(message)
+        log_action(None, container_name, 'delete', 'success', message, host_id)
+        send_discord_notification(container_name, 'delete', 'success', message, None)
+        send_ntfy_notification(container_name, 'delete', 'success', message, None)
+
+        return True, message
+    except Exception as e:
+        message = f"Failed to delete container {container_name}: {str(e)}"
+        logger.error(message)
+        log_action(None, container_name, 'delete', 'error', message, host_id)
+        send_discord_notification(container_name, 'delete', 'error', message, None)
+        send_ntfy_notification(container_name, 'delete', 'error', message, None)
         return False, message
 
 def pause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
@@ -2371,6 +2440,30 @@ def api_unpause_container(container_id):
         return jsonify({'error': error_msg}), 400
 
     success, message = unpause_container(container_id, container_name, host_id=host_id)
+    return jsonify({'success': success, 'message': message})
+
+@app.route('/api/container/<container_id>/delete', methods=['POST'])
+@api_key_or_login_required
+def api_delete_container(container_id):
+    """API endpoint to delete a container"""
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+
+    data = request.json or {}
+    container_name = sanitize_string(data.get('name', 'unknown'), max_length=255)
+    host_id = data.get('host_id', 1)
+    remove_volumes = bool(data.get('remove_volumes', False))
+    force = bool(data.get('force', False))
+
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    success, message = delete_container(container_id, container_name, remove_volumes=remove_volumes, force=force, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/container/<container_id>/check-update', methods=['GET'])
