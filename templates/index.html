@@ -1125,6 +1125,15 @@
                                 <span class="tooltip-text compact">Schedule</span>
                             </span>
                             <span class="tooltip-container">
+                                <button class="icon-btn" onclick="openRenameModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" aria-label="Rename container">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true">
+                                        <path d="M12 20h9"/>
+                                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                                    </svg>
+                                </button>
+                                <span class="tooltip-text compact">Rename</span>
+                            </span>
+                            <span class="tooltip-container">
                                 <button class="icon-btn" onclick="openTagModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" aria-label="Manage tags">
                                     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true">
                                         <path d="M20 10l-8 8-8-8V4h6z"/>
@@ -1343,6 +1352,26 @@
             </div>
             <div style="margin-top: 20px;">
                 <button class="btn btn-secondary" onclick="closeManageTagsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Container Modal -->
+    <div id="renameModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeRenameModal()">&times;</span>
+                <h3>Rename Container: <span id="renameContainerName"></span></h3>
+            </div>
+            <input type="hidden" id="renameContainerId">
+            <input type="hidden" id="renameHostId">
+            <div class="form-group">
+                <label for="renameInput">New Name</label>
+                <input type="text" id="renameInput" placeholder="Enter new container name">
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="submitRename()">Rename</button>
+                <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -2938,6 +2967,64 @@
             }
         }
 
+        function openRenameModal(containerId, containerName, hostId) {
+            document.getElementById('renameContainerId').value = containerId;
+            document.getElementById('renameHostId').value = hostId;
+            document.getElementById('renameContainerName').textContent = containerName;
+            document.getElementById('renameInput').value = containerName;
+            document.getElementById('renameModal').style.display = 'block';
+        }
+
+        function closeRenameModal() {
+            document.getElementById('renameModal').style.display = 'none';
+            document.getElementById('renameInput').value = '';
+        }
+
+        async function submitRename() {
+            const containerId = document.getElementById('renameContainerId').value;
+            const hostId = parseInt(document.getElementById('renameHostId').value, 10);
+            const currentName = document.getElementById('renameContainerName').textContent;
+            const newName = document.getElementById('renameInput').value.trim();
+
+            if (!newName) {
+                showAlert('Enter a new name.', 'error');
+                return;
+            }
+
+            if (newName === currentName) {
+                showAlert('New name matches current name.', 'info');
+                return;
+            }
+
+            const confirmation = await openConfirmModal({
+                title: 'Rename container',
+                message: `Rename <strong>${currentName}</strong> to <strong>${newName}</strong>?`,
+                confirmText: 'Rename',
+                confirmClass: 'btn-primary'
+            });
+            if (!confirmation.confirmed) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/container/${containerId}/rename`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    body: JSON.stringify({ name: currentName, new_name: newName, host_id: hostId })
+                });
+
+                const result = await response.json();
+                showAlert(result.message || 'Rename completed', result.success ? 'success' : 'error');
+
+                if (result.success) {
+                    closeRenameModal();
+                    setTimeout(() => location.reload(), 1500);
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
         function populateTagFilter() {
             const tagSelect = document.getElementById('filterTag');
             tagSelect.innerHTML = '<option value="">All Tags</option>';
@@ -2974,6 +3061,8 @@
                     closeManageTagsModal();
                     closeTagModal();
                     closeWebUIModal();
+                    closeRenameModal();
+                    cancelConfirm();
                     closeKeyboardShortcuts();
                 }
                 return;
@@ -3011,6 +3100,8 @@
                     closeManageTagsModal();
                     closeTagModal();
                     closeWebUIModal();
+                    closeRenameModal();
+                    cancelConfirm();
                     closeKeyboardShortcuts();
                     break;
             }

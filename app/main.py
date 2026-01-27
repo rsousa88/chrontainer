@@ -1300,6 +1300,29 @@ def update_schedule_container_id(schedule_id, container_id):
     except Exception as e:
         logger.error(f"Failed to update schedule {schedule_id} container_id to {container_id}: {e}")
 
+def update_schedule_container_name(host_id: int, container_id: str, old_name: str, new_name: str) -> int:
+    """Update schedule container_name for a renamed container."""
+    try:
+        short_id = (container_id or '')[:12]
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            UPDATE schedules
+            SET container_name = ?
+            WHERE host_id = ?
+              AND (container_id = ? OR container_id = ? OR container_name = ?)
+            ''',
+            (new_name, host_id, container_id, short_id, old_name)
+        )
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return affected
+    except Exception as e:
+        logger.error(f"Failed to update schedules for renamed container {old_name}: {e}")
+        return 0
+
 def disable_container_schedules(container_id: str, container_name: str, host_id: int) -> int:
     """Disable schedules linked to a container that has been removed."""
     try:
@@ -1556,6 +1579,38 @@ def delete_container(container_id: str, container_name: str, remove_volumes: boo
         log_action(None, container_name, 'delete', 'error', message, host_id)
         send_discord_notification(container_name, 'delete', 'error', message, None)
         send_ntfy_notification(container_name, 'delete', 'error', message, None)
+        return False, message
+
+def rename_container(container_id: str, container_name: str, new_name: str, host_id: int = 1) -> Tuple[bool, str]:
+    """Rename a Docker container and update related schedules."""
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            raise Exception(f"Cannot connect to Docker host {host_id}")
+
+        container, _ = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
+
+        container.rename(new_name)
+        updated = update_schedule_container_name(host_id, container.id, container_name, new_name)
+
+        message = f"Container {container_name} renamed to {new_name}"
+        if updated:
+            message += f"; updated {updated} schedule(s)"
+
+        logger.info(message)
+        log_action(None, container_name, 'rename', 'success', message, host_id)
+        send_discord_notification(container_name, 'rename', 'success', message, None)
+        send_ntfy_notification(container_name, 'rename', 'success', message, None)
+
+        return True, message
+    except Exception as e:
+        message = f"Failed to rename container {container_name}: {str(e)}"
+        logger.error(message)
+        log_action(None, container_name, 'rename', 'error', message, host_id)
+        send_discord_notification(container_name, 'rename', 'error', message, None)
+        send_ntfy_notification(container_name, 'rename', 'error', message, None)
         return False, message
 
 def pause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
@@ -2464,6 +2519,32 @@ def api_delete_container(container_id):
         return jsonify({'error': error_msg}), 400
 
     success, message = delete_container(container_id, container_name, remove_volumes=remove_volumes, force=force, host_id=host_id)
+    return jsonify({'success': success, 'message': message})
+
+@app.route('/api/container/<container_id>/rename', methods=['POST'])
+@api_key_or_login_required
+def api_rename_container(container_id):
+    """API endpoint to rename a container"""
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+
+    data = request.json or {}
+    container_name = sanitize_string(data.get('name', 'unknown'), max_length=255)
+    new_name = sanitize_string(data.get('new_name', ''), max_length=255)
+    host_id = data.get('host_id', 1)
+
+    if not new_name:
+        return jsonify({'error': 'New name is required'}), 400
+
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    success, message = rename_container(container_id, container_name, new_name, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/container/<container_id>/check-update', methods=['GET'])
