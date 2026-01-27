@@ -21,20 +21,6 @@
             --tab-inactive: #e0e0e0;
         }
 
-        body.dark-mode {
-            --bg-primary: #1a1a1a;
-            --bg-secondary: #2d2d2d;
-            --bg-header: #1a1a1a;
-            --text-primary: #e0e0e0;
-            --text-secondary: #b0b0b0;
-            --text-light: #e0e0e0;
-            --border-color: #404040;
-            --shadow: rgba(0,0,0,0.3);
-            --th-bg: #1f1f1f;
-            --hover-bg: #363636;
-            --tab-inactive: #404040;
-        }
-
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
@@ -284,6 +270,7 @@
             .tab { font-size: 13px; padding: 10px 12px; }
         }
     </style>
+    {% include '_dark_mode.html' %}
 </head>
 <body>
     <header>
@@ -1339,10 +1326,6 @@ Body: {"container_id": "optional_override"}</code></pre>
             }
         }
 
-        // Check dark mode preference
-        if (localStorage.getItem('darkMode') === 'enabled') {
-            document.body.classList.add('dark-mode');
-        }
     </script>
 </body>
 </html>

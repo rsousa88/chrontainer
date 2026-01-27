@@ -20,19 +20,6 @@
             --hover-bg: #f8f9fa;
         }
 
-        body.dark-mode {
-            --bg-primary: #1a1a1a;
-            --bg-secondary: #2d2d2d;
-            --bg-header: #1a1a1a;
-            --text-primary: #e0e0e0;
-            --text-secondary: #b0b0b0;
-            --text-light: #e0e0e0;
-            --border-color: #404040;
-            --shadow: rgba(0,0,0,0.3);
-            --th-bg: #1f1f1f;
-            --hover-bg: #363636;
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -909,6 +896,7 @@
             }
         }
     </style>
+    {% include '_dark_mode.html' %}
 </head>
 <body>
     <header>
@@ -1429,30 +1417,8 @@
             return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         }
 
-        // Dark Mode functionality
-        function toggleDarkMode() {
-            const body = document.body;
-            body.classList.toggle('dark-mode');
-            const isDark = body.classList.contains('dark-mode');
-            localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
-            updateDarkModeButton(isDark);
-        }
-
-        function updateDarkModeButton(isDark) {
-            const button = document.getElementById('darkModeToggle');
-            if (button) {
-                button.innerHTML = isDark ? '☀️ Light' : '🌙 Dark';
-            }
-        }
-
         // Load dark mode preference on page load
         document.addEventListener('DOMContentLoaded', function() {
-            const darkModePreference = localStorage.getItem('darkMode');
-            if (darkModePreference === 'enabled') {
-                document.body.classList.add('dark-mode');
-                updateDarkModeButton(true);
-            }
-
             document.querySelectorAll('.update-status[data-update-status]').forEach(cell => {
                 try {
                     const payload = JSON.parse(cell.dataset.updateStatus);

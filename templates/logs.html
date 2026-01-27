@@ -19,11 +19,6 @@
             line-height: 1.6;
         }
 
-        body.dark-mode {
-            background: #1a1a1a;
-            color: #ecf0f1;
-        }
-        
         .container {
             max-width: 90%;
             width: 90%;
@@ -148,6 +143,7 @@
             font-size: 13px;
         }
     </style>
+    {% include '_dark_mode.html' %}
 </head>
 <body>
     <header>
@@ -196,12 +192,5 @@
             {% endif %}
         </div>
     </div>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            if (localStorage.getItem('darkMode') === 'enabled') {
-                document.body.classList.add('dark-mode');
-            }
-        });
-    </script>
 </body>
 </html>

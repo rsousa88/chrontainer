@@ -20,11 +20,6 @@
             line-height: 1.6;
         }
 
-        body.dark-mode {
-            background: #1a1a1a;
-            color: #ecf0f1;
-        }
-
         .container {
             max-width: 90%;
             width: 90%;
@@ -72,14 +67,6 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
 
-        body.dark-mode header {
-            background: #1f2d3a;
-        }
-
-        body.dark-mode .section {
-            background: #2c3e50;
-        }
-
         .section h2 {
             font-size: 22px;
             margin-bottom: 20px;
@@ -94,6 +81,28 @@
             gap: 10px;
             align-items: center;
             margin-bottom: 16px;
+        }
+
+        .action-panel {
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .action-group {
+            flex: 1;
+            min-width: 250px;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .action-label {
+            font-weight: 600;
+            color: var(--text-secondary);
         }
 
         .unused-filter {
@@ -170,10 +179,6 @@
             font-size: 14px;
         }
 
-        body.dark-mode td {
-            border-bottom: 1px solid #3d566e;
-        }
-
         tr:hover {
             background: #f8f9fa;
         }
@@ -220,6 +225,7 @@
             background: #e74c3c;
         }
     </style>
+    {% include '_dark_mode.html' %}
 </head>
 <body>
     <header>
@@ -251,11 +257,18 @@
                 </label>
                 <button class="btn btn-secondary" onclick="loadImages(true)">Refresh</button>
             </div>
-            <div class="controls">
-                <input type="text" id="pullImageInput" placeholder="Pull image (e.g. ghcr.io/org/app:latest)">
-                <select id="pullHostSelect"></select>
-                <button class="btn btn-primary host-action-btn" onclick="pullImage()">Pull</button>
-                <button class="btn btn-danger host-action-btn" id="pruneBtn" onclick="pruneImages()">Prune Unused</button>
+            <div class="controls action-panel">
+                <div class="action-group">
+                    <div class="action-label">Pull image</div>
+                    <input type="text" id="pullImageInput" placeholder="Pull image (e.g. ghcr.io/org/app:latest)">
+                    <select id="pullHostSelect"></select>
+                    <button class="btn btn-primary host-action-btn" onclick="pullImage()">Pull</button>
+                </div>
+                <div class="action-group">
+                    <div class="action-label">Prune unused</div>
+                    <select id="pruneHostSelect"></select>
+                    <button class="btn btn-danger host-action-btn" id="pruneBtn" onclick="pruneImages()">Prune Unused</button>
+                </div>
             </div>
 
             <div class="controls" style="margin-bottom: 10px;">
@@ -331,27 +344,39 @@
         async function loadHosts() {
             const response = await fetch('/api/hosts');
             const data = await response.json();
-            const hostSelects = [document.getElementById('filterHost'), document.getElementById('pullHostSelect')];
+            const hostFilter = document.getElementById('filterHost');
+            const pullHostSelect = document.getElementById('pullHostSelect');
+            const pruneHostSelect = document.getElementById('pruneHostSelect');
 
-            hostSelects.forEach(select => {
-                select.innerHTML = '';
-            });
+            hostFilter.innerHTML = '';
+            pullHostSelect.innerHTML = '';
+            pruneHostSelect.innerHTML = '';
 
             const filterOption = document.createElement('option');
             filterOption.value = '';
             filterOption.textContent = 'All Hosts';
-            hostSelects[0].appendChild(filterOption);
+            hostFilter.appendChild(filterOption);
+
+            data.forEach(host => {
+                hostMap[host.id] = host;
+                const option = document.createElement('option');
+                option.value = host.id;
+                option.textContent = host.name;
+                hostFilter.appendChild(option);
+            });
 
             const enabledHosts = data.filter(host => host.enabled);
             hostActionsBlocked = false;
             document.querySelectorAll('.host-action-btn').forEach(button => {
                 button.disabled = false;
             });
+
             if (!enabledHosts.length) {
-                const pullOption = document.createElement('option');
-                pullOption.value = '';
-                pullOption.textContent = 'No enabled hosts';
-                hostSelects[1].appendChild(pullOption);
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                emptyOption.textContent = 'No enabled hosts';
+                pullHostSelect.appendChild(emptyOption);
+                pruneHostSelect.appendChild(emptyOption.cloneNode(true));
                 hostActionsBlocked = true;
                 document.querySelectorAll('.host-action-btn').forEach(button => {
                     button.disabled = true;
@@ -360,17 +385,23 @@
             }
 
             enabledHosts.forEach(host => {
-                hostMap[host.id] = host;
-                const option = document.createElement('option');
-                option.value = host.id;
-                option.textContent = host.name;
-                hostSelects[0].appendChild(option);
-
                 const pullOption = document.createElement('option');
                 pullOption.value = host.id;
                 pullOption.textContent = host.name;
-                hostSelects[1].appendChild(pullOption);
+                pullHostSelect.appendChild(pullOption);
+
+                const pruneOption = document.createElement('option');
+                pruneOption.value = host.id;
+                pruneOption.textContent = host.name;
+                pruneHostSelect.appendChild(pruneOption);
             });
+
+            if (pullHostSelect.options.length) {
+                pullHostSelect.selectedIndex = 0;
+            }
+            if (pruneHostSelect.options.length) {
+                pruneHostSelect.selectedIndex = 0;
+            }
         }
 
         async function loadImages(forceRefresh = false) {
@@ -516,6 +547,11 @@
                 return;
             }
 
+            if (!hostId) {
+                showToast('Select a host before pulling', 'error');
+                return;
+            }
+
             try {
                 const response = await fetch('/api/images/pull', {
                     method: 'POST',
@@ -539,8 +575,14 @@
         }
 
         async function pruneImages() {
-            const hostId = document.getElementById('pullHostSelect').value;
-            if (!confirm('Prune unused images on this host?')) {
+            const hostSelect = document.getElementById('pruneHostSelect');
+            const hostId = hostSelect.value;
+            if (!hostId) {
+                showToast('Select a host before pruning', 'error');
+                return;
+            }
+            const hostName = hostMap[hostId] ? hostMap[hostId].name : 'selected host';
+            if (!confirm(`Prune unused images on ${hostName}?`)) {
                 return;
             }
 
@@ -653,9 +695,6 @@
             loadImages();
         }
         document.addEventListener('DOMContentLoaded', async () => {
-            if (localStorage.getItem('darkMode') === 'enabled') {
-                document.body.classList.add('dark-mode');
-            }
             await loadHosts();
             await loadImages();
         });
