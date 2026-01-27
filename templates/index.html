@@ -453,6 +453,38 @@
         .close:hover {
             color: #000;
         }
+
+        .inspect-toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .inspect-toolbar input {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .inspect-wrapper {
+            max-height: 520px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            border-radius: 4px;
+        }
+
+        .inspect-pre {
+            color: #d4d4d4;
+            padding: 15px;
+            font-size: 12px;
+            line-height: 1.4;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            margin: 0;
+        }
         
         #alertContainer {
             position: fixed;
@@ -1116,6 +1148,14 @@
                                 <span class="tooltip-text compact">Logs</span>
                             </span>
                             <span class="tooltip-container">
+                                <button class="icon-btn" onclick="openInspectModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" aria-label="Inspect container">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true">
+                                        <path d="M4 6h16M4 18h16M8 6v12M16 6v12"/>
+                                    </svg>
+                                </button>
+                                <span class="tooltip-text compact">Inspect</span>
+                            </span>
+                            <span class="tooltip-container">
                                 <button class="icon-btn" onclick="openScheduleModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" aria-label="Create schedule">
                                     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true">
                                         <path d="M8 2v4M16 2v4M3 10h18"/>
@@ -1327,6 +1367,26 @@
             </div>
             <div style="margin-top: 15px;">
                 <button type="button" class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inspect Modal -->
+    <div id="inspectModal" class="modal" onclick="closeInspectModalOnOutsideClick(event)">
+        <div class="modal-content" style="max-width: 85%; width: 85%;">
+            <div class="modal-header">
+                <span class="close" onclick="closeInspectModal()">&times;</span>
+                <h3>Container Inspect: <span id="inspectContainerName"></span></h3>
+            </div>
+            <div class="inspect-toolbar">
+                <input type="text" id="inspectSearch" placeholder="Search JSON..." oninput="filterInspectContent()">
+                <button class="btn btn-secondary btn-small" onclick="clearInspectSearch()">Clear</button>
+            </div>
+            <div class="inspect-wrapper" id="inspectWrapper">
+                <pre id="inspectContent" class="inspect-pre">Loading...</pre>
+            </div>
+            <div style="margin-top: 15px;">
+                <button type="button" class="btn btn-secondary" onclick="closeInspectModal()">Close</button>
             </div>
         </div>
     </div>
@@ -2331,6 +2391,81 @@
             }
         }
 
+        let inspectRawJson = '';
+        let currentInspectContainerId = null;
+        let currentInspectHostId = null;
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderInspectContent(raw, query) {
+            const container = document.getElementById('inspectContent');
+            if (!container) return;
+            if (!query) {
+                container.textContent = raw;
+                return;
+            }
+            const escaped = escapeHtml(raw);
+            const safeQuery = escapeHtml(query);
+            const regex = new RegExp(safeQuery, 'gi');
+            container.innerHTML = escaped.replace(regex, match => `<mark>${match}</mark>`);
+        }
+
+        async function openInspectModal(containerId, containerName, hostId) {
+            currentInspectContainerId = containerId;
+            currentInspectHostId = hostId;
+            document.getElementById('inspectContainerName').textContent = containerName;
+            document.getElementById('inspectSearch').value = '';
+            const content = document.getElementById('inspectContent');
+            content.textContent = 'Loading...';
+            const modal = document.getElementById('inspectModal');
+            modal.style.display = 'block';
+            document.body.classList.add('modal-open');
+
+            try {
+                const response = await fetch(`/api/container/${containerId}/inspect?host_id=${hostId}`);
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to load inspect data');
+                }
+                inspectRawJson = JSON.stringify(result, null, 2);
+                renderInspectContent(inspectRawJson, '');
+            } catch (error) {
+                inspectRawJson = '';
+                content.textContent = `Error loading inspect data: ${error.message}`;
+            }
+        }
+
+        function closeInspectModal() {
+            document.getElementById('inspectModal').style.display = 'none';
+            document.body.classList.remove('modal-open');
+            currentInspectContainerId = null;
+            currentInspectHostId = null;
+            inspectRawJson = '';
+        }
+
+        function closeInspectModalOnOutsideClick(event) {
+            if (event.target.id === 'inspectModal') {
+                closeInspectModal();
+            }
+        }
+
+        function filterInspectContent() {
+            const query = document.getElementById('inspectSearch').value.trim();
+            renderInspectContent(inspectRawJson, query);
+        }
+
+        function clearInspectSearch() {
+            document.getElementById('inspectSearch').value = '';
+            renderInspectContent(inspectRawJson, '');
+        }
+
         async function deleteSchedule(scheduleId) {
             const confirmation = await openConfirmModal({
                 title: 'Delete schedule',
@@ -3062,6 +3197,7 @@
                     closeTagModal();
                     closeWebUIModal();
                     closeRenameModal();
+                    closeInspectModal();
                     cancelConfirm();
                     closeKeyboardShortcuts();
                 }
@@ -3101,6 +3237,7 @@
                     closeTagModal();
                     closeWebUIModal();
                     closeRenameModal();
+                    closeInspectModal();
                     cancelConfirm();
                     closeKeyboardShortcuts();
                     break;

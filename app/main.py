@@ -2767,6 +2767,32 @@ def api_get_container_stats(container_id):
         logger.error(f"Failed to get stats for container {container_id}: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/container/<container_id>/inspect', methods=['GET'])
+@api_key_or_login_required
+def api_container_inspect(container_id):
+    """API endpoint to return full container inspection JSON"""
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    host_id = request.args.get('host_id', 1, type=int)
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    try:
+        client = docker_manager.get_client(host_id)
+        if not client:
+            return jsonify({'error': 'Cannot connect to Docker host'}), 500
+
+        container = client.containers.get(container_id)
+        return jsonify(container.attrs)
+    except docker.errors.NotFound:
+        return jsonify({'error': 'Container not found'}), 404
+    except Exception as e:
+        logger.error(f"Failed to inspect container {container_id} on host {host_id}: {e}")
+        return jsonify({'error': 'Failed to inspect container'}), 500
+
 @app.route('/api/containers/stats', methods=['GET'])
 @api_key_or_login_required
 def api_get_all_container_stats():
