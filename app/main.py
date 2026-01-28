@@ -39,6 +39,7 @@ from app.repositories import (
     TagRepository,
     UpdateStatusRepository,
     WebuiUrlRepository,
+    WebhookRepository,
     UserRepository,
 )
 from app.services.docker_hosts import DockerHostManager
@@ -533,6 +534,7 @@ container_tag_repo = ContainerTagRepository(get_db)
 webui_url_repo = WebuiUrlRepository(get_db)
 user_repo = UserRepository(get_db)
 api_key_repo = ApiKeyRepository(get_db)
+webhook_repo = WebhookRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -2912,22 +2914,14 @@ def delete_api_key(key_id):
 def trigger_webhook(token):
     """Trigger a webhook action - no auth required, uses token"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, name, container_id, host_id, action, enabled, locked
-            FROM webhooks WHERE token = ?
-        ''', (token,))
-        webhook = cursor.fetchone()
+        webhook = webhook_repo.get_by_token(token)
 
         if not webhook:
-            conn.close()
             return jsonify({'error': 'Invalid webhook'}), 404
 
         webhook_id, name, container_id, host_id, action, enabled, locked = webhook
 
         if not enabled:
-            conn.close()
             return jsonify({'error': 'Webhook is disabled'}), 403
 
         override_container = None
@@ -2947,28 +2941,19 @@ def trigger_webhook(token):
         target_host = int(override_host or host_id or 1)
 
         if not target_container:
-            conn.close()
             return jsonify({'error': 'No container specified'}), 400
 
         docker_client = docker_manager.get_client(target_host)
         if not docker_client:
-            conn.close()
             return jsonify({'error': 'Docker host not available'}), 503
 
         try:
             container = docker_client.containers.get(target_container)
             container_name = container.name
         except docker.errors.NotFound:
-            conn.close()
             return jsonify({'error': 'Container not found'}), 404
 
-        cursor.execute('''
-            UPDATE webhooks
-            SET last_triggered = CURRENT_TIMESTAMP, trigger_count = trigger_count + 1
-            WHERE id = ?
-        ''', (webhook_id,))
-        conn.commit()
-        conn.close()
+        webhook_repo.record_trigger(webhook_id)
 
         action_map = {
             'restart': restart_container,
@@ -3009,17 +2994,7 @@ def trigger_webhook(token):
 def list_webhooks():
     """List all webhooks"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT w.id, w.name, w.token, w.container_id, w.host_id, w.action,
-                   w.enabled, w.locked, w.last_triggered, w.trigger_count, w.created_at, h.name
-            FROM webhooks w
-            LEFT JOIN hosts h ON w.host_id = h.id
-            ORDER BY w.created_at DESC
-        ''')
-        webhooks = cursor.fetchall()
-        conn.close()
+        webhooks = webhook_repo.list_all()
 
         return jsonify([{
             'id': w[0],
@@ -3060,15 +3035,7 @@ def create_webhook():
 
         token = secrets.token_urlsafe(24)
 
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO webhooks (name, token, container_id, host_id, action, locked)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (name, token, container_id, host_id, action, locked))
-        webhook_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+        webhook_id = webhook_repo.create(name, token, container_id, host_id, action, locked)
 
         webhook_url = f"{request.host_url}webhook/{token}"
 
@@ -3092,11 +3059,7 @@ def create_webhook():
 def delete_webhook(webhook_id):
     """Delete a webhook"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM webhooks WHERE id = ?', (webhook_id,))
-        conn.commit()
-        conn.close()
+        webhook_repo.delete(webhook_id)
 
         logger.info(f"Webhook {webhook_id} deleted")
         return jsonify({'success': True})
@@ -3110,15 +3073,8 @@ def delete_webhook(webhook_id):
 def toggle_webhook(webhook_id):
     """Enable/disable a webhook"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE webhooks SET enabled = NOT enabled WHERE id = ?', (webhook_id,))
-        cursor.execute('SELECT enabled FROM webhooks WHERE id = ?', (webhook_id,))
-        result = cursor.fetchone()
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'enabled': bool(result[0])})
+        enabled = webhook_repo.toggle_enabled(webhook_id)
+        return jsonify({'success': True, 'enabled': bool(enabled)})
     except Exception as e:
         logger.error(f"Failed to toggle webhook: {e}")
         return jsonify({'error': 'Failed to toggle webhook'}), 500
@@ -3129,15 +3085,8 @@ def toggle_webhook(webhook_id):
 def toggle_webhook_lock(webhook_id):
     """Toggle lock status for a webhook (locked webhooks ignore container/host overrides)"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE webhooks SET locked = NOT locked WHERE id = ?', (webhook_id,))
-        cursor.execute('SELECT locked FROM webhooks WHERE id = ?', (webhook_id,))
-        result = cursor.fetchone()
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'locked': bool(result[0])})
+        locked = webhook_repo.toggle_locked(webhook_id)
+        return jsonify({'success': True, 'locked': bool(locked)})
     except Exception as e:
         logger.error(f"Failed to toggle webhook lock: {e}")
         return jsonify({'error': 'Failed to toggle webhook lock'}), 500
@@ -3149,15 +3098,9 @@ def regenerate_webhook_token(webhook_id):
     """Regenerate the token for a webhook"""
     try:
         new_token = secrets.token_urlsafe(24)
-
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE webhooks SET token = ? WHERE id = ?', (new_token, webhook_id))
-        if cursor.rowcount == 0:
-            conn.close()
+        updated = webhook_repo.update_token(webhook_id, new_token)
+        if updated == 0:
             return jsonify({'error': 'Webhook not found'}), 404
-        conn.commit()
-        conn.close()
 
         webhook_url = f"{request.host_url}webhook/{new_token}"
         logger.info(f"Webhook {webhook_id} token regenerated")

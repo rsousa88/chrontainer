@@ -8,6 +8,7 @@ from .settings import SettingsRepository
 from .tags import TagRepository
 from .update_status import UpdateStatusRepository
 from .users import UserRepository
+from .webhooks import WebhookRepository
 from .webui_urls import WebuiUrlRepository
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
     'TagRepository',
     'UpdateStatusRepository',
     'UserRepository',
+    'WebhookRepository',
     'WebuiUrlRepository',
 ]
