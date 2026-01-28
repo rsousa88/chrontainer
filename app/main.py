@@ -62,6 +62,8 @@ from app.routes import (
 )
 from app.services.container_query_service import ContainerQueryService
 from app.services.container_service import ContainerService
+from app.services.disk_usage_service import DiskUsageService
+from app.services.host_metrics_service import HostMetricsService
 from app.services.docker_hosts import DockerHostManager
 from app.services.docker_service import DockerService
 from app.services.image_service import ImageService
@@ -86,13 +88,9 @@ load_dotenv()
 # Version
 VERSION = "0.4.15"
 
-HOST_METRICS_CACHE = {}
 HOST_METRICS_CACHE_TTL_SECONDS = 20
 CONTAINER_STATS_CACHE_TTL_SECONDS = 10
-DISK_USAGE_CACHE = {}
 DISK_USAGE_CACHE_TTL_SECONDS = 300
-DISK_USAGE_INFLIGHT = set()
-DISK_USAGE_INFLIGHT_LOCK = threading.Lock()
 IMAGE_USAGE_CACHE_TTL_SECONDS = 180
 UPDATE_STATUS_CACHE_TTL_SECONDS = 3600
 
@@ -113,65 +111,9 @@ UPDATE_CHECK_CRON_DEFAULT = '0 3 * * *'
 HOST_DEFAULT_COLOR = '#3498db'
 
 
-def get_cached_host_metrics(host_id):
-    with _cache_lock:
-        entry = HOST_METRICS_CACHE.get(host_id)
-        if not entry:
-            return None
-        if time.time() - entry['timestamp'] > HOST_METRICS_CACHE_TTL_SECONDS:
-            return None
-        return entry['data']
-
-
-def set_cached_host_metrics(host_id, data):
-    with _cache_lock:
-        HOST_METRICS_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
 
 
 
-
-
-def get_cached_disk_usage(host_id):
-    with _cache_lock:
-        entry = DISK_USAGE_CACHE.get(host_id)
-        if not entry:
-            return None
-        if time.time() - entry['timestamp'] > DISK_USAGE_CACHE_TTL_SECONDS:
-            return None
-        return entry['data']
-
-
-def set_cached_disk_usage(host_id, data):
-    with _cache_lock:
-        DISK_USAGE_CACHE[host_id] = {'timestamp': time.time(), 'data': data}
-
-def refresh_disk_usage_async(host_id, docker_client):
-    def run():
-        try:
-            disk = docker_client.api.df()
-            if disk:
-                set_cached_disk_usage(host_id, disk)
-                logger.info(
-                    "Disk usage async cached for host %s: images=%s containers=%s volumes=%s cache=%s layers=%s",
-                    host_id,
-                    len(disk.get('Images', []) or []),
-                    len(disk.get('Containers', []) or []),
-                    len(disk.get('Volumes', []) or []),
-                    len(disk.get('BuildCache', []) or []),
-                    disk.get('LayersSize')
-                )
-        except Exception as error:
-            logger.warning("Disk usage async df failed for host %s: %s", host_id, error)
-        finally:
-            with DISK_USAGE_INFLIGHT_LOCK:
-                DISK_USAGE_INFLIGHT.discard(host_id)
-
-    with DISK_USAGE_INFLIGHT_LOCK:
-        if host_id in DISK_USAGE_INFLIGHT:
-            return
-        DISK_USAGE_INFLIGHT.add(host_id)
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
 
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):
@@ -490,6 +432,15 @@ update_service = UpdateService(
     cache_ttl_seconds=UPDATE_STATUS_CACHE_TTL_SECONDS,
     update_check_cron_default=UPDATE_CHECK_CRON_DEFAULT,
 )
+host_metrics_service = HostMetricsService(
+    host_metrics_repo=host_metrics_repo,
+    docker_manager=docker_manager,
+    cache_ttl_seconds=HOST_METRICS_CACHE_TTL_SECONDS,
+)
+disk_usage_service = DiskUsageService(
+    logger=logger,
+    cache_ttl_seconds=DISK_USAGE_CACHE_TTL_SECONDS,
+)
 container_query_service = ContainerQueryService(
     docker_manager=docker_manager,
     host_repo=host_repo,
@@ -510,8 +461,8 @@ image_service = ImageService(
     get_contrast_text_color=get_contrast_text_color,
     split_image_reference=split_image_reference,
     extract_repository_from_digest=extract_repository_from_digest,
-    get_cached_disk_usage=get_cached_disk_usage,
-    refresh_disk_usage_async=refresh_disk_usage_async,
+    get_cached_disk_usage=disk_usage_service.get_cached_disk_usage,
+    refresh_disk_usage_async=disk_usage_service.refresh_disk_usage_async,
     cache_ttl_seconds=IMAGE_USAGE_CACHE_TTL_SECONDS,
 )
 
@@ -589,8 +540,7 @@ hosts_blueprint = create_hosts_blueprint(
     docker_manager=docker_manager,
     host_metrics_repo=host_metrics_repo,
     host_repo=host_repo,
-    get_cached_host_metrics=get_cached_host_metrics,
-    set_cached_host_metrics=set_cached_host_metrics,
+    host_metrics_service=host_metrics_service,
     sanitize_string=sanitize_string,
     schedule_repo=schedule_repo,
     validate_color=validate_color,

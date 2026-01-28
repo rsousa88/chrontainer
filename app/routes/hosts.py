@@ -10,8 +10,7 @@ def create_hosts_blueprint(
     docker_manager,
     host_metrics_repo,
     host_repo,
-    get_cached_host_metrics,
-    set_cached_host_metrics,
+    host_metrics_service,
     sanitize_string,
     schedule_repo,
     validate_color,
@@ -31,16 +30,7 @@ def create_hosts_blueprint(
     def get_host_metrics(host_id: int):
         """Get system metrics for a Docker host."""
         try:
-            cached = get_cached_host_metrics(host_id)
-            if cached:
-                return jsonify(cached)
-
-            docker_client = docker_manager.get_client(host_id)
-            if not docker_client:
-                return jsonify({'error': 'Cannot connect to Docker host'}), 503
-
-            stats = host_metrics_repo.get_metrics(docker_client)
-            set_cached_host_metrics(host_id, stats)
+            stats = host_metrics_service.fetch_host_metrics(host_id)
             return jsonify(stats)
         except Exception as e:
             logger.error(f"Failed to get host metrics for {host_id}: {e}")
