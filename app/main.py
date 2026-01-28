@@ -3727,7 +3727,7 @@ def health_check():
 
     # Check database connectivity
     try:
-        conn = sqlite3.connect(DATABASE_PATH, timeout=5)
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute('SELECT 1')
         conn.close()
