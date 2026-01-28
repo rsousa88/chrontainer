@@ -74,3 +74,52 @@ class ScheduleRepository:
             return cursor.fetchone()[0]
         finally:
             conn.close()
+
+    def update_container_id(self, schedule_id: int, container_id: str) -> None:
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE schedules SET container_id = ? WHERE id = ?', (container_id, schedule_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def update_container_name(self, host_id: int, container_id: str, old_name: str, new_name: str) -> int:
+        short_id = (container_id or '')[:12]
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                UPDATE schedules
+                SET container_name = ?
+                WHERE host_id = ?
+                  AND (container_id = ? OR container_id = ? OR container_name = ?)
+                ''',
+                (new_name, host_id, container_id, short_id, old_name)
+            )
+            affected = cursor.rowcount
+            conn.commit()
+            return affected
+        finally:
+            conn.close()
+
+    def disable_by_container(self, host_id: int, container_id: str, container_name: str) -> int:
+        short_id = (container_id or '')[:12]
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                UPDATE schedules
+                SET enabled = 0
+                WHERE host_id = ?
+                  AND (container_id = ? OR container_id = ? OR container_name = ?)
+                ''',
+                (host_id, container_id, short_id, container_name)
+            )
+            affected = cursor.rowcount
+            conn.commit()
+            return affected
+        finally:
+            conn.close()

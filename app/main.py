@@ -778,36 +778,14 @@ def update_schedule_container_id(schedule_id, container_id):
     if not schedule_id or not container_id:
         return
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE schedules SET container_id = ? WHERE id = ?',
-            (container_id, schedule_id)
-        )
-        conn.commit()
-        conn.close()
+        schedule_repo.update_container_id(schedule_id, container_id)
     except Exception as e:
         logger.error(f"Failed to update schedule {schedule_id} container_id to {container_id}: {e}")
 
 def update_schedule_container_name(host_id: int, container_id: str, old_name: str, new_name: str) -> int:
     """Update schedule container_name for a renamed container."""
     try:
-        short_id = (container_id or '')[:12]
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            '''
-            UPDATE schedules
-            SET container_name = ?
-            WHERE host_id = ?
-              AND (container_id = ? OR container_id = ? OR container_name = ?)
-            ''',
-            (new_name, host_id, container_id, short_id, old_name)
-        )
-        affected = cursor.rowcount
-        conn.commit()
-        conn.close()
-        return affected
+        return schedule_repo.update_container_name(host_id, container_id, old_name, new_name)
     except Exception as e:
         logger.error(f"Failed to update schedules for renamed container {old_name}: {e}")
         return 0
@@ -815,22 +793,7 @@ def update_schedule_container_name(host_id: int, container_id: str, old_name: st
 def disable_container_schedules(container_id: str, container_name: str, host_id: int) -> int:
     """Disable schedules linked to a container that has been removed."""
     try:
-        short_id = (container_id or '')[:12]
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            '''
-            UPDATE schedules
-            SET enabled = 0
-            WHERE host_id = ?
-              AND (container_id = ? OR container_id = ? OR container_name = ?)
-            ''',
-            (host_id, container_id, short_id, container_name)
-        )
-        affected = cursor.rowcount
-        conn.commit()
-        conn.close()
-        return affected
+        return schedule_repo.disable_by_container(host_id, container_id, container_name)
     except Exception as e:
         logger.error(f"Failed to disable schedules for container {container_name}: {e}")
         return 0
