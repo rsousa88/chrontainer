@@ -226,67 +226,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Database path configuration
-DATABASE_PATH = Config.DATABASE_PATH
-
-app = Flask(__name__, template_folder='../templates')
-
-# Security Configuration
-SECRET_KEY = Config.SECRET_KEY
-if not SECRET_KEY:
-    logger.warning("SECRET_KEY not set! Using insecure default. Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'")
-    SECRET_KEY = 'dev-secret-key-change-in-production'
-
-app.config['SECRET_KEY'] = SECRET_KEY
-app.config['SESSION_COOKIE_SECURE'] = Config.SESSION_COOKIE_SECURE
-app.config['SESSION_COOKIE_HTTPONLY'] = Config.SESSION_COOKIE_HTTPONLY
-app.config['SESSION_COOKIE_SAMESITE'] = Config.SESSION_COOKIE_SAMESITE
-app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
-
-# Flask-Login setup
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-login_manager.login_message = 'Please log in to access this page.'
-
-# CSRF Protection
-csrf = CSRFProtect(app)
-
-# Security Headers (Talisman)
-# Only enforce HTTPS if explicitly enabled (for reverse proxy setups)
-force_https = Config.FORCE_HTTPS
-if force_https:
-    Talisman(app,
-        force_https=True,
-        strict_transport_security=True,
-        content_security_policy={
-            'default-src': "'self'",
-            'script-src': ["'self'", "'unsafe-inline'"],  # Allow inline scripts for modals
-            'style-src': ["'self'", "'unsafe-inline'"],   # Allow inline styles
-            'img-src': ["'self'", "data:", "https:"],     # Allow data URIs and external images
-        }
-    )
-else:
-    # Set security headers without forcing HTTPS (for development or reverse proxy)
-    @app.after_request
-    def set_security_headers(response):
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        return response
-
-# Rate Limiting
-rate_limit_per_minute = Config.RATE_LIMIT_PER_MINUTE
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=[f"{rate_limit_per_minute} per minute"],
-    storage_uri="memory://"
-)
 
 # Background scheduler for cron/one-time jobs
 scheduler = BackgroundScheduler()
 scheduler.start()
+
+DATABASE_PATH = Config.DATABASE_PATH
+
 
 # User model for Flask-Login
 class User(UserMixin):
@@ -295,18 +241,8 @@ class User(UserMixin):
         self.username = username
         self.role = role
 
-@login_manager.user_loader
-def load_user(user_id):
-    """Load user by ID for Flask-Login"""
-    try:
-        user_data = user_repo.get_by_id(user_id)
 
-        if user_data:
-            return User(id=user_data[0], username=user_data[1], role=user_data[2])
-        return None
-    except Exception as e:
-        logger.error(f"Error loading user: {e}")
-        return None
+
 
 # Role-based access control decorator
 def admin_required(f):
@@ -467,142 +403,220 @@ image_service = ImageService(
     cache_ttl_seconds=IMAGE_USAGE_CACHE_TTL_SECONDS,
 )
 
-health_blueprint = create_health_blueprint(
-    stats_repo=stats_repo,
-    docker_manager=docker_manager,
-    scheduler=scheduler,
-    db_factory=get_db,
-    version=VERSION,
-)
-app.register_blueprint(health_blueprint)
 
-auth_blueprint = create_auth_blueprint(
-    login_repo=login_repo,
-    user_class=User,
-    user_repo=user_repo,
-    limiter=limiter,
-    csrf=csrf,
-    version=VERSION,
-    logger=logger,
-    bcrypt_module=bcrypt,
-)
-app.register_blueprint(auth_blueprint)
 
-logs_blueprint = create_logs_blueprint(app_log_repo=app_log_repo, version=VERSION)
-app.register_blueprint(logs_blueprint)
+def create_app():
+    """Application factory."""
+    app = Flask(__name__, template_folder='../templates')
 
-settings_blueprint = create_settings_blueprint(
-    get_setting=get_setting,
-    set_setting=set_setting,
-    configure_update_check_schedule=update_service.configure_update_check_schedule,
-    notification_service=notification_service,
-    sanitize_string=sanitize_string,
-    validate_cron_expression=validate_cron_expression,
-    validate_webhook_url=validate_webhook_url,
-    logger=logger,
-    update_check_cron_default=UPDATE_CHECK_CRON_DEFAULT,
-    version=VERSION,
-)
-app.register_blueprint(settings_blueprint)
+    # Security Configuration
+    secret_key = Config.SECRET_KEY
+    if not secret_key:
+        logger.warning(
+            "SECRET_KEY not set! Using insecure default. Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'"
+        )
+        secret_key = 'dev-secret-key-change-in-production'
 
-api_keys_blueprint = create_api_keys_blueprint(
-    api_key_repo=api_key_repo,
-    generate_api_key=generate_api_key,
-    hash_api_key=hash_api_key,
-    sanitize_string=sanitize_string,
-    logger=logger,
-)
-app.register_blueprint(api_keys_blueprint)
+    app.config['SECRET_KEY'] = secret_key
+    app.config['SESSION_COOKIE_SECURE'] = Config.SESSION_COOKIE_SECURE
+    app.config['SESSION_COOKIE_HTTPONLY'] = Config.SESSION_COOKIE_HTTPONLY
+    app.config['SESSION_COOKIE_SAMESITE'] = Config.SESSION_COOKIE_SAMESITE
+    app.config['WTF_CSRF_TIME_LIMIT'] = None
 
-webhooks_blueprint = create_webhooks_blueprint(
-    webhook_repo=webhook_repo,
-    docker_manager=docker_manager,
-    limiter=limiter,
-    container_service=container_service,
-    sanitize_string=sanitize_string,
-    logger=logger,
-)
-app.register_blueprint(webhooks_blueprint)
+    # Security headers
+    force_https = Config.FORCE_HTTPS
+    if force_https:
+        Talisman(
+            app,
+            force_https=True,
+            strict_transport_security=True,
+            content_security_policy={
+                'default-src': "'self'",
+                'script-src': ["'self'", "'unsafe-inline'"],
+                'style-src': ["'self'", "'unsafe-inline'"],
+                'img-src': ["'self'", "data:", "https:"],
+            },
+        )
+    else:
+        @app.after_request
+        def set_security_headers(response):
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+            response.headers['X-XSS-Protection'] = '1; mode=block'
+            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+            return response
 
-images_blueprint = create_images_blueprint(
-    api_key_or_login_required=api_key_or_login_required,
-    clear_image_usage_cache=image_service.clear_image_usage_cache,
-    fetch_all_images=image_service.fetch_all_images,
-    docker_manager=docker_manager,
-    sanitize_string=sanitize_string,
-    validate_host_id=validate_host_id,
-    logger=logger,
-    version=VERSION,
-)
-app.register_blueprint(images_blueprint)
+    # Rate Limiting
+    rate_limit_per_minute = Config.RATE_LIMIT_PER_MINUTE
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=[f"{rate_limit_per_minute} per minute"],
+        storage_uri="memory://",
+    )
 
-hosts_blueprint = create_hosts_blueprint(
-    api_key_or_login_required=api_key_or_login_required,
-    docker_manager=docker_manager,
-    host_metrics_repo=host_metrics_repo,
-    host_repo=host_repo,
-    host_metrics_service=host_metrics_service,
-    sanitize_string=sanitize_string,
-    schedule_repo=schedule_repo,
-    validate_color=validate_color,
-    validate_host_id=validate_host_id,
-    validate_required_fields=validate_required_fields,
-    validate_url=validate_url,
-    host_default_color=HOST_DEFAULT_COLOR,
-    datetime_factory=datetime.now,
-    sqlite3_module=sqlite3,
-    logger=logger,
-)
-app.register_blueprint(hosts_blueprint)
+    # Login manager
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'login'
+    login_manager.login_message = 'Please log in to access this page.'
 
-containers_blueprint = create_containers_blueprint(
-    api_key_or_login_required=api_key_or_login_required,
-    docker_manager=docker_manager,
-    fetch_all_containers=container_query_service.fetch_all_containers,
-    get_cached_container_stats=container_stats_service.get_cached_container_stats,
-    set_cached_container_stats=container_stats_service.set_cached_container_stats,
-    logger=logger,
-    container_service=container_service,
-    update_service=update_service,
-    validate_container_id=validate_container_id,
-    validate_container_name=validate_container_name,
-    validate_host_id=validate_host_id,
-    sanitize_string=sanitize_string,
-    container_tag_repo=container_tag_repo,
-    webui_url_repo=webui_url_repo,
-    schedule_view_repo=schedule_view_repo,
-    version=VERSION,
-)
-app.register_blueprint(containers_blueprint)
+    # CSRF protection
+    csrf = CSRFProtect(app)
 
-schedules_blueprint = create_schedules_blueprint(
-    api_key_or_login_required=api_key_or_login_required,
-    schedule_repo=schedule_repo,
-    scheduler=scheduler,
-    container_service=container_service,
-    validate_action=validate_action,
-    validate_container_id=validate_container_id,
-    validate_container_name=validate_container_name,
-    validate_cron_expression=validate_cron_expression,
-    validate_host_id=validate_host_id,
-    sanitize_string=sanitize_string,
-    logger=logger,
-)
-app.register_blueprint(schedules_blueprint)
+    # User loader
+    @login_manager.user_loader
+    def load_user(user_id):
+        """Load user by ID for Flask-Login"""
+        try:
+            user_data = user_repo.get_by_id(user_id)
+            if user_data:
+                return User(id=user_data[0], username=user_data[1], role=user_data[2])
+            return None
+        except Exception as e:
+            logger.error(f"Error loading user: {e}")
+            return None
 
-tags_blueprint = create_tags_blueprint(
-    api_key_or_login_required=api_key_or_login_required,
-    tag_repo=tag_repo,
-    sanitize_string=sanitize_string,
-    validate_color=validate_color,
-    host_default_color=HOST_DEFAULT_COLOR,
-    sqlite3_module=sqlite3,
-    logger=logger,
-)
-app.register_blueprint(tags_blueprint)
+    # Register blueprints
+    health_blueprint = create_health_blueprint(
+        stats_repo=stats_repo,
+        docker_manager=docker_manager,
+        scheduler=scheduler,
+        db_factory=get_db,
+        version=VERSION,
+    )
+    app.register_blueprint(health_blueprint)
 
-pages_blueprint = create_pages_blueprint(version=VERSION)
-app.register_blueprint(pages_blueprint)
+    auth_blueprint = create_auth_blueprint(
+        login_repo=login_repo,
+        user_class=User,
+        user_repo=user_repo,
+        limiter=limiter,
+        csrf=csrf,
+        version=VERSION,
+        logger=logger,
+        bcrypt_module=bcrypt,
+    )
+    app.register_blueprint(auth_blueprint)
+
+    logs_blueprint = create_logs_blueprint(app_log_repo=app_log_repo, version=VERSION)
+    app.register_blueprint(logs_blueprint)
+
+    settings_blueprint = create_settings_blueprint(
+        get_setting=get_setting,
+        set_setting=set_setting,
+        configure_update_check_schedule=update_service.configure_update_check_schedule,
+        notification_service=notification_service,
+        sanitize_string=sanitize_string,
+        validate_cron_expression=validate_cron_expression,
+        validate_webhook_url=validate_webhook_url,
+        logger=logger,
+        update_check_cron_default=UPDATE_CHECK_CRON_DEFAULT,
+        version=VERSION,
+    )
+    app.register_blueprint(settings_blueprint)
+
+    api_keys_blueprint = create_api_keys_blueprint(
+        api_key_repo=api_key_repo,
+        generate_api_key=generate_api_key,
+        hash_api_key=hash_api_key,
+        sanitize_string=sanitize_string,
+        logger=logger,
+    )
+    app.register_blueprint(api_keys_blueprint)
+
+    webhooks_blueprint = create_webhooks_blueprint(
+        webhook_repo=webhook_repo,
+        docker_manager=docker_manager,
+        limiter=limiter,
+        container_service=container_service,
+        sanitize_string=sanitize_string,
+        logger=logger,
+    )
+    app.register_blueprint(webhooks_blueprint)
+
+    images_blueprint = create_images_blueprint(
+        api_key_or_login_required=api_key_or_login_required,
+        clear_image_usage_cache=image_service.clear_image_usage_cache,
+        fetch_all_images=image_service.fetch_all_images,
+        docker_manager=docker_manager,
+        sanitize_string=sanitize_string,
+        validate_host_id=validate_host_id,
+        logger=logger,
+        version=VERSION,
+    )
+    app.register_blueprint(images_blueprint)
+
+    hosts_blueprint = create_hosts_blueprint(
+        api_key_or_login_required=api_key_or_login_required,
+        docker_manager=docker_manager,
+        host_metrics_repo=host_metrics_repo,
+        host_repo=host_repo,
+        host_metrics_service=host_metrics_service,
+        sanitize_string=sanitize_string,
+        schedule_repo=schedule_repo,
+        validate_color=validate_color,
+        validate_host_id=validate_host_id,
+        validate_required_fields=validate_required_fields,
+        validate_url=validate_url,
+        host_default_color=HOST_DEFAULT_COLOR,
+        datetime_factory=datetime.now,
+        sqlite3_module=sqlite3,
+        logger=logger,
+    )
+    app.register_blueprint(hosts_blueprint)
+
+    containers_blueprint = create_containers_blueprint(
+        api_key_or_login_required=api_key_or_login_required,
+        docker_manager=docker_manager,
+        fetch_all_containers=container_query_service.fetch_all_containers,
+        get_cached_container_stats=container_stats_service.get_cached_container_stats,
+        set_cached_container_stats=container_stats_service.set_cached_container_stats,
+        logger=logger,
+        container_service=container_service,
+        update_service=update_service,
+        validate_container_id=validate_container_id,
+        validate_container_name=validate_container_name,
+        validate_host_id=validate_host_id,
+        sanitize_string=sanitize_string,
+        container_tag_repo=container_tag_repo,
+        webui_url_repo=webui_url_repo,
+        schedule_view_repo=schedule_view_repo,
+        version=VERSION,
+    )
+    app.register_blueprint(containers_blueprint)
+
+    schedules_blueprint = create_schedules_blueprint(
+        api_key_or_login_required=api_key_or_login_required,
+        schedule_repo=schedule_repo,
+        scheduler=scheduler,
+        container_service=container_service,
+        validate_action=validate_action,
+        validate_container_id=validate_container_id,
+        validate_container_name=validate_container_name,
+        validate_cron_expression=validate_cron_expression,
+        validate_host_id=validate_host_id,
+        sanitize_string=sanitize_string,
+        logger=logger,
+    )
+    app.register_blueprint(schedules_blueprint)
+
+    tags_blueprint = create_tags_blueprint(
+        api_key_or_login_required=api_key_or_login_required,
+        tag_repo=tag_repo,
+        sanitize_string=sanitize_string,
+        validate_color=validate_color,
+        host_default_color=HOST_DEFAULT_COLOR,
+        sqlite3_module=sqlite3,
+        logger=logger,
+    )
+    app.register_blueprint(tags_blueprint)
+
+    pages_blueprint = create_pages_blueprint(version=VERSION)
+    app.register_blueprint(pages_blueprint)
+
+    return app
+
 
 
 
@@ -684,6 +698,8 @@ def load_schedules():
 
 
 
+app = create_app()
+
 # ===== Tags API =====
 
 if __name__ == '__main__':
@@ -705,7 +721,3 @@ if __name__ == '__main__':
     port = Config.PORT
     app.run(host='0.0.0.0', port=port, debug=False)
 
-
-def create_app():
-    """Return the configured Flask app."""
-    return app
