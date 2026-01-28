@@ -9,6 +9,7 @@ from .logs import LogsRepository
 from .schedules import ScheduleRepository
 from .schedules_view import ScheduleViewRepository
 from .settings import SettingsRepository
+from .stats import StatsRepository
 from .tags import TagRepository
 from .update_status import UpdateStatusRepository
 from .users import UserRepository
@@ -26,6 +27,7 @@ __all__ = [
     'ScheduleRepository',
     'ScheduleViewRepository',
     'SettingsRepository',
+    'StatsRepository',
     'TagRepository',
     'UpdateStatusRepository',
     'UserRepository',

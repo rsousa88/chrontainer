@@ -40,6 +40,7 @@ from app.repositories import (
     ScheduleRepository,
     ScheduleViewRepository,
     SettingsRepository,
+    StatsRepository,
     TagRepository,
     UpdateStatusRepository,
     WebuiUrlRepository,
@@ -543,6 +544,7 @@ app_log_repo = AppLogRepository(get_db)
 schedule_view_repo = ScheduleViewRepository(get_db)
 host_metrics_repo = HostMetricsRepository(get_db)
 login_repo = LoginRepository(get_db)
+stats_repo = StatsRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -3768,14 +3770,8 @@ def get_version():
 
     # Count schedules and hosts
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) FROM schedules WHERE enabled = 1')
-        active_schedules = cursor.fetchone()[0]
-        cursor.execute('SELECT COUNT(*) FROM hosts WHERE enabled = 1')
-        active_hosts = cursor.fetchone()[0]
-        conn.close()
-    except:
+        active_schedules, active_hosts = stats_repo.get_active_counts()
+    except Exception:
         active_schedules = 0
         active_hosts = 0
 
