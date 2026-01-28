@@ -5,6 +5,7 @@ from .container_tags import ContainerTagRepository
 from .hosts import HostRepository
 from .logs import LogsRepository
 from .schedules import ScheduleRepository
+from .schedules_view import ScheduleViewRepository
 from .settings import SettingsRepository
 from .tags import TagRepository
 from .update_status import UpdateStatusRepository
@@ -19,6 +20,7 @@ __all__ = [
     'HostRepository',
     'LogsRepository',
     'ScheduleRepository',
+    'ScheduleViewRepository',
     'SettingsRepository',
     'TagRepository',
     'UpdateStatusRepository',

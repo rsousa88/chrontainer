@@ -36,6 +36,7 @@ from app.repositories import (
     HostRepository,
     LogsRepository,
     ScheduleRepository,
+    ScheduleViewRepository,
     SettingsRepository,
     TagRepository,
     UpdateStatusRepository,
@@ -537,6 +538,7 @@ user_repo = UserRepository(get_db)
 api_key_repo = ApiKeyRepository(get_db)
 webhook_repo = WebhookRepository(get_db)
 app_log_repo = AppLogRepository(get_db)
+schedule_view_repo = ScheduleViewRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -1788,15 +1790,7 @@ def index():
         container_list = fetch_all_containers()
 
         # Get schedules with host info
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT s.id, s.container_name, s.action, s.cron_expression, s.enabled, s.last_run, h.name, s.one_time, s.run_at
-            FROM schedules s
-            LEFT JOIN hosts h ON s.host_id = h.id
-        ''')
-        schedules = cursor.fetchall()
-        conn.close()
+        schedules = schedule_view_repo.list_with_host_names()
 
         return render_template('index.html', containers=container_list, schedules=schedules, version=VERSION)
     except Exception as e:
