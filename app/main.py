@@ -29,6 +29,7 @@ from typing import Tuple, Optional, List, Dict, Any
 
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
+from app.repositories import HostRepository
 from app.utils.validators import (
     sanitize_string,
     validate_action,
@@ -547,6 +548,7 @@ class DockerHostManager:
     def __init__(self):
         self.clients = {}
         self.last_check = {}
+        self.host_repo = HostRepository(get_db)
 
     def get_client(self, host_id=1):
         """Get Docker client for a specific host"""
@@ -556,12 +558,7 @@ class DockerHostManager:
 
         # Get host info from database
         try:
-            conn = sqlite3.connect(DATABASE_PATH)
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, name, url, enabled FROM hosts WHERE id = ?', (host_id,))
-            host = cursor.fetchone()
-            conn.close()
-
+            host = self.host_repo.get_by_id(host_id)
             if not host or not host[3]:  # Check if host exists and is enabled
                 logger.warning(f"Host {host_id} not found or disabled")
                 return None
@@ -577,11 +574,7 @@ class DockerHostManager:
             self.last_check[host_id] = datetime.now()
 
             # Update last_seen in database
-            conn = sqlite3.connect(DATABASE_PATH)
-            cursor = conn.cursor()
-            cursor.execute('UPDATE hosts SET last_seen = ? WHERE id = ?', (datetime.now(), host_id))
-            conn.commit()
-            conn.close()
+            self.host_repo.update_last_seen(host_id, datetime.now())
 
             logger.info(f"Connected to Docker host: {host_name} ({host_url})")
             return client
@@ -596,11 +589,7 @@ class DockerHostManager:
     def get_all_clients(self):
         """Get all enabled Docker clients with their host info"""
         try:
-            conn = sqlite3.connect(DATABASE_PATH)
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, name, url FROM hosts WHERE enabled = 1')
-            hosts = cursor.fetchall()
-            conn.close()
+            hosts = self.host_repo.list_enabled()
 
             result = []
             for host_id, host_name, host_url in hosts:
