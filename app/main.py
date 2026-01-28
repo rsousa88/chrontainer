@@ -3498,23 +3498,18 @@ def get_all_hosts_metrics():
 def get_hosts():
     """Get all Docker hosts"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, name, url, enabled, color, last_seen, created_at FROM hosts ORDER BY id')
-        hosts = cursor.fetchall()
-        conn.close()
-
-        host_list = []
-        for host in hosts:
-            host_list.append({
+        host_list = [
+            {
                 'id': host[0],
                 'name': host[1],
                 'url': host[2],
                 'enabled': bool(host[3]),
                 'color': host[4],
                 'last_seen': host[5],
-                'created_at': host[6]
-            })
+                'created_at': host[6],
+            }
+            for host in host_repo.list_all()
+        ]
         return jsonify(host_list)
     except Exception as e:
         logger.error(f"Failed to get hosts: {e}")
@@ -3550,15 +3545,7 @@ def add_host():
         if not success:
             return jsonify({'error': f'Connection test failed: {message}. Please ensure the Docker host is running and accessible, and that you have set up a socket-proxy for remote hosts.'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO hosts (name, url, enabled, color, last_seen) VALUES (?, ?, 1, ?, ?)',
-            (name, url, color, datetime.now())
-        )
-        host_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+        host_id = host_repo.create(name, url, color, datetime.now())
 
         logger.info(f"Added new host: {name} ({url})")
         return jsonify({'success': True, 'host_id': host_id})
@@ -3593,29 +3580,16 @@ def update_host(host_id):
             return jsonify({'error': 'Cannot disable the local Docker host (ID: 1). This host is required for Chrontainer to function.'}), 400
 
         # Test connection if URL changed
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT url FROM hosts WHERE id = ?', (host_id,))
-        result = cursor.fetchone()
-        if not result:
-            conn.close()
+        current_url = host_repo.get_url(host_id)
+        if not current_url:
             return jsonify({'error': f'Host with ID {host_id} not found'}), 404
-        current_url = result[0]
-        conn.close()
 
         if url != current_url:
             success, message = docker_manager.test_connection(url)
             if not success:
                 return jsonify({'error': f'Connection test failed: {message}. Please verify the Docker host URL and network connectivity.'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE hosts SET name = ?, url = ?, enabled = ?, color = ? WHERE id = ?',
-            (name, url, 1 if enabled else 0, color, host_id)
-        )
-        conn.commit()
-        conn.close()
+        host_repo.update(host_id, name, url, 1 if enabled else 0, color)
 
         # Clear cached client for this host
         docker_manager.clear_cache(host_id)
@@ -3640,11 +3614,7 @@ def delete_host(host_id):
         if count > 0:
             return jsonify({'error': f'Cannot delete host with {count} active schedule(s). Please delete or move the schedules first.'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM hosts WHERE id = ?', (host_id,))
-        conn.commit()
-        conn.close()
+        host_repo.delete(host_id)
 
         # Clear cached client
         docker_manager.clear_cache(host_id)
@@ -3660,34 +3630,17 @@ def delete_host(host_id):
 def test_host_connection(host_id):
     """Test connection to a Docker host"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT url FROM hosts WHERE id = ?', (host_id,))
-        result = cursor.fetchone()
-        conn.close()
-
-        if not result:
+        url = host_repo.get_url(host_id)
+        if not url:
             return jsonify({'error': 'Host not found'}), 404
-
-        url = result[0]
         success, message = docker_manager.test_connection(url)
 
         if success:
             # Update last_seen
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                'UPDATE hosts SET last_seen = ?, enabled = 1 WHERE id = ?',
-                (datetime.now(), host_id)
-            )
-            conn.commit()
-            conn.close()
+            host_repo.update_last_seen(host_id, datetime.now())
+            host_repo.set_enabled(host_id, 1)
         else:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute('UPDATE hosts SET enabled = 0 WHERE id = ?', (host_id,))
-            conn.commit()
-            conn.close()
+            host_repo.set_enabled(host_id, 0)
 
         return jsonify({'success': success, 'message': message})
     except Exception as e:
