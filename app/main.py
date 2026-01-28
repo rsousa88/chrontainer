@@ -1648,14 +1648,10 @@ def get_host_color_maps() -> Tuple[Dict[int, str], Dict[int, str]]:
     host_color_map = {}
     host_text_color_map = {}
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, color FROM hosts')
-    for host_id_row, color in cursor.fetchall():
+    for host_id_row, color in host_repo.list_colors():
         resolved_color = color or HOST_DEFAULT_COLOR
         host_color_map[host_id_row] = resolved_color
         host_text_color_map[host_id_row] = get_contrast_text_color(resolved_color)
-    conn.close()
 
     return host_color_map, host_text_color_map
 

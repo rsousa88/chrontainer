@@ -47,6 +47,15 @@ class HostRepository:
         finally:
             conn.close()
 
+    def list_colors(self):
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, color FROM hosts')
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
     def create(self, name: str, url: str, color: str, last_seen: datetime) -> int:
         conn = self._db_factory()
         try:
