@@ -16,8 +16,7 @@ def create_containers_blueprint(
     set_cached_container_stats,
     logger,
     container_service,
-    check_for_update,
-    write_update_status,
+    update_service,
     validate_container_id,
     validate_container_name,
     validate_host_id,
@@ -278,7 +277,7 @@ def create_containers_blueprint(
                 return jsonify({'error': 'Cannot connect to Docker host'}), 500
 
             container = client.containers.get(container_id)
-            has_update, remote_digest, error, note = check_for_update(container, client)
+            has_update, remote_digest, error, note = update_service.check_for_update(container, client)
             payload = {
                 'has_update': has_update,
                 'remote_digest': remote_digest,
@@ -286,7 +285,7 @@ def create_containers_blueprint(
                 'note': note,
                 'checked_at': datetime.utcnow().isoformat(),
             }
-            write_update_status(container_id, host_id, payload)
+            update_service.write_update_status(container_id, host_id, payload)
 
             if error:
                 return jsonify({'has_update': False, 'error': error})
@@ -316,7 +315,7 @@ def create_containers_blueprint(
                     for container in containers:
                         container_id = container.id[:12]
                         try:
-                            has_update, remote_digest, error, note = check_for_update(container, docker_client)
+                            has_update, remote_digest, error, note = update_service.check_for_update(container, docker_client)
                             payload = {
                                 'has_update': has_update,
                                 'remote_digest': remote_digest,
@@ -324,7 +323,7 @@ def create_containers_blueprint(
                                 'note': note,
                                 'checked_at': datetime.utcnow().isoformat(),
                             }
-                            write_update_status(container_id, host_id, payload)
+                            update_service.write_update_status(container_id, host_id, payload)
                             results.append({
                                 'container_id': container_id,
                                 'container_name': container.name,

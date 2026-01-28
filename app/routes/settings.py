@@ -10,7 +10,7 @@ def create_settings_blueprint(
     get_setting,
     set_setting,
     configure_update_check_schedule,
-    send_discord_notification,
+    notification_service,
     sanitize_string,
     validate_cron_expression,
     validate_webhook_url,
@@ -159,7 +159,7 @@ def create_settings_blueprint(
             if not webhook_url:
                 return jsonify({'error': 'No Discord webhook URL configured. Please add a webhook URL in the settings first.'}), 400
 
-            send_discord_notification(
+            notification_service.send_discord_notification(
                 container_name='test-container',
                 action='test',
                 status='success',
