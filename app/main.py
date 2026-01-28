@@ -47,7 +47,14 @@ from app.repositories import (
     WebhookRepository,
     UserRepository,
 )
-from app.routes import create_auth_blueprint, create_health_blueprint
+from app.routes import (
+    create_api_keys_blueprint,
+    create_auth_blueprint,
+    create_health_blueprint,
+    create_logs_blueprint,
+    create_settings_blueprint,
+    create_webhooks_blueprint,
+)
 from app.services.docker_hosts import DockerHostManager
 from app.utils.validators import (
     sanitize_string,
@@ -565,6 +572,47 @@ auth_blueprint = create_auth_blueprint(
     logger=logger,
 )
 app.register_blueprint(auth_blueprint)
+
+logs_blueprint = create_logs_blueprint(app_log_repo=app_log_repo, version=VERSION)
+app.register_blueprint(logs_blueprint)
+
+settings_blueprint = create_settings_blueprint(
+    get_setting=get_setting,
+    set_setting=set_setting,
+    configure_update_check_schedule=configure_update_check_schedule,
+    send_discord_notification=send_discord_notification,
+    sanitize_string=sanitize_string,
+    validate_cron_expression=validate_cron_expression,
+    validate_webhook_url=validate_webhook_url,
+    logger=logger,
+    update_check_cron_default=UPDATE_CHECK_CRON_DEFAULT,
+    version=VERSION,
+)
+app.register_blueprint(settings_blueprint)
+
+api_keys_blueprint = create_api_keys_blueprint(
+    api_key_repo=api_key_repo,
+    generate_api_key=generate_api_key,
+    hash_api_key=hash_api_key,
+    sanitize_string=sanitize_string,
+    logger=logger,
+)
+app.register_blueprint(api_keys_blueprint)
+
+webhooks_blueprint = create_webhooks_blueprint(
+    webhook_repo=webhook_repo,
+    docker_manager=docker_manager,
+    limiter=limiter,
+    restart_container=restart_container,
+    start_container=start_container,
+    stop_container=stop_container,
+    pause_container=pause_container,
+    unpause_container=unpause_container,
+    update_container=update_container,
+    sanitize_string=sanitize_string,
+    logger=logger,
+)
+app.register_blueprint(webhooks_blueprint)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -2690,453 +2738,6 @@ def toggle_schedule(schedule_id):
         logger.error(f"Failed to toggle schedule {schedule_id}: {e}")
         return jsonify({'error': 'Failed to toggle schedule. Please refresh the page and try again.'}), 500
 
-@app.route('/api/settings', methods=['GET'])
-def get_settings():
-    """Get all settings"""
-    try:
-        webhook_url = get_setting('discord_webhook_url', '')
-        return jsonify({
-            'discord_webhook_url': webhook_url,
-            'ntfy_enabled': get_setting('ntfy_enabled', 'false'),
-            'ntfy_server': get_setting('ntfy_server', 'https://ntfy.sh'),
-            'ntfy_topic': get_setting('ntfy_topic', ''),
-            'ntfy_priority': get_setting('ntfy_priority', '3'),
-            'update_check_enabled': get_setting('update_check_enabled', 'true'),
-            'update_check_cron': get_setting('update_check_cron', UPDATE_CHECK_CRON_DEFAULT)
-        })
-    except Exception as e:
-        logger.error(f"Failed to get settings: {e}")
-        return jsonify({'error': 'Failed to load settings. Please check the database connection.'}), 500
-
-@app.route('/api/settings/discord', methods=['POST'])
-@login_required
-def update_discord_settings():
-    """Update Discord webhook settings"""
-    try:
-        data = request.json
-        webhook_url = sanitize_string(data.get('webhook_url', ''), max_length=2048).strip()
-
-        # Validate webhook URL
-        valid, error = validate_webhook_url(webhook_url)
-        if not valid:
-            return jsonify({'error': error}), 400
-
-        set_setting('discord_webhook_url', webhook_url)
-        logger.info(f"Discord webhook URL updated")
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Failed to update Discord settings: {e}")
-        return jsonify({'error': 'Failed to save Discord webhook settings. Please try again.'}), 500
-
-@app.route('/api/settings/ntfy', methods=['POST'])
-@login_required
-def update_ntfy_settings():
-    """Update ntfy notification settings"""
-    try:
-        data = request.json
-
-        ntfy_enabled = data.get('enabled', False)
-        ntfy_server = sanitize_string(data.get('server', 'https://ntfy.sh'), max_length=500).strip()
-        ntfy_topic = sanitize_string(data.get('topic', ''), max_length=100).strip()
-        ntfy_priority = data.get('priority', 3)
-
-        if ntfy_enabled and not ntfy_topic:
-            return jsonify({'error': 'Topic is required when ntfy is enabled'}), 400
-
-        if not isinstance(ntfy_priority, int) or ntfy_priority < 1 or ntfy_priority > 5:
-            return jsonify({'error': 'Priority must be 1-5'}), 400
-
-        if ntfy_server and not ntfy_server.startswith('http'):
-            return jsonify({'error': 'Server must be a valid URL'}), 400
-
-        set_setting('ntfy_enabled', 'true' if ntfy_enabled else 'false')
-        set_setting('ntfy_server', ntfy_server)
-        set_setting('ntfy_topic', ntfy_topic)
-        set_setting('ntfy_priority', str(ntfy_priority))
-
-        logger.info("ntfy settings updated")
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Failed to update ntfy settings: {e}")
-        return jsonify({'error': 'Failed to save settings'}), 500
-
-
-@app.route('/api/settings/update-check', methods=['POST'])
-@login_required
-def update_update_check_settings():
-    """Update automatic update-check settings"""
-    try:
-        data = request.json or {}
-        enabled = bool(data.get('enabled', False))
-        cron_expression = sanitize_string(data.get('cron', UPDATE_CHECK_CRON_DEFAULT), max_length=50).strip()
-
-        if enabled:
-            valid, error = validate_cron_expression(cron_expression)
-            if not valid:
-                return jsonify({'error': error}), 400
-
-        set_setting('update_check_enabled', 'true' if enabled else 'false')
-        set_setting('update_check_cron', cron_expression or UPDATE_CHECK_CRON_DEFAULT)
-
-        configure_update_check_schedule()
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Failed to update update-check settings: {e}")
-        return jsonify({'error': 'Failed to save update-check settings'}), 500
-
-@app.route('/api/settings/ntfy/test', methods=['POST'])
-@login_required
-def test_ntfy():
-    """Test ntfy notification"""
-    try:
-        ntfy_server = get_setting('ntfy_server', 'https://ntfy.sh')
-        ntfy_topic = get_setting('ntfy_topic')
-
-        if not ntfy_topic:
-            return jsonify({'error': 'ntfy topic not configured'}), 400
-
-        import requests
-        url = f"{ntfy_server.rstrip('/')}/{ntfy_topic}"
-
-        response = requests.post(
-            url,
-            data="This is a test notification from Chrontainer!".encode('utf-8'),
-            headers={
-                'Title': 'Chrontainer Test',
-                'Priority': '3',
-                'Tags': 'bell'
-            },
-            timeout=10
-        )
-
-        if response.status_code in [200, 204]:
-            return jsonify({'success': True, 'message': 'Test notification sent'})
-        return jsonify({'error': f'Server returned status {response.status_code}'}), 400
-    except Exception as e:
-        logger.error(f"Failed to test ntfy: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/settings/discord/test', methods=['POST'])
-def test_discord_webhook():
-    """Test Discord webhook"""
-    try:
-        webhook_url = get_setting('discord_webhook_url')
-        if not webhook_url:
-            return jsonify({'error': 'No Discord webhook URL configured. Please add a webhook URL in the settings first.'}), 400
-
-        # Send a test notification
-        send_discord_notification(
-            container_name='test-container',
-            action='test',
-            status='success',
-            message='This is a test notification from Chrontainer!'
-        )
-        return jsonify({'success': True, 'message': 'Test notification sent'})
-    except Exception as e:
-        logger.error(f"Failed to test Discord webhook: {e}")
-        return jsonify({'error': 'Failed to send test notification. Please check your webhook URL and network connection.'}), 500
-
-@app.route('/api/keys', methods=['GET'])
-@login_required
-def list_api_keys():
-    """List all API keys for current user"""
-    try:
-        keys = api_key_repo.list_for_user(current_user.id)
-
-        return jsonify([{
-            'id': k[0],
-            'name': k[1],
-            'key_prefix': k[2],
-            'permissions': k[3],
-            'last_used': k[4],
-            'expires_at': k[5],
-            'created_at': k[6]
-        } for k in keys])
-    except Exception as e:
-        logger.error(f"Failed to list API keys: {e}")
-        return jsonify({'error': 'Failed to list keys'}), 500
-
-
-@app.route('/api/keys', methods=['POST'])
-@login_required
-def create_api_key():
-    """Create a new API key"""
-    try:
-        data = request.json or {}
-        name = sanitize_string(data.get('name', 'Unnamed Key'), max_length=100)
-        permissions = data.get('permissions', 'read')
-        expires_days = data.get('expires_days')
-
-        if permissions not in ['read', 'write', 'admin']:
-            return jsonify({'error': 'Invalid permissions. Use: read, write, or admin'}), 400
-
-        if permissions == 'admin' and current_user.role != 'admin':
-            return jsonify({'error': 'Only admins can create admin API keys'}), 403
-
-        full_key = generate_api_key()
-        key_hash = hash_api_key(full_key)
-        key_prefix = full_key[:14]
-
-        expires_at = None
-        if expires_days:
-            try:
-                expires_days = int(expires_days)
-                expires_at = (datetime.now() + timedelta(days=expires_days)).isoformat()
-            except (TypeError, ValueError):
-                return jsonify({'error': 'Invalid expires_days value'}), 400
-
-        key_id = api_key_repo.create(
-            user_id=current_user.id,
-            name=name,
-            key_hash=key_hash,
-            key_prefix=key_prefix,
-            permissions=permissions,
-            expires_at=expires_at,
-        )
-
-        logger.info(f"API key created: {key_prefix}... for user {current_user.username}")
-
-        return jsonify({
-            'id': key_id,
-            'name': name,
-            'key': full_key,
-            'key_prefix': key_prefix,
-            'permissions': permissions,
-            'expires_at': expires_at,
-            'message': 'Save this key now - it will not be shown again!'
-        })
-    except Exception as e:
-        logger.error(f"Failed to create API key: {e}")
-        return jsonify({'error': 'Failed to create key'}), 500
-
-
-@app.route('/api/keys/<int:key_id>', methods=['DELETE'])
-@login_required
-def delete_api_key(key_id):
-    """Delete an API key"""
-    try:
-        key_owner_id = api_key_repo.get_user_id(key_id)
-        if key_owner_id is None:
-            return jsonify({'error': 'API key not found'}), 404
-
-        if key_owner_id != current_user.id and current_user.role != 'admin':
-            return jsonify({'error': 'Not authorized to delete this key'}), 403
-
-        api_key_repo.delete(key_id)
-
-        logger.info(f"API key {key_id} deleted by user {current_user.username}")
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Failed to delete API key: {e}")
-        return jsonify({'error': 'Failed to delete key'}), 500
-
-
-@app.route('/webhook/<token>', methods=['POST', 'GET'])
-@limiter.limit("30 per minute")
-def trigger_webhook(token):
-    """Trigger a webhook action - no auth required, uses token"""
-    try:
-        webhook = webhook_repo.get_by_token(token)
-
-        if not webhook:
-            return jsonify({'error': 'Invalid webhook'}), 404
-
-        webhook_id, name, container_id, host_id, action, enabled, locked = webhook
-
-        if not enabled:
-            return jsonify({'error': 'Webhook is disabled'}), 403
-
-        override_container = None
-        override_host = None
-
-        # Only allow overrides if webhook is not locked
-        if not locked:
-            if request.method == 'POST' and request.is_json:
-                data = request.json or {}
-                override_container = data.get('container_id')
-                override_host = data.get('host_id')
-            else:
-                override_container = request.args.get('container_id')
-                override_host = request.args.get('host_id')
-
-        target_container = override_container or container_id
-        target_host = int(override_host or host_id or 1)
-
-        if not target_container:
-            return jsonify({'error': 'No container specified'}), 400
-
-        docker_client = docker_manager.get_client(target_host)
-        if not docker_client:
-            return jsonify({'error': 'Docker host not available'}), 503
-
-        try:
-            container = docker_client.containers.get(target_container)
-            container_name = container.name
-        except docker.errors.NotFound:
-            return jsonify({'error': 'Container not found'}), 404
-
-        webhook_repo.record_trigger(webhook_id)
-
-        action_map = {
-            'restart': restart_container,
-            'start': start_container,
-            'stop': stop_container,
-            'pause': pause_container,
-            'unpause': unpause_container,
-            'update': update_container
-        }
-
-        action_func = action_map.get(action)
-        if not action_func:
-            return jsonify({'error': f'Unknown action: {action}'}), 400
-
-        thread = threading.Thread(
-            target=action_func,
-            args=[target_container, container_name, None, target_host]
-        )
-        thread.start()
-
-        logger.info(f"Webhook '{name}' triggered: {action} on {container_name}")
-
-        return jsonify({
-            'success': True,
-            'webhook': name,
-            'action': action,
-            'container': container_name,
-            'message': f'{action.capitalize()} triggered for {container_name}'
-        })
-
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return jsonify({'error': 'Webhook execution failed'}), 500
-
-
-@app.route('/api/webhooks', methods=['GET'])
-@login_required
-def list_webhooks():
-    """List all webhooks"""
-    try:
-        webhooks = webhook_repo.list_all()
-
-        return jsonify([{
-            'id': w[0],
-            'name': w[1],
-            'token': w[2],
-            'container_id': w[3],
-            'host_id': w[4],
-            'action': w[5],
-            'enabled': bool(w[6]),
-            'locked': bool(w[7]),
-            'last_triggered': w[8],
-            'trigger_count': w[9],
-            'created_at': w[10],
-            'host_name': w[11]
-        } for w in webhooks])
-    except Exception as e:
-        logger.error(f"Failed to list webhooks: {e}")
-        return jsonify({'error': 'Failed to list webhooks'}), 500
-
-
-@app.route('/api/webhooks', methods=['POST'])
-@login_required
-def create_webhook():
-    """Create a new webhook"""
-    try:
-        data = request.json or {}
-        name = sanitize_string(data.get('name', ''), max_length=100)
-        container_id = sanitize_string(data.get('container_id', ''), max_length=64) or None
-        host_id = data.get('host_id')
-        action = sanitize_string(data.get('action', 'restart'), max_length=20)
-        locked = 1 if data.get('locked') else 0
-
-        if not name:
-            return jsonify({'error': 'Name is required'}), 400
-
-        if action not in ['restart', 'start', 'stop', 'pause', 'unpause', 'update']:
-            return jsonify({'error': 'Invalid action'}), 400
-
-        token = secrets.token_urlsafe(24)
-
-        webhook_id = webhook_repo.create(name, token, container_id, host_id, action, locked)
-
-        webhook_url = f"{request.host_url}webhook/{token}"
-
-        logger.info(f"Webhook created: {name}")
-
-        return jsonify({
-            'id': webhook_id,
-            'name': name,
-            'token': token,
-            'url': webhook_url,
-            'action': action,
-            'locked': bool(locked)
-        })
-    except Exception as e:
-        logger.error(f"Failed to create webhook: {e}")
-        return jsonify({'error': 'Failed to create webhook'}), 500
-
-
-@app.route('/api/webhooks/<int:webhook_id>', methods=['DELETE'])
-@login_required
-def delete_webhook(webhook_id):
-    """Delete a webhook"""
-    try:
-        webhook_repo.delete(webhook_id)
-
-        logger.info(f"Webhook {webhook_id} deleted")
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Failed to delete webhook: {e}")
-        return jsonify({'error': 'Failed to delete webhook'}), 500
-
-
-@app.route('/api/webhooks/<int:webhook_id>/toggle', methods=['POST'])
-@login_required
-def toggle_webhook(webhook_id):
-    """Enable/disable a webhook"""
-    try:
-        enabled = webhook_repo.toggle_enabled(webhook_id)
-        return jsonify({'success': True, 'enabled': bool(enabled)})
-    except Exception as e:
-        logger.error(f"Failed to toggle webhook: {e}")
-        return jsonify({'error': 'Failed to toggle webhook'}), 500
-
-
-@app.route('/api/webhooks/<int:webhook_id>/lock', methods=['POST'])
-@login_required
-def toggle_webhook_lock(webhook_id):
-    """Toggle lock status for a webhook (locked webhooks ignore container/host overrides)"""
-    try:
-        locked = webhook_repo.toggle_locked(webhook_id)
-        return jsonify({'success': True, 'locked': bool(locked)})
-    except Exception as e:
-        logger.error(f"Failed to toggle webhook lock: {e}")
-        return jsonify({'error': 'Failed to toggle webhook lock'}), 500
-
-
-@app.route('/api/webhooks/<int:webhook_id>/regenerate', methods=['POST'])
-@login_required
-def regenerate_webhook_token(webhook_id):
-    """Regenerate the token for a webhook"""
-    try:
-        new_token = secrets.token_urlsafe(24)
-        updated = webhook_repo.update_token(webhook_id, new_token)
-        if updated == 0:
-            return jsonify({'error': 'Webhook not found'}), 404
-
-        webhook_url = f"{request.host_url}webhook/{new_token}"
-        logger.info(f"Webhook {webhook_id} token regenerated")
-
-        return jsonify({
-            'success': True,
-            'token': new_token,
-            'url': webhook_url
-        })
-    except Exception as e:
-        logger.error(f"Failed to regenerate webhook token: {e}")
-        return jsonify({'error': 'Failed to regenerate token'}), 500
-
-
 @app.route('/api/hosts/<int:host_id>/metrics', methods=['GET'])
 @api_key_or_login_required
 def get_host_metrics(host_id):
@@ -3645,13 +3246,6 @@ def set_container_webui(container_id, host_id):
         logger.error(f"Failed to set container Web UI URL: {e}")
         return jsonify({'error': 'Failed to save Web UI URL. Please try again.'}), 500
 
-@app.route('/settings')
-@login_required
-def settings_page():
-    """Settings page"""
-    webhook_url = get_setting('discord_webhook_url', '')
-    return render_template('settings.html', discord_webhook_url=webhook_url, version=VERSION)
-
 @app.route('/metrics')
 @login_required
 def metrics_page():
@@ -3670,13 +3264,6 @@ def images_page():
 def hosts_page():
     """Redirect to unified settings page (hosts tab)"""
     return redirect('/settings#hosts')
-
-@app.route('/logs')
-@login_required
-def logs():
-    """View logs page"""
-    logs = app_log_repo.list_recent(100)
-    return render_template('logs.html', logs=logs, version=VERSION)
 
 @app.route('/api/user/change-password', methods=['POST'])
 @login_required
