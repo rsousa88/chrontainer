@@ -17,12 +17,12 @@ HOST_DEFAULT_COLOR = '#e8f4f8'
 
 
 def get_db() -> sqlite3.Connection:
-    """Get database connection.""""
+    """Get database connection."""
     return sqlite3.connect(DATABASE_PATH)
 
 
 def init_db() -> None:
-    """Initialize SQLite database.""""
+    """Initialize SQLite database."""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
