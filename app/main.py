@@ -51,6 +51,8 @@ from app.routes import (
     create_api_keys_blueprint,
     create_auth_blueprint,
     create_health_blueprint,
+    create_hosts_blueprint,
+    create_images_blueprint,
     create_logs_blueprint,
     create_settings_blueprint,
     create_webhooks_blueprint,
@@ -613,6 +615,39 @@ webhooks_blueprint = create_webhooks_blueprint(
     logger=logger,
 )
 app.register_blueprint(webhooks_blueprint)
+
+images_blueprint = create_images_blueprint(
+    api_key_or_login_required=api_key_or_login_required,
+    clear_image_usage_cache=clear_image_usage_cache,
+    fetch_all_images=fetch_all_images,
+    docker_manager=docker_manager,
+    host_repo=host_repo,
+    sanitize_string=sanitize_string,
+    validate_host_id=validate_host_id,
+    logger=logger,
+    version=VERSION,
+)
+app.register_blueprint(images_blueprint)
+
+hosts_blueprint = create_hosts_blueprint(
+    api_key_or_login_required=api_key_or_login_required,
+    docker_manager=docker_manager,
+    host_metrics_repo=host_metrics_repo,
+    host_repo=host_repo,
+    get_cached_host_metrics=get_cached_host_metrics,
+    set_cached_host_metrics=set_cached_host_metrics,
+    sanitize_string=sanitize_string,
+    schedule_repo=schedule_repo,
+    validate_color=validate_color,
+    validate_host_id=validate_host_id,
+    validate_required_fields=validate_required_fields,
+    validate_url=validate_url,
+    host_default_color=HOST_DEFAULT_COLOR,
+    datetime_factory=datetime.now,
+    sqlite3_module=sqlite3,
+    logger=logger,
+)
+app.register_blueprint(hosts_blueprint)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -1882,118 +1917,6 @@ def get_containers():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/images')
-@api_key_or_login_required
-def get_images():
-    """API endpoint to get all images"""
-    try:
-        refresh = request.args.get('refresh', '0') == '1'
-        if refresh:
-            clear_image_usage_cache()
-        images = fetch_all_images()
-        return jsonify(images)
-    except Exception as e:
-        logger.error(f"Failed to load images: {e}")
-        return jsonify({'error': 'Failed to load images'}), 500
-
-@app.route('/api/images/pull', methods=['POST'])
-@api_key_or_login_required
-def api_pull_image():
-    """API endpoint to pull an image"""
-    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
-        return jsonify({'error': 'API key does not have write permission'}), 403
-
-    data = request.json or {}
-    image_ref = sanitize_string(data.get('image', ''), max_length=255).strip()
-    host_id = data.get('host_id', 1)
-
-    if not image_ref:
-        return jsonify({'error': 'Image reference is required'}), 400
-
-    is_valid, error_msg = validate_host_id(host_id)
-    if not is_valid:
-        return jsonify({'error': error_msg}), 400
-
-    try:
-        client = docker_manager.get_client(host_id)
-        if not client:
-            return jsonify({'error': 'Cannot connect to Docker host'}), 500
-
-        client.images.pull(image_ref)
-        return jsonify({'success': True, 'message': f'Pulled {image_ref} successfully'})
-    except docker.errors.APIError as e:
-        logger.error(f"Failed to pull image {image_ref} on host {host_id}: {e}")
-        return jsonify({'error': str(e)}), 500
-    except Exception as e:
-        logger.error(f"Failed to pull image {image_ref} on host {host_id}: {e}")
-        return jsonify({'error': 'Failed to pull image'}), 500
-
-@app.route('/api/images/<image_id>', methods=['DELETE'])
-@api_key_or_login_required
-def api_delete_image(image_id):
-    """API endpoint to delete an image"""
-    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
-        return jsonify({'error': 'API key does not have write permission'}), 403
-
-    host_id = request.args.get('host_id', 1, type=int)
-    force = bool((request.json or {}).get('force', False))
-    image_id = sanitize_string(image_id, max_length=200).strip()
-
-    if not image_id:
-        return jsonify({'error': 'Image ID is required'}), 400
-
-    is_valid, error_msg = validate_host_id(host_id)
-    if not is_valid:
-        return jsonify({'error': error_msg}), 400
-
-    try:
-        client = docker_manager.get_client(host_id)
-        if not client:
-            return jsonify({'error': 'Cannot connect to Docker host'}), 500
-
-        client.images.remove(image_id, force=force)
-        return jsonify({'success': True, 'message': 'Image removed'})
-    except docker.errors.APIError as e:
-        logger.error(f"Failed to delete image {image_id} on host {host_id}: {e}")
-        return jsonify({'error': str(e)}), 500
-    except Exception as e:
-        logger.error(f"Failed to delete image {image_id} on host {host_id}: {e}")
-        return jsonify({'error': 'Failed to delete image'}), 500
-
-@app.route('/api/images/prune', methods=['POST'])
-@api_key_or_login_required
-def api_prune_images():
-    """API endpoint to prune unused images"""
-    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
-        return jsonify({'error': 'API key does not have write permission'}), 403
-
-    data = request.json or {}
-    host_id = data.get('host_id', 1)
-    dangling_only = data.get('dangling_only', False)
-
-    is_valid, error_msg = validate_host_id(host_id)
-    if not is_valid:
-        return jsonify({'error': error_msg}), 400
-
-    try:
-        client = docker_manager.get_client(host_id)
-        if not client:
-            return jsonify({'error': 'Cannot connect to Docker host. Check the host URL and socket availability.'}), 400
-
-        filters = {'dangling': True} if dangling_only else None
-        result = client.images.prune(filters=filters)
-        return jsonify({
-            'success': True,
-            'reclaimed': result.get('SpaceReclaimed', 0),
-            'images_deleted': result.get('ImagesDeleted', []) or []
-        })
-    except docker.errors.APIError as e:
-        logger.error(f"Failed to prune images on host {host_id}: {e}")
-        return jsonify({'error': str(e)}), 500
-    except Exception as e:
-        logger.error(f"Failed to prune images on host {host_id}: {e}")
-        return jsonify({'error': 'Failed to prune images'}), 500
-
 @app.route('/api/container/<container_id>/restart', methods=['POST'])
 @api_key_or_login_required
 def api_restart_container(container_id):
@@ -2738,389 +2661,6 @@ def toggle_schedule(schedule_id):
         logger.error(f"Failed to toggle schedule {schedule_id}: {e}")
         return jsonify({'error': 'Failed to toggle schedule. Please refresh the page and try again.'}), 500
 
-@app.route('/api/hosts/<int:host_id>/metrics', methods=['GET'])
-@api_key_or_login_required
-def get_host_metrics(host_id):
-    """Get system metrics for a Docker host"""
-    try:
-        cached = get_cached_host_metrics(host_id)
-        if cached:
-            return jsonify(cached)
-
-        docker_client = docker_manager.get_client(host_id)
-        if not docker_client:
-            return jsonify({'error': 'Cannot connect to Docker host'}), 503
-
-        info = docker_client.info()
-
-        def fetch_disk_usage():
-            try:
-                return docker_client.df()
-            except Exception as df_error:
-                logger.warning(
-                    "Disk usage df() failed for host %s: %s",
-                    host_id,
-                    df_error
-                )
-                try:
-                    return docker_client.api.df()
-                except Exception as api_error:
-                    logger.warning(
-                        "Disk usage api.df() failed for host %s: %s",
-                        host_id,
-                        api_error
-                    )
-                    return None
-
-        def fetch_container_memory(container):
-            try:
-                stats = container.stats(stream=False)
-                return stats.get('memory_stats', {}).get('usage', 0) or 0
-            except Exception:
-                return 0
-
-        cached_disk_usage = get_cached_disk_usage(host_id)
-        disk_usage = cached_disk_usage
-        disk_fetch_started = time.monotonic()
-        if disk_usage is None:
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(fetch_disk_usage)
-            try:
-                disk_usage = future.result(timeout=5)
-            except Exception:
-                disk_usage = None
-            executor.shutdown(wait=False, cancel_futures=True)
-        disk_fetch_elapsed = time.monotonic() - disk_fetch_started
-
-        containers_running = info.get('ContainersRunning', 0)
-        containers_paused = info.get('ContainersPaused', 0)
-        containers_stopped = info.get('ContainersStopped', 0)
-
-        mem_total = info.get('MemTotal', 0)
-
-        mem_used_by_containers = 0
-        containers = []
-        try:
-            containers = docker_client.containers.list()
-        except Exception:
-            containers = []
-
-        if containers:
-            max_workers = min(MAX_CONCURRENT_STATS_FETCH, len(containers))
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-            futures = [executor.submit(fetch_container_memory, container) for container in containers]
-            start = time.monotonic()
-            try:
-                for future in concurrent.futures.as_completed(futures, timeout=3):
-                    try:
-                        mem_used_by_containers += future.result()
-                    except Exception:
-                        pass
-                    if time.monotonic() - start >= 3:
-                        break
-            except concurrent.futures.TimeoutError:
-                pass
-            executor.shutdown(wait=False, cancel_futures=True)
-
-        cpus = info.get('NCPU', 0)
-
-        images_size = 0
-        containers_size = 0
-        volumes_size = 0
-        build_cache_size = 0
-
-        images_list = []
-        containers_list = []
-        volumes_list = []
-        cache_list = []
-        if disk_usage is not None:
-            images_list = disk_usage.get('Images', []) or []
-            containers_list = disk_usage.get('Containers', []) or []
-            volumes_list = disk_usage.get('Volumes', []) or []
-            cache_list = disk_usage.get('BuildCache', []) or []
-
-        disk_available = None
-        if disk_usage is not None:
-            disk_available = True
-        elif cached_disk_usage is not None:
-            disk_available = True
-        else:
-            refresh_disk_usage_async(host_id, docker_client)
-
-        if disk_usage is None:
-            logger.warning(
-                "Disk usage missing for host %s after %.2fs",
-                host_id,
-                disk_fetch_elapsed
-            )
-        else:
-            logger.info(
-                "Disk usage fetched for host %s in %.2fs: images=%s containers=%s volumes=%s cache=%s layers=%s",
-                host_id,
-                disk_fetch_elapsed,
-                len(images_list),
-                len(containers_list),
-                len(volumes_list),
-                len(cache_list),
-                disk_usage.get('LayersSize')
-            )
-
-        if disk_available:
-            for img in images_list:
-                images_size += img.get('Size', 0) or 0
-
-            for cont in containers_list:
-                containers_size += cont.get('SizeRw', 0) or 0
-
-            for vol in volumes_list:
-                volumes_size += vol.get('UsageData', {}).get('Size', 0) or 0
-
-            for cache in cache_list:
-                build_cache_size += cache.get('Size', 0) or 0
-
-            if disk_usage:
-                set_cached_disk_usage(host_id, disk_usage)
-
-        response_payload = {
-            'host_id': host_id,
-            'name': info.get('Name', 'Unknown'),
-            'os': info.get('OperatingSystem', 'Unknown'),
-            'architecture': info.get('Architecture', 'Unknown'),
-            'docker_version': info.get('ServerVersion', 'Unknown'),
-            'kernel_version': info.get('KernelVersion', 'Unknown'),
-            'cpus': cpus,
-            'memory': {
-                'total_bytes': mem_total,
-                'total_gb': round(mem_total / (1024**3), 2),
-                'used_by_containers_bytes': mem_used_by_containers,
-                'used_by_containers_gb': round(mem_used_by_containers / (1024**3), 2)
-            },
-            'containers': {
-                'running': containers_running,
-                'paused': containers_paused,
-                'stopped': containers_stopped,
-                'total': containers_running + containers_paused + containers_stopped
-            },
-            'disk_available': disk_available,
-            'disk': None if not disk_available else {
-                'images_bytes': images_size,
-                'images_gb': round(images_size / (1024**3), 2),
-                'containers_bytes': containers_size,
-                'containers_gb': round(containers_size / (1024**3), 2),
-                'volumes_bytes': volumes_size,
-                'volumes_gb': round(volumes_size / (1024**3), 2),
-                'build_cache_bytes': build_cache_size,
-                'build_cache_gb': round(build_cache_size / (1024**3), 2),
-                'total_bytes': images_size + containers_size + volumes_size + build_cache_size,
-                'total_gb': round((images_size + containers_size + volumes_size + build_cache_size) / (1024**3), 2)
-            },
-            'images_count': info.get('Images', 0)
-        }
-
-        set_cached_host_metrics(host_id, response_payload)
-        return jsonify(response_payload)
-
-    except Exception as e:
-        logger.error(f"Failed to get host metrics for host {host_id}: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/hosts/metrics', methods=['GET'])
-@api_key_or_login_required
-def get_all_hosts_metrics():
-    """Get metrics for all enabled hosts"""
-    results = []
-
-    hosts = host_metrics_repo.list_enabled_hosts()
-
-    for host_id, host_name in hosts:
-        try:
-            docker_client = docker_manager.get_client(host_id)
-            if not docker_client:
-                results.append({
-                    'host_id': host_id,
-                    'name': host_name,
-                    'status': 'offline',
-                    'error': 'Cannot connect'
-                })
-                continue
-
-            info = docker_client.info()
-
-            results.append({
-                'host_id': host_id,
-                'name': host_name,
-                'status': 'online',
-                'os': info.get('OperatingSystem', 'Unknown'),
-                'cpus': info.get('NCPU', 0),
-                'memory_gb': round(info.get('MemTotal', 0) / (1024**3), 2),
-                'containers_running': info.get('ContainersRunning', 0),
-                'containers_total': info.get('Containers', 0),
-                'images': info.get('Images', 0)
-            })
-        except Exception as e:
-            results.append({
-                'host_id': host_id,
-                'name': host_name,
-                'status': 'error',
-                'error': str(e)
-            })
-
-    return jsonify(results)
-
-@app.route('/api/hosts', methods=['GET'])
-@api_key_or_login_required
-def get_hosts():
-    """Get all Docker hosts"""
-    try:
-        host_list = [
-            {
-                'id': host[0],
-                'name': host[1],
-                'url': host[2],
-                'enabled': bool(host[3]),
-                'color': host[4],
-                'last_seen': host[5],
-                'created_at': host[6],
-            }
-            for host in host_repo.list_all()
-        ]
-        return jsonify(host_list)
-    except Exception as e:
-        logger.error(f"Failed to get hosts: {e}")
-        return jsonify({'error': 'Failed to load Docker hosts. Please check the database connection.'}), 500
-
-@app.route('/api/hosts', methods=['POST'])
-@login_required
-def add_host():
-    """Add a new Docker host"""
-    try:
-        data = request.json
-        name = sanitize_string(data.get('name', ''), max_length=100).strip()
-        url = sanitize_string(data.get('url', ''), max_length=500).strip()
-        color = sanitize_string(data.get('color', HOST_DEFAULT_COLOR), max_length=7).strip()
-
-        # Validate name
-        if not name or len(name) < 1:
-            return jsonify({'error': 'Host name is required'}), 400
-        if len(name) > 100:
-            return jsonify({'error': 'Host name is too long (max 100 characters)'}), 400
-
-        # Validate URL
-        valid, error = validate_url(url)
-        if not valid:
-            return jsonify({'error': 'Host URL is required (e.g., tcp://192.168.1.100:2375 or unix:///var/run/docker.sock)'}), 400
-
-        valid, error = validate_color(color)
-        if not valid:
-            return jsonify({'error': error}), 400
-
-        # Test connection first
-        success, message = docker_manager.test_connection(url)
-        if not success:
-            return jsonify({'error': f'Connection test failed: {message}. Please ensure the Docker host is running and accessible, and that you have set up a socket-proxy for remote hosts.'}), 400
-
-        host_id = host_repo.create(name, url, color, datetime.now())
-
-        logger.info(f"Added new host: {name} ({url})")
-        return jsonify({'success': True, 'host_id': host_id})
-    except sqlite3.IntegrityError:
-        logger.error(f"Duplicate host: {name} or {url}")
-        return jsonify({'error': f'A host with this name or URL already exists'}), 400
-    except Exception as e:
-        logger.error(f"Failed to add host: {e}")
-        return jsonify({'error': 'Failed to add Docker host. Please try again.'}), 500
-
-@app.route('/api/hosts/<int:host_id>', methods=['PUT'])
-@login_required
-def update_host(host_id):
-    """Update a Docker host"""
-    try:
-        data = request.json
-        name = data.get('name', '').strip()
-        url = data.get('url', '').strip()
-        color = data.get('color', HOST_DEFAULT_COLOR).strip()
-        enabled = data.get('enabled', True)
-
-        if not name:
-            return jsonify({'error': 'Host name is required'}), 400
-        if not url:
-            return jsonify({'error': 'Host URL is required'}), 400
-        valid, error = validate_color(color)
-        if not valid:
-            return jsonify({'error': error}), 400
-
-        # Don't allow disabling the local host
-        if host_id == 1 and not enabled:
-            return jsonify({'error': 'Cannot disable the local Docker host (ID: 1). This host is required for Chrontainer to function.'}), 400
-
-        # Test connection if URL changed
-        current_url = host_repo.get_url(host_id)
-        if not current_url:
-            return jsonify({'error': f'Host with ID {host_id} not found'}), 404
-
-        if url != current_url:
-            success, message = docker_manager.test_connection(url)
-            if not success:
-                return jsonify({'error': f'Connection test failed: {message}. Please verify the Docker host URL and network connectivity.'}), 400
-
-        host_repo.update(host_id, name, url, 1 if enabled else 0, color)
-
-        # Clear cached client for this host
-        docker_manager.clear_cache(host_id)
-
-        logger.info(f"Updated host {host_id}: {name}")
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Failed to update host: {e}")
-        return jsonify({'error': 'Failed to update Docker host. Please try again.'}), 500
-
-@app.route('/api/hosts/<int:host_id>', methods=['DELETE'])
-@login_required
-def delete_host(host_id):
-    """Delete a Docker host"""
-    try:
-        # Don't allow deleting the local host
-        if host_id == 1:
-            return jsonify({'error': 'Cannot delete the local Docker host (ID: 1). This host is required for Chrontainer to function.'}), 400
-
-        # Check if host has any schedules
-        count = schedule_repo.count_by_host(host_id)
-        if count > 0:
-            return jsonify({'error': f'Cannot delete host with {count} active schedule(s). Please delete or move the schedules first.'}), 400
-
-        host_repo.delete(host_id)
-
-        # Clear cached client
-        docker_manager.clear_cache(host_id)
-
-        logger.info(f"Deleted host {host_id}")
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Failed to delete host: {e}")
-        return jsonify({'error': 'Failed to delete Docker host. Please try again.'}), 500
-
-@app.route('/api/hosts/<int:host_id>/test', methods=['POST'])
-@login_required
-def test_host_connection(host_id):
-    """Test connection to a Docker host"""
-    try:
-        url = host_repo.get_url(host_id)
-        if not url:
-            return jsonify({'error': 'Host not found'}), 404
-        success, message = docker_manager.test_connection(url)
-
-        if success:
-            # Update last_seen
-            host_repo.update_last_seen(host_id, datetime.now())
-            host_repo.set_enabled(host_id, 1)
-        else:
-            host_repo.set_enabled(host_id, 0)
-
-        return jsonify({'success': success, 'message': message})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 # ===== Tags API =====
 
 @app.route('/api/tags', methods=['GET'])
@@ -3252,12 +2792,6 @@ def metrics_page():
     """Host metrics dashboard page"""
     dark_mode = request.cookies.get('darkMode', 'false') == 'true'
     return render_template('metrics.html', dark_mode=dark_mode)
-
-@app.route('/images')
-@login_required
-def images_page():
-    """Image management page"""
-    return render_template('images.html', version=VERSION)
 
 @app.route('/hosts')
 @login_required
