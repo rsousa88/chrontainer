@@ -1,5 +1,6 @@
 """repositories package."""
 from .api_keys import ApiKeyRepository
+from .app_logs import AppLogRepository
 from .container_tags import ContainerTagRepository
 from .hosts import HostRepository
 from .logs import LogsRepository
@@ -13,6 +14,7 @@ from .webui_urls import WebuiUrlRepository
 
 __all__ = [
     'ApiKeyRepository',
+    'AppLogRepository',
     'ContainerTagRepository',
     'HostRepository',
     'LogsRepository',

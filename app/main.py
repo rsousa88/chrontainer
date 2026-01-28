@@ -31,6 +31,7 @@ from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
 from app.repositories import (
     ApiKeyRepository,
+    AppLogRepository,
     ContainerTagRepository,
     HostRepository,
     LogsRepository,
@@ -535,6 +536,7 @@ webui_url_repo = WebuiUrlRepository(get_db)
 user_repo = UserRepository(get_db)
 api_key_repo = ApiKeyRepository(get_db)
 webhook_repo = WebhookRepository(get_db)
+app_log_repo = AppLogRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -3657,11 +3659,7 @@ def hosts_page():
 @login_required
 def logs():
     """View logs page"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM logs ORDER BY timestamp DESC LIMIT 100')
-    logs = cursor.fetchall()
-    conn.close()
+    logs = app_log_repo.list_recent(100)
     return render_template('logs.html', logs=logs, version=VERSION)
 
 @app.route('/login', methods=['GET', 'POST'])
