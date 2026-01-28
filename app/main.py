@@ -34,6 +34,7 @@ from app.repositories import (
     AppLogRepository,
     ContainerTagRepository,
     HostRepository,
+    HostMetricsRepository,
     LogsRepository,
     ScheduleRepository,
     ScheduleViewRepository,
@@ -539,6 +540,7 @@ api_key_repo = ApiKeyRepository(get_db)
 webhook_repo = WebhookRepository(get_db)
 app_log_repo = AppLogRepository(get_db)
 schedule_view_repo = ScheduleViewRepository(get_db)
+host_metrics_repo = HostMetricsRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -3304,11 +3306,7 @@ def get_all_hosts_metrics():
     """Get metrics for all enabled hosts"""
     results = []
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, name FROM hosts WHERE enabled = 1')
-    hosts = cursor.fetchall()
-    conn.close()
+    hosts = host_metrics_repo.list_enabled_hosts()
 
     for host_id, host_name in hosts:
         try:

@@ -3,6 +3,7 @@ from .api_keys import ApiKeyRepository
 from .app_logs import AppLogRepository
 from .container_tags import ContainerTagRepository
 from .hosts import HostRepository
+from .hosts_metrics import HostMetricsRepository
 from .logs import LogsRepository
 from .schedules import ScheduleRepository
 from .schedules_view import ScheduleViewRepository
@@ -17,6 +18,7 @@ __all__ = [
     'ApiKeyRepository',
     'AppLogRepository',
     'ContainerTagRepository',
+    'HostMetricsRepository',
     'HostRepository',
     'LogsRepository',
     'ScheduleRepository',
