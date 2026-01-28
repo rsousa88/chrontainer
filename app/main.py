@@ -35,6 +35,7 @@ from app.repositories import (
     ContainerTagRepository,
     HostRepository,
     HostMetricsRepository,
+    LoginRepository,
     LogsRepository,
     ScheduleRepository,
     ScheduleViewRepository,
@@ -541,6 +542,7 @@ webhook_repo = WebhookRepository(get_db)
 app_log_repo = AppLogRepository(get_db)
 schedule_view_repo = ScheduleViewRepository(get_db)
 host_metrics_repo = HostMetricsRepository(get_db)
+login_repo = LoginRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -3672,16 +3674,11 @@ def login():
 
         # Get user from database
         try:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, username, password_hash, role FROM users WHERE username = ?', (username,))
-            user_data = cursor.fetchone()
+            user_data = login_repo.get_user_for_login(username)
 
             if user_data and bcrypt.checkpw(password.encode('utf-8'), user_data[2].encode('utf-8')):
                 # Update last login
-                cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', (datetime.now(), user_data[0]))
-                conn.commit()
-                conn.close()
+                login_repo.update_last_login(user_data[0], datetime.now())
 
                 # Create user object and log in
                 user = User(id=user_data[0], username=user_data[1], role=user_data[3])
@@ -3690,10 +3687,9 @@ def login():
 
                 next_page = request.args.get('next')
                 return redirect(next_page) if next_page else redirect(url_for('index'))
-            else:
-                conn.close()
-                flash('Invalid username or password', 'error')
-                return render_template('login.html', version=VERSION)
+
+            flash('Invalid username or password', 'error')
+            return render_template('login.html', version=VERSION)
 
         except Exception as e:
             logger.error(f"Login error: {e}")

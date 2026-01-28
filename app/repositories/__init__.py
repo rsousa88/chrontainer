@@ -4,6 +4,7 @@ from .app_logs import AppLogRepository
 from .container_tags import ContainerTagRepository
 from .hosts import HostRepository
 from .hosts_metrics import HostMetricsRepository
+from .login import LoginRepository
 from .logs import LogsRepository
 from .schedules import ScheduleRepository
 from .schedules_view import ScheduleViewRepository
@@ -20,6 +21,7 @@ __all__ = [
     'ContainerTagRepository',
     'HostMetricsRepository',
     'HostRepository',
+    'LoginRepository',
     'LogsRepository',
     'ScheduleRepository',
     'ScheduleViewRepository',
