@@ -29,7 +29,7 @@ from typing import Tuple, Optional, List, Dict, Any
 
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
-from app.repositories import HostRepository, LogsRepository, SettingsRepository
+from app.repositories import HostRepository, LogsRepository, SettingsRepository, UpdateStatusRepository
 from app.utils.validators import (
     sanitize_string,
     validate_action,
@@ -147,37 +147,22 @@ def set_cached_update_status(container_id, host_id, data):
 def write_update_status(container_id, host_id, payload):
     set_cached_update_status(container_id, host_id, payload)
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO update_status (
-                container_id, host_id, has_update, remote_digest, error, note, checked_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            container_id,
-            host_id,
-            1 if payload.get('has_update') else 0,
-            payload.get('remote_digest'),
-            payload.get('error'),
-            payload.get('note'),
-            payload.get('checked_at')
-        ))
-        conn.commit()
-        conn.close()
+        update_status_repo.upsert(
+            container_id=container_id,
+            host_id=host_id,
+            has_update=bool(payload.get('has_update')),
+            remote_digest=payload.get('remote_digest'),
+            error=payload.get('error'),
+            note=payload.get('note'),
+            checked_at=payload.get('checked_at'),
+        )
     except Exception as error:
         logger.warning("Failed to persist update status for %s/%s: %s", host_id, container_id, error)
 
 
 def load_update_status_map():
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT container_id, host_id, has_update, remote_digest, error, note, checked_at
-            FROM update_status
-        ''')
-        rows = cursor.fetchall()
-        conn.close()
+        rows = update_status_repo.list_all()
     except Exception as error:
         logger.warning("Failed to load cached update status: %s", error)
         return {}
@@ -623,6 +608,7 @@ class DockerHostManager:
 docker_manager = DockerHostManager()
 settings_repo = SettingsRepository(get_db)
 logs_repo = LogsRepository(get_db)
+update_status_repo = UpdateStatusRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
