@@ -29,7 +29,7 @@ from typing import Tuple, Optional, List, Dict, Any
 
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
-from app.repositories import HostRepository
+from app.repositories import HostRepository, SettingsRepository
 from app.utils.validators import (
     sanitize_string,
     validate_action,
@@ -621,6 +621,7 @@ class DockerHostManager:
 
 # Initialize Docker host manager
 docker_manager = DockerHostManager()
+settings_repo = SettingsRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -1499,12 +1500,8 @@ def log_action(schedule_id: Optional[int], container_name: str, action: str, sta
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
     """Get a setting value from the database"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
-        result = cursor.fetchone()
-        conn.close()
-        return result[0] if result else default
+        value = settings_repo.get(key)
+        return value if value is not None else default
     except Exception as e:
         logger.error(f"Failed to get setting {key}: {e}")
         return default
@@ -1512,14 +1509,7 @@ def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
 def set_setting(key: str, value: str) -> bool:
     """Set a setting value in the database"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)',
-            (key, value, datetime.now())
-        )
-        conn.commit()
-        conn.close()
+        settings_repo.set(key, value)
         return True
     except Exception as e:
         logger.error(f"Failed to set setting {key}: {e}")
