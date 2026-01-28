@@ -5,7 +5,6 @@ Main Flask application
 import os
 import time
 import concurrent.futures
-import docker
 import sqlite3
 import bcrypt
 import secrets
@@ -64,6 +63,7 @@ from app.routes import (
 from app.services.container_service import ContainerService
 from app.services.docker_hosts import DockerHostManager
 from app.services.docker_service import DockerService
+from app.services.image_service import ImageService
 from app.services.notification_service import NotificationService
 from app.services.update_service import UpdateService
 from app.utils.validators import (
@@ -93,10 +93,7 @@ DISK_USAGE_CACHE = {}
 DISK_USAGE_CACHE_TTL_SECONDS = 300
 DISK_USAGE_INFLIGHT = set()
 DISK_USAGE_INFLIGHT_LOCK = threading.Lock()
-IMAGE_USAGE_CACHE = {}
 IMAGE_USAGE_CACHE_TTL_SECONDS = 180
-IMAGE_USAGE_INFLIGHT = set()
-IMAGE_USAGE_INFLIGHT_LOCK = threading.Lock()
 UPDATE_STATUS_CACHE_TTL_SECONDS = 3600
 
 # Global lock for all cache operations (prevents race conditions)
@@ -289,54 +286,7 @@ def extract_repository_from_digest(digest: str) -> str:
     base = digest.split('@', 1)[0]
     return base or ''
 
-def set_cached_image_usage(host_id: int, data: Dict[str, Any]) -> None:
-    """Cache image usage data for a host."""
-    with _cache_lock:
-        IMAGE_USAGE_CACHE[host_id] = {
-            'data': data,
-            'timestamp': time.time()
-        }
 
-def get_cached_image_usage(host_id: int) -> Optional[Dict[str, Any]]:
-    """Return cached image usage data if fresh."""
-    with _cache_lock:
-        cached = IMAGE_USAGE_CACHE.get(host_id)
-        if not cached:
-            return None
-        if time.time() - cached['timestamp'] > IMAGE_USAGE_CACHE_TTL_SECONDS:
-            return None
-        return cached['data']
-
-def refresh_image_usage_async(host_id: int, client: docker.DockerClient, host_name: str) -> None:
-    """Fetch image usage data in background to avoid blocking page loads."""
-    def run():
-        try:
-            df_data = client.df()
-            set_cached_image_usage(host_id, df_data)
-            logger.info(
-                "Image usage cached for host %s: images=%s",
-                host_name,
-                len(df_data.get('Images', []) or [])
-            )
-        except Exception as error:
-            logger.warning("Image usage df failed for host %s: %s", host_name, error)
-        finally:
-            with IMAGE_USAGE_INFLIGHT_LOCK:
-                IMAGE_USAGE_INFLIGHT.discard(host_id)
-
-    with IMAGE_USAGE_INFLIGHT_LOCK:
-        if host_id in IMAGE_USAGE_INFLIGHT:
-            return
-        IMAGE_USAGE_INFLIGHT.add(host_id)
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-
-def clear_image_usage_cache() -> None:
-    """Clear cached image usage data."""
-    with _cache_lock:
-        IMAGE_USAGE_CACHE.clear()
-
- 
 
 # Configure logging
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
@@ -548,6 +498,18 @@ update_service = UpdateService(
     cache_ttl_seconds=UPDATE_STATUS_CACHE_TTL_SECONDS,
     update_check_cron_default=UPDATE_CHECK_CRON_DEFAULT,
 )
+image_service = ImageService(
+    docker_manager=docker_manager,
+    host_repo=host_repo,
+    logger=logger,
+    host_default_color=HOST_DEFAULT_COLOR,
+    get_contrast_text_color=get_contrast_text_color,
+    split_image_reference=split_image_reference,
+    extract_repository_from_digest=extract_repository_from_digest,
+    get_cached_disk_usage=get_cached_disk_usage,
+    refresh_disk_usage_async=refresh_disk_usage_async,
+    cache_ttl_seconds=IMAGE_USAGE_CACHE_TTL_SECONDS,
+)
 
 health_blueprint = create_health_blueprint(
     stats_repo=stats_repo,
@@ -608,8 +570,8 @@ app.register_blueprint(webhooks_blueprint)
 
 images_blueprint = create_images_blueprint(
     api_key_or_login_required=api_key_or_login_required,
-    clear_image_usage_cache=clear_image_usage_cache,
-    fetch_all_images=fetch_all_images,
+    clear_image_usage_cache=image_service.clear_image_usage_cache,
+    fetch_all_images=image_service.fetch_all_images,
     docker_manager=docker_manager,
     sanitize_string=sanitize_string,
     validate_host_id=validate_host_id,
@@ -902,136 +864,6 @@ def get_host_color_maps() -> Tuple[Dict[int, str], Dict[int, str]]:
 
     return host_color_map, host_text_color_map
 
-def fetch_all_images() -> List[Dict[str, Any]]:
-    """
-    Fetch all images from all Docker hosts with basic metadata.
-
-    Returns:
-        List of image dictionaries with host info and tags.
-    """
-    image_list = []
-    host_color_map, host_text_color_map = get_host_color_maps()
-
-    for host_id, host_name, docker_client in docker_manager.get_all_clients():
-        df_images = {}
-        cached_df = get_cached_image_usage(host_id)
-        cached_from_images = cached_df is not None
-        if not cached_df:
-            cached_df = get_cached_disk_usage(host_id)
-        if cached_df:
-            df_images = {entry.get('Id'): entry for entry in (cached_df.get('Images', []) or [])}
-        if not cached_from_images:
-            refresh_image_usage_async(host_id, docker_client, host_name)
-
-        host_color = host_color_map.get(host_id, HOST_DEFAULT_COLOR)
-        host_text_color = host_text_color_map.get(host_id, get_contrast_text_color(host_color))
-
-        container_repo_map = {}
-        try:
-            containers = docker_client.containers.list(all=True)
-            for container in containers:
-                try:
-                    image_id = container.image.id
-                    if not image_id:
-                        continue
-                    image_name = None
-                    if container.image.tags:
-                        image_name = container.image.tags[0]
-                    else:
-                        image_name = container.attrs.get('Config', {}).get('Image')
-                    if image_name:
-                        repo, _ = split_image_reference(image_name)
-                        container_repo_map[image_id] = repo or container_repo_map.get(image_id)
-                except Exception:
-                    continue
-        except Exception as e:
-            logger.debug("Failed to map container images for host %s: %s", host_name, e)
-
-        if df_images:
-            for entry in df_images.values():
-                image_id = entry.get('Id') or ''
-                short_id = image_id.replace('sha256:', '')[:12]
-                created = entry.get('Created')
-                size = entry.get('Size')
-                shared_size = entry.get('SharedSize')
-                containers_count = entry.get('Containers')
-                if containers_count is not None and containers_count < 0:
-                    containers_count = None
-                repo_tags = entry.get('RepoTags') or []
-                repo_digests = entry.get('RepoDigests') or []
-                if not repo_tags:
-                    repo_tags = ['(none):(none)']
-
-                for tag in repo_tags:
-                    repository, tag_name = split_image_reference(tag)
-                    if repository in ('', '(none)') and repo_digests:
-                        digest_repo = extract_repository_from_digest(repo_digests[0])
-                        repository = digest_repo or '(none)'
-                    if repository in ('', '(none)'):
-                        repository = container_repo_map.get(image_id) or repository
-                    repository = repository or '(none)'
-                    image_list.append({
-                        'id': image_id,
-                        'short_id': short_id,
-                        'image_id': image_id,
-                        'repository': repository,
-                        'tag': tag_name,
-                        'full_name': tag,
-                        'size_bytes': size,
-                        'shared_size_bytes': shared_size,
-                        'containers': containers_count,
-                        'created': created,
-                        'host_id': host_id,
-                        'host_name': host_name,
-                        'host_color': host_color,
-                        'host_text_color': host_text_color
-                    })
-            continue
-
-        try:
-            images = docker_client.api.images(all=True)
-            for entry in images:
-                image_id = entry.get('Id') or ''
-                short_id = image_id.replace('sha256:', '')[:12]
-                created = entry.get('Created')
-                size = entry.get('Size')
-                shared_size = entry.get('SharedSize')
-                containers_count = entry.get('Containers')
-                if containers_count is not None and containers_count < 0:
-                    containers_count = None
-                repo_tags = entry.get('RepoTags') or []
-                repo_digests = entry.get('RepoDigests') or []
-                if not repo_tags:
-                    repo_tags = ['(none):(none)']
-
-                for tag in repo_tags:
-                    repository, tag_name = split_image_reference(tag)
-                    if repository in ('', '(none)') and repo_digests:
-                        digest_repo = extract_repository_from_digest(repo_digests[0])
-                        repository = digest_repo or '(none)'
-                    if repository in ('', '(none)'):
-                        repository = container_repo_map.get(image_id) or repository
-                    repository = repository or '(none)'
-                    image_list.append({
-                        'id': image_id,
-                        'short_id': short_id,
-                        'image_id': image_id,
-                        'repository': repository,
-                        'tag': tag_name,
-                        'full_name': tag,
-                        'size_bytes': size,
-                        'shared_size_bytes': shared_size,
-                        'containers': containers_count,
-                        'created': created,
-                        'host_id': host_id,
-                        'host_name': host_name,
-                        'host_color': host_color,
-                        'host_text_color': host_text_color
-                    })
-        except Exception as e:
-            logger.error(f"Error getting images from host {host_name}: {e}")
-
-    return image_list
 
 
 # ===== Tags API =====
