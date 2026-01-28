@@ -23,6 +23,39 @@ class ScheduleRepository:
         finally:
             conn.close()
 
+    def create(
+        self,
+        host_id: int,
+        container_id: str,
+        container_name: str,
+        action: str,
+        cron_expression: str,
+        one_time: int,
+        run_at: str | None,
+    ) -> int:
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''INSERT INTO schedules
+                   (host_id, container_id, container_name, action, cron_expression, one_time, run_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (
+                    host_id,
+                    container_id,
+                    container_name,
+                    action,
+                    cron_expression,
+                    one_time,
+                    run_at,
+                ),
+            )
+            schedule_id = cursor.lastrowid
+            conn.commit()
+            return schedule_id
+        finally:
+            conn.close()
+
     def delete(self, schedule_id: int) -> None:
         conn = self._db_factory()
         try:

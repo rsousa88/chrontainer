@@ -2530,20 +2530,15 @@ def add_schedule():
 
     # Save to database
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            '''INSERT INTO schedules
-               (host_id, container_id, container_name, action, cron_expression, one_time, run_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)''',
-            (host_id, container_id, container_name, action,
-             cron_expression if not one_time else '',
-             1 if one_time else 0,
-             run_at if one_time else None)
+        schedule_id = schedule_repo.create(
+            host_id=host_id,
+            container_id=container_id,
+            container_name=container_name,
+            action=action,
+            cron_expression=cron_expression if not one_time else '',
+            one_time=1 if one_time else 0,
+            run_at=run_at if one_time else None,
         )
-        schedule_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
 
         # Add to scheduler with the appropriate action function
         action_map = {
@@ -2565,11 +2560,7 @@ def add_schedule():
             def one_time_action(cid, cname, sid, hid, func=action_func):
                 func(cid, cname, sid, hid)
                 try:
-                    conn = get_db()
-                    cursor = conn.cursor()
-                    cursor.execute('DELETE FROM schedules WHERE id = ?', (sid,))
-                    conn.commit()
-                    conn.close()
+                    schedule_repo.delete(sid)
                     logger.info(f"One-time schedule {sid} executed and deleted")
                 except Exception as e:
                     logger.error(f"Failed to delete one-time schedule {sid}: {e}")
