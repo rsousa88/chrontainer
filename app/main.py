@@ -2,7 +2,6 @@
 Chrontainer - Docker Container Scheduler
 Main Flask application
 """
-import os
 import time
 import sqlite3
 import bcrypt
@@ -219,7 +218,7 @@ def extract_repository_from_digest(digest: str) -> str:
 
 
 # Configure logging
-log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+log_level = Config.LOG_LEVEL
 logging.basicConfig(
     level=getattr(logging, log_level),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -232,15 +231,15 @@ DATABASE_PATH = Config.DATABASE_PATH
 app = Flask(__name__, template_folder='../templates')
 
 # Security Configuration
-SECRET_KEY = os.environ.get('SECRET_KEY')
+SECRET_KEY = Config.SECRET_KEY
 if not SECRET_KEY:
     logger.warning("SECRET_KEY not set! Using insecure default. Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'")
     SECRET_KEY = 'dev-secret-key-change-in-production'
 
 app.config['SECRET_KEY'] = SECRET_KEY
-app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
-app.config['SESSION_COOKIE_HTTPONLY'] = os.environ.get('SESSION_COOKIE_HTTPONLY', 'true').lower() == 'true'
-app.config['SESSION_COOKIE_SAMESITE'] = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+app.config['SESSION_COOKIE_SECURE'] = Config.SESSION_COOKIE_SECURE
+app.config['SESSION_COOKIE_HTTPONLY'] = Config.SESSION_COOKIE_HTTPONLY
+app.config['SESSION_COOKIE_SAMESITE'] = Config.SESSION_COOKIE_SAMESITE
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
 
 # Flask-Login setup
@@ -254,7 +253,7 @@ csrf = CSRFProtect(app)
 
 # Security Headers (Talisman)
 # Only enforce HTTPS if explicitly enabled (for reverse proxy setups)
-force_https = os.environ.get('FORCE_HTTPS', 'false').lower() == 'true'
+force_https = Config.FORCE_HTTPS
 if force_https:
     Talisman(app,
         force_https=True,
@@ -277,7 +276,7 @@ else:
         return response
 
 # Rate Limiting
-rate_limit_per_minute = os.environ.get('RATE_LIMIT_PER_MINUTE', '60')
+rate_limit_per_minute = Config.RATE_LIMIT_PER_MINUTE
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
@@ -703,5 +702,5 @@ if __name__ == '__main__':
     update_service.configure_update_check_schedule()
     
     # Run Flask app
-    port = int(os.environ.get('PORT', 5000))
+    port = Config.PORT
     app.run(host='0.0.0.0', port=port, debug=False)
