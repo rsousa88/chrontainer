@@ -114,10 +114,14 @@ Chrontainer supports managing containers across multiple Docker hosts (Synology 
 
 ⚠️ **Security Requirement**: For remote hosts, you **must** use [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) to securely expose the Docker API. Never expose the raw Docker socket directly to the network.
 
-📖 **Complete Setup Guide**: See [REMOTE_HOSTS.md](REMOTE_HOSTS.md) for detailed instructions on:
+📖 **Complete Setup Guide**: See [docs/REMOTE_HOSTS.md](docs/REMOTE_HOSTS.md) for detailed instructions on:
 - Setting up docker-socket-proxy (recommended method)
 - Configuring firewall rules
 - Security best practices
+
+## Documentation
+
+See the documentation index at [docs/README.md](docs/README.md) for deployment, security, remote hosts, and API reference.
 - Troubleshooting connection issues
 
 Once added, all containers from remote hosts will appear on your dashboard with host badges, and you can schedule/manage them just like local containers.
