@@ -249,6 +249,32 @@ def validate_action(action: str) -> Tuple[bool, str]:
     return True, ""
 
 
+def validate_container_name(name: str) -> Tuple[bool, str]:
+    """
+    Validate a container name.
+
+    Args:
+        name: Container name to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not name:
+        return False, "Container name is required"
+
+    if not isinstance(name, str):
+        return False, "Container name must be a string"
+
+    if len(name) > 255:
+        return False, "Container name is too long"
+
+    # Docker allows [a-zA-Z0-9][a-zA-Z0-9_.-]+, starting with alphanumeric
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]+$', name):
+        return False, "Container name must start with alphanumeric and use only letters, numbers, '.', '_' or '-'"
+
+    return True, ""
+
+
 def validate_required_fields(data: Dict, required_fields: List[str]) -> Tuple[bool, str]:
     """
     Validate that required fields are present in a dictionary.
@@ -1613,6 +1639,79 @@ def rename_container(container_id: str, container_name: str, new_name: str, host
         send_ntfy_notification(container_name, 'rename', 'error', message, None)
         return False, message
 
+def clone_container(container_id: str, container_name: str, new_name: str, start_after: bool = True, host_id: int = 1) -> Tuple[bool, str]:
+    """Clone a Docker container with a new name."""
+    try:
+        docker_client = docker_manager.get_client(host_id)
+        if not docker_client:
+            raise Exception(f"Cannot connect to Docker host {host_id}")
+
+        container, _ = resolve_container(docker_client, container_id, container_name)
+        if not container:
+            raise docker.errors.NotFound(f"No such container: {container_id}")
+
+        container.reload()
+        attrs = container.attrs or {}
+        config = attrs.get('Config', {}) or {}
+        host_config = attrs.get('HostConfig', {}) or {}
+
+        image = (container.image.tags[0] if container.image.tags else config.get('Image'))
+        if not image:
+            raise Exception("Source image not available for clone")
+
+        exposed_ports = config.get('ExposedPorts') or {}
+        port_bindings = host_config.get('PortBindings') or None
+
+        new_host_config = docker.types.HostConfig(
+            binds=host_config.get('Binds'),
+            port_bindings=port_bindings,
+            restart_policy=host_config.get('RestartPolicy'),
+            network_mode=host_config.get('NetworkMode'),
+            privileged=host_config.get('Privileged', False),
+            cap_add=host_config.get('CapAdd'),
+            cap_drop=host_config.get('CapDrop'),
+            extra_hosts=host_config.get('ExtraHosts'),
+            devices=host_config.get('Devices')
+        )
+
+        create_kwargs = {
+            'image': image,
+            'name': new_name,
+            'command': config.get('Cmd'),
+            'environment': config.get('Env'),
+            'labels': config.get('Labels'),
+            'entrypoint': config.get('Entrypoint'),
+            'working_dir': config.get('WorkingDir'),
+            'user': config.get('User'),
+            'hostname': config.get('Hostname'),
+            'domainname': config.get('Domainname'),
+            'host_config': new_host_config
+        }
+
+        if exposed_ports:
+            create_kwargs['ports'] = list(exposed_ports.keys())
+
+        new_container = docker_client.api.create_container(**create_kwargs)
+        new_container_id = new_container.get('Id')
+
+        if start_after:
+            docker_client.api.start(new_container_id)
+
+        message = f"Container {container_name} cloned to {new_name}"
+        logger.info(message)
+        log_action(None, container_name, 'clone', 'success', message, host_id)
+        send_discord_notification(container_name, 'clone', 'success', message, None)
+        send_ntfy_notification(container_name, 'clone', 'success', message, None)
+
+        return True, message
+    except Exception as e:
+        message = f"Failed to clone container {container_name}: {str(e)}"
+        logger.error(message)
+        log_action(None, container_name, 'clone', 'error', message, host_id)
+        send_discord_notification(container_name, 'clone', 'error', message, None)
+        send_ntfy_notification(container_name, 'clone', 'error', message, None)
+        return False, message
+
 def pause_container(container_id: str, container_name: str, schedule_id: Optional[int] = None, host_id: int = 1) -> Tuple[bool, str]:
     """
     Pause a Docker container and log the action.
@@ -2540,11 +2639,46 @@ def api_rename_container(container_id):
     if not new_name:
         return jsonify({'error': 'New name is required'}), 400
 
+    is_valid, error_msg = validate_container_name(new_name)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
     is_valid, error_msg = validate_host_id(host_id)
     if not is_valid:
         return jsonify({'error': error_msg}), 400
 
     success, message = rename_container(container_id, container_name, new_name, host_id=host_id)
+    return jsonify({'success': success, 'message': message})
+
+@app.route('/api/container/<container_id>/clone', methods=['POST'])
+@api_key_or_login_required
+def api_clone_container(container_id):
+    """API endpoint to clone a container"""
+    is_valid, error_msg = validate_container_id(container_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        return jsonify({'error': 'API key does not have write permission'}), 403
+
+    data = request.json or {}
+    container_name = sanitize_string(data.get('name', 'unknown'), max_length=255)
+    new_name = sanitize_string(data.get('new_name', ''), max_length=255)
+    start_after = bool(data.get('start_after', True))
+    host_id = data.get('host_id', 1)
+
+    if not new_name:
+        return jsonify({'error': 'New name is required'}), 400
+
+    is_valid, error_msg = validate_container_name(new_name)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    is_valid, error_msg = validate_host_id(host_id)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    success, message = clone_container(container_id, container_name, new_name, start_after=start_after, host_id=host_id)
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/container/<container_id>/check-update', methods=['GET'])

@@ -1174,6 +1174,15 @@
                                 <span class="tooltip-text compact">Rename</span>
                             </span>
                             <span class="tooltip-container">
+                                <button class="icon-btn" onclick="openCloneModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" aria-label="Clone container">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true">
+                                        <rect x="8" y="8" width="12" height="12" rx="2"/>
+                                        <rect x="4" y="4" width="12" height="12" rx="2"/>
+                                    </svg>
+                                </button>
+                                <span class="tooltip-text compact">Clone</span>
+                            </span>
+                            <span class="tooltip-container">
                                 <button class="icon-btn" onclick="openTagModal('{{ container.id }}', '{{ container.name }}', {{ container.host_id }})" aria-label="Manage tags">
                                     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" aria-hidden="true">
                                         <path d="M20 10l-8 8-8-8V4h6z"/>
@@ -1432,6 +1441,33 @@
             <div style="margin-top: 20px;">
                 <button class="btn btn-primary" onclick="submitRename()">Rename</button>
                 <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clone Container Modal -->
+    <div id="cloneModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeCloneModal()">&times;</span>
+                <h3>Clone Container: <span id="cloneContainerName"></span></h3>
+            </div>
+            <input type="hidden" id="cloneContainerId">
+            <input type="hidden" id="cloneHostId">
+            <div class="form-group">
+                <label for="cloneInput">New Name</label>
+                <input type="text" id="cloneInput" placeholder="Enter new container name">
+            </div>
+            <div class="confirm-options">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="cloneStartAfter" checked>
+                    <span class="slider"></span>
+                </label>
+                <span>Start after clone</span>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="submitClone()">Clone</button>
+                <button class="btn btn-secondary" onclick="closeCloneModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -3160,6 +3196,62 @@
             }
         }
 
+        function openCloneModal(containerId, containerName, hostId) {
+            document.getElementById('cloneContainerId').value = containerId;
+            document.getElementById('cloneHostId').value = hostId;
+            document.getElementById('cloneContainerName').textContent = containerName;
+            document.getElementById('cloneInput').value = `${containerName}-copy`;
+            document.getElementById('cloneStartAfter').checked = true;
+            document.getElementById('cloneModal').style.display = 'block';
+        }
+
+        function closeCloneModal() {
+            document.getElementById('cloneModal').style.display = 'none';
+            document.getElementById('cloneInput').value = '';
+            document.getElementById('cloneStartAfter').checked = true;
+        }
+
+        async function submitClone() {
+            const containerId = document.getElementById('cloneContainerId').value;
+            const hostId = parseInt(document.getElementById('cloneHostId').value, 10);
+            const sourceName = document.getElementById('cloneContainerName').textContent;
+            const newName = document.getElementById('cloneInput').value.trim();
+            const startAfter = document.getElementById('cloneStartAfter').checked;
+
+            if (!newName) {
+                showAlert('Enter a new name.', 'error');
+                return;
+            }
+
+            const confirmation = await openConfirmModal({
+                title: 'Clone container',
+                message: `Clone <strong>${sourceName}</strong> to <strong>${newName}</strong>?`,
+                confirmText: 'Clone',
+                confirmClass: 'btn-primary'
+            });
+            if (!confirmation.confirmed) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/container/${containerId}/clone`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    body: JSON.stringify({ name: sourceName, new_name: newName, start_after: startAfter, host_id: hostId })
+                });
+
+                const result = await response.json();
+                showAlert(result.message || 'Clone completed', result.success ? 'success' : 'error');
+
+                if (result.success) {
+                    closeCloneModal();
+                    setTimeout(() => location.reload(), 2000);
+                }
+            } catch (error) {
+                showAlert('Error: ' + error.message, 'error');
+            }
+        }
+
         function populateTagFilter() {
             const tagSelect = document.getElementById('filterTag');
             tagSelect.innerHTML = '<option value="">All Tags</option>';
@@ -3198,6 +3290,7 @@
                     closeWebUIModal();
                     closeRenameModal();
                     closeInspectModal();
+                    closeCloneModal();
                     cancelConfirm();
                     closeKeyboardShortcuts();
                 }
@@ -3238,6 +3331,7 @@
                     closeWebUIModal();
                     closeRenameModal();
                     closeInspectModal();
+                    closeCloneModal();
                     cancelConfirm();
                     closeKeyboardShortcuts();
                     break;
