@@ -30,6 +30,7 @@ from typing import Tuple, Optional, List, Dict, Any
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
 from app.repositories import HostRepository, LogsRepository, SettingsRepository, UpdateStatusRepository
+from app.services.docker_hosts import DockerHostManager
 from app.utils.validators import (
     sanitize_string,
     validate_action,
@@ -526,86 +527,9 @@ def api_key_or_login_required(f):
 
     return decorated_function
 
-# Docker client manager for multi-host support
-class DockerHostManager:
-    """Manages connections to multiple Docker hosts"""
-
-    def __init__(self):
-        self.clients = {}
-        self.last_check = {}
-        self.host_repo = HostRepository(get_db)
-
-    def get_client(self, host_id=1):
-        """Get Docker client for a specific host"""
-        # Check if we have a cached client
-        if host_id in self.clients:
-            return self.clients[host_id]
-
-        # Get host info from database
-        try:
-            host = self.host_repo.get_by_id(host_id)
-            if not host or not host[3]:  # Check if host exists and is enabled
-                logger.warning(f"Host {host_id} not found or disabled")
-                return None
-
-            host_id, host_name, host_url, enabled = host
-
-            # Create Docker client
-            client = docker.DockerClient(base_url=host_url)
-            client.ping()  # Test connection
-
-            # Cache the client
-            self.clients[host_id] = client
-            self.last_check[host_id] = datetime.now()
-
-            # Update last_seen in database
-            self.host_repo.update_last_seen(host_id, datetime.now())
-
-            logger.info(f"Connected to Docker host: {host_name} ({host_url})")
-            return client
-
-        except Exception as e:
-            logger.error(f"Failed to connect to host {host_id}: {e}")
-            # Remove from cache if connection failed
-            if host_id in self.clients:
-                del self.clients[host_id]
-            return None
-
-    def get_all_clients(self):
-        """Get all enabled Docker clients with their host info"""
-        try:
-            hosts = self.host_repo.list_enabled()
-
-            result = []
-            for host_id, host_name, host_url in hosts:
-                client = self.get_client(host_id)
-                if client:
-                    result.append((host_id, host_name, client))
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to get all clients: {e}")
-            return []
-
-    def test_connection(self, host_url):
-        """Test connection to a Docker host"""
-        try:
-            client = docker.DockerClient(base_url=host_url)
-            client.ping()
-            return True, "Connection successful"
-        except Exception as e:
-            return False, str(e)
-
-    def clear_cache(self, host_id=None):
-        """Clear cached client(s)"""
-        if host_id:
-            if host_id in self.clients:
-                del self.clients[host_id]
-        else:
-            self.clients.clear()
-
 # Initialize Docker host manager
-docker_manager = DockerHostManager()
+host_repo = HostRepository(get_db)
+docker_manager = DockerHostManager(host_repo)
 settings_repo = SettingsRepository(get_db)
 logs_repo = LogsRepository(get_db)
 update_status_repo = UpdateStatusRepository(get_db)
