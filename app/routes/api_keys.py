@@ -97,7 +97,7 @@ def create_api_keys_blueprint(
             if not key:
                 return jsonify({'error': 'Key not found'}), 404
 
-            api_key_repo.delete(key_id, current_user.id)
+            api_key_repo.delete_for_user(key_id, current_user.id)
             logger.info(f"API key deleted: {key[2]}... for user {current_user.username}")
             return jsonify({'success': True})
         except Exception as e:

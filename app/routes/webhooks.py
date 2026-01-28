@@ -19,6 +19,7 @@ def create_webhooks_blueprint(
 ):
     """Create webhook routes with injected dependencies."""
     blueprint = Blueprint('webhooks', __name__)
+    from app.utils.validators import sanitize_string as sanitize_string_fn
 
     @blueprint.route('/webhook/<token>', methods=['POST', 'GET'])
     @limiter.limit("30 per minute")
@@ -130,10 +131,10 @@ def create_webhooks_blueprint(
         """Create a new webhook."""
         try:
             data = request.json or {}
-            name = sanitize_string(data.get('name', ''), max_length=100)
-            container_id = sanitize_string(data.get('container_id', ''), max_length=64) or None
+            name = sanitize_string_fn(data.get('name', ''), max_length=100)
+            container_id = sanitize_string_fn(data.get('container_id', ''), max_length=64) or None
             host_id = data.get('host_id')
-            action = sanitize_string(data.get('action', 'restart'), max_length=20)
+            action = sanitize_string_fn(data.get('action', 'restart'), max_length=20)
             locked = 1 if data.get('locked') else 0
 
             if not name:

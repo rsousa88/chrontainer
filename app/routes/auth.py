@@ -60,7 +60,7 @@ def create_auth_blueprint(login_repo, user_class, user_repo, limiter, csrf, vers
         logout_user()
         logger.info(f"User {username} logged out")
         flash('You have been logged out', 'success')
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
 
     @blueprint.route('/user-settings')
     @login_required

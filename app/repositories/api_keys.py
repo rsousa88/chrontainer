@@ -83,11 +83,32 @@ class ApiKeyRepository:
         finally:
             conn.close()
 
+    def get_for_user(self, key_id: int, user_id: int):
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT id, user_id, key_prefix FROM api_keys WHERE id = ? AND user_id = ?',
+                (key_id, user_id),
+            )
+            return cursor.fetchone()
+        finally:
+            conn.close()
+
     def delete(self, key_id: int) -> None:
         conn = self._db_factory()
         try:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM api_keys WHERE id = ?', (key_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def delete_for_user(self, key_id: int, user_id: int) -> None:
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM api_keys WHERE id = ? AND user_id = ?', (key_id, user_id))
             conn.commit()
         finally:
             conn.close()

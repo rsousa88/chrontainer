@@ -32,6 +32,9 @@ def create_hosts_blueprint(
         try:
             stats = host_metrics_service.fetch_host_metrics(host_id)
             return jsonify(stats)
+        except RuntimeError as e:
+            logger.error(f"Failed to get host metrics for {host_id}: {e}")
+            return jsonify({'error': str(e)}), 503
         except Exception as e:
             logger.error(f"Failed to get host metrics for {host_id}: {e}")
             return jsonify({'error': str(e)}), 500

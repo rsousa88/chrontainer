@@ -18,7 +18,7 @@ class WebhookRepository:
                 """
                 SELECT id, name, container_id, host_id, action, enabled, locked
                 FROM webhooks WHERE token = ?
-                """
+                """,
                 (token,),
             )
             return cursor.fetchone()
@@ -34,7 +34,7 @@ class WebhookRepository:
                 UPDATE webhooks
                 SET last_triggered = CURRENT_TIMESTAMP, trigger_count = trigger_count + 1
                 WHERE id = ?
-                """
+                """,
                 (webhook_id,),
             )
             conn.commit()
@@ -74,7 +74,7 @@ class WebhookRepository:
                 """
                 INSERT INTO webhooks (name, token, container_id, host_id, action, locked)
                 VALUES (?, ?, ?, ?, ?, ?)
-                """
+                """,
                 (name, token, container_id, host_id, action, locked),
             )
             webhook_id = cursor.lastrowid

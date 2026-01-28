@@ -458,7 +458,7 @@ def create_app():
     # Login manager
     login_manager = LoginManager()
     login_manager.init_app(app)
-    login_manager.login_view = 'login'
+    login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page.'
 
     # CSRF protection
@@ -720,4 +720,3 @@ if __name__ == '__main__':
     # Run Flask app
     port = Config.PORT
     app.run(host='0.0.0.0', port=port, debug=False)
-
