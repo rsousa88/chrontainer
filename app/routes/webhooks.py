@@ -13,12 +13,7 @@ def create_webhooks_blueprint(
     webhook_repo,
     docker_manager,
     limiter,
-    restart_container,
-    start_container,
-    stop_container,
-    pause_container,
-    unpause_container,
-    update_container,
+    container_service,
     sanitize_string,
     logger,
 ):
@@ -72,12 +67,12 @@ def create_webhooks_blueprint(
             webhook_repo.record_trigger(webhook_id)
 
             action_map = {
-                'restart': restart_container,
-                'start': start_container,
-                'stop': stop_container,
-                'pause': pause_container,
-                'unpause': unpause_container,
-                'update': update_container,
+                'restart': container_service.restart_container,
+                'start': container_service.start_container,
+                'stop': container_service.stop_container,
+                'pause': container_service.pause_container,
+                'unpause': container_service.unpause_container,
+                'update': container_service.update_container,
             }
 
             action_func = action_map.get(action)

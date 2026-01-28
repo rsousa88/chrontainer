@@ -624,12 +624,7 @@ webhooks_blueprint = create_webhooks_blueprint(
     webhook_repo=webhook_repo,
     docker_manager=docker_manager,
     limiter=limiter,
-    restart_container=restart_container,
-    start_container=start_container,
-    stop_container=stop_container,
-    pause_container=pause_container,
-    unpause_container=unpause_container,
-    update_container=update_container,
+    container_service=container_service,
     sanitize_string=sanitize_string,
     logger=logger,
 )
@@ -692,12 +687,7 @@ schedules_blueprint = create_schedules_blueprint(
     api_key_or_login_required=api_key_or_login_required,
     schedule_repo=schedule_repo,
     scheduler=scheduler,
-    restart_container=restart_container,
-    start_container=start_container,
-    stop_container=stop_container,
-    pause_container=pause_container,
-    unpause_container=unpause_container,
-    update_container=update_container,
+    container_service=container_service,
     validate_action=validate_action,
     validate_container_id=validate_container_id,
     validate_container_name=validate_container_name,
@@ -1628,12 +1618,12 @@ def load_schedules():
         schedule_id, host_id, container_id, container_name, action, cron_expr, one_time, run_at = schedule
         try:
             action_map = {
-                'restart': restart_container,
-                'start': start_container,
-                'stop': stop_container,
-                'pause': pause_container,
-                'unpause': unpause_container,
-                'update': update_container
+                'restart': container_service.restart_container,
+                'start': container_service.start_container,
+                'stop': container_service.stop_container,
+                'pause': container_service.pause_container,
+                'unpause': container_service.unpause_container,
+                'update': container_service.update_container,
             }
             action_func = action_map.get(action)
             if not action_func:
