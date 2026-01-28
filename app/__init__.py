@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from app.main import app as _app
-
 
 def create_app():
-    """Return the configured Flask app."""
-    return _app
+    """Application factory."""
+    from app.main import create_app as _create_app
+
+    return _create_app()

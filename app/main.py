@@ -704,3 +704,8 @@ if __name__ == '__main__':
     # Run Flask app
     port = Config.PORT
     app.run(host='0.0.0.0', port=port, debug=False)
+
+
+def create_app():
+    """Return the configured Flask app."""
+    return app
