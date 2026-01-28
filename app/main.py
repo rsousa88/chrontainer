@@ -13,7 +13,7 @@ import hashlib
 import hmac
 import threading
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_login import LoginManager, UserMixin, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_talisman import Talisman
 from flask_limiter import Limiter
@@ -47,6 +47,7 @@ from app.repositories import (
     WebhookRepository,
     UserRepository,
 )
+from app.routes import create_auth_blueprint, create_health_blueprint
 from app.services.docker_hosts import DockerHostManager
 from app.utils.validators import (
     sanitize_string,
@@ -545,6 +546,25 @@ schedule_view_repo = ScheduleViewRepository(get_db)
 host_metrics_repo = HostMetricsRepository(get_db)
 login_repo = LoginRepository(get_db)
 stats_repo = StatsRepository(get_db)
+
+health_blueprint = create_health_blueprint(
+    stats_repo=stats_repo,
+    docker_manager=docker_manager,
+    scheduler=scheduler,
+    db_factory=get_db,
+    version=VERSION,
+)
+app.register_blueprint(health_blueprint)
+
+auth_blueprint = create_auth_blueprint(
+    login_repo=login_repo,
+    user_class=User,
+    limiter=limiter,
+    csrf=csrf,
+    version=VERSION,
+    logger=logger,
+)
+app.register_blueprint(auth_blueprint)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -3657,132 +3677,6 @@ def logs():
     """View logs page"""
     logs = app_log_repo.list_recent(100)
     return render_template('logs.html', logs=logs, version=VERSION)
-
-@app.route('/login', methods=['GET', 'POST'])
-@csrf.exempt  # Login page doesn't have CSRF token yet
-@limiter.limit("10 per minute")  # Stricter rate limit for login to prevent brute force
-def login():
-    """Login page"""
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        username = sanitize_string(request.form.get('username', ''), max_length=50).strip()
-        password = request.form.get('password', '')
-
-        if not username or not password:
-            flash('Please enter both username and password', 'error')
-            return render_template('login.html', version=VERSION)
-
-        # Get user from database
-        try:
-            user_data = login_repo.get_user_for_login(username)
-
-            if user_data and bcrypt.checkpw(password.encode('utf-8'), user_data[2].encode('utf-8')):
-                # Update last login
-                login_repo.update_last_login(user_data[0], datetime.now())
-
-                # Create user object and log in
-                user = User(id=user_data[0], username=user_data[1], role=user_data[3])
-                login_user(user)
-                logger.info(f"User {username} logged in")
-
-                next_page = request.args.get('next')
-                return redirect(next_page) if next_page else redirect(url_for('index'))
-
-            flash('Invalid username or password', 'error')
-            return render_template('login.html', version=VERSION)
-
-        except Exception as e:
-            logger.error(f"Login error: {e}")
-            flash('An error occurred during login', 'error')
-            return render_template('login.html', version=VERSION)
-
-    return render_template('login.html', version=VERSION)
-
-@app.route('/logout')
-@login_required
-def logout():
-    """Logout"""
-    username = current_user.username
-    logout_user()
-    logger.info(f"User {username} logged out")
-    flash('You have been logged out', 'success')
-    return redirect(url_for('login'))
-
-@app.route('/user-settings')
-@login_required
-def user_settings_page():
-    """Redirect to unified settings page (account tab)"""
-    return redirect('/settings#account')
-
-@app.route('/health')
-def health_check():
-    """Health check endpoint for container orchestration and monitoring"""
-    health = {
-        'status': 'healthy',
-        'version': VERSION,
-        'checks': {}
-    }
-
-    # Check database connectivity
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT 1')
-        conn.close()
-        health['checks']['database'] = {'status': 'ok'}
-    except Exception as e:
-        health['status'] = 'unhealthy'
-        health['checks']['database'] = {'status': 'error', 'message': str(e)}
-
-    # Check scheduler status
-    try:
-        if scheduler.running:
-            health['checks']['scheduler'] = {'status': 'ok', 'jobs': len(scheduler.get_jobs())}
-        else:
-            health['status'] = 'unhealthy'
-            health['checks']['scheduler'] = {'status': 'error', 'message': 'Scheduler not running'}
-    except Exception as e:
-        health['status'] = 'degraded'
-        health['checks']['scheduler'] = {'status': 'error', 'message': str(e)}
-
-    # Check at least one Docker host is reachable
-    try:
-        clients = docker_manager.get_all_clients()
-        if clients:
-            health['checks']['docker'] = {'status': 'ok', 'hosts_connected': len(clients)}
-        else:
-            health['status'] = 'degraded'
-            health['checks']['docker'] = {'status': 'warning', 'message': 'No Docker hosts connected'}
-    except Exception as e:
-        health['status'] = 'degraded'
-        health['checks']['docker'] = {'status': 'error', 'message': str(e)}
-
-    status_code = 200 if health['status'] == 'healthy' else 503 if health['status'] == 'unhealthy' else 200
-    return jsonify(health), status_code
-
-
-@app.route('/api/version')
-def get_version():
-    """Get application version and build info"""
-    import sys
-
-    # Count schedules and hosts
-    try:
-        active_schedules, active_hosts = stats_repo.get_active_counts()
-    except Exception:
-        active_schedules = 0
-        active_hosts = 0
-
-    return jsonify({
-        'version': VERSION,
-        'python_version': sys.version.split()[0],
-        'api_version': 'v1',
-        'active_schedules': active_schedules,
-        'active_hosts': active_hosts
-    })
-
 
 @app.route('/api/user/change-password', methods=['POST'])
 @login_required

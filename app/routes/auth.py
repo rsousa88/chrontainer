@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+import bcrypt
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required, login_user, logout_user
+
+from app.utils.validators import sanitize_string
+
+
+def create_auth_blueprint(login_repo, user_class, limiter, csrf, version: str, logger):
+    """Create authentication routes with injected dependencies."""
+    blueprint = Blueprint('auth', __name__)
+
+    @blueprint.route('/login', methods=['GET', 'POST'])
+    @csrf.exempt
+    @limiter.limit('10 per minute')
+    def login():
+        """Login page."""
+        if current_user.is_authenticated:
+            return redirect(url_for('index'))
+
+        if request.method == 'POST':
+            username = sanitize_string(request.form.get('username', ''), max_length=50).strip()
+            password = request.form.get('password', '')
+
+            if not username or not password:
+                flash('Please enter both username and password', 'error')
+                return render_template('login.html', version=version)
+
+            try:
+                user_data = login_repo.get_user_for_login(username)
+
+                if user_data and bcrypt.checkpw(password.encode('utf-8'), user_data[2].encode('utf-8')):
+                    login_repo.update_last_login(user_data[0], datetime.now())
+
+                    user = user_class(id=user_data[0], username=user_data[1], role=user_data[3])
+                    login_user(user)
+                    logger.info(f"User {username} logged in")
+
+                    next_page = request.args.get('next')
+                    return redirect(next_page) if next_page else redirect(url_for('index'))
+
+                flash('Invalid username or password', 'error')
+                return render_template('login.html', version=version)
+
+            except Exception as e:
+                logger.error(f"Login error: {e}")
+                flash('An error occurred during login', 'error')
+                return render_template('login.html', version=version)
+
+        return render_template('login.html', version=version)
+
+    @blueprint.route('/logout')
+    @login_required
+    def logout():
+        """Logout."""
+        username = current_user.username
+        logout_user()
+        logger.info(f"User {username} logged out")
+        flash('You have been logged out', 'success')
+        return redirect(url_for('login'))
+
+    @blueprint.route('/user-settings')
+    @login_required
+    def user_settings_page():
+        """Redirect to unified settings page (account tab)."""
+        return redirect('/settings#account')
+
+    return blueprint
