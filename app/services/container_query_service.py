@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import threading
-import time
 from typing import Any, Dict, Optional
 
 
@@ -20,7 +18,6 @@ class ContainerQueryService:
         get_contrast_text_color,
         strip_image_tag,
         get_image_links,
-        cache_ttl_seconds: int,
     ):
         self._docker_manager = docker_manager
         self._host_repo = host_repo
@@ -31,22 +28,7 @@ class ContainerQueryService:
         self._get_contrast_text_color = get_contrast_text_color
         self._strip_image_tag = strip_image_tag
         self._get_image_links = get_image_links
-        self._cache_ttl_seconds = cache_ttl_seconds
-        self._cache = {}
-        self._cache_lock = threading.RLock()
-
-    def get_cached_container_stats(self, cache_key):
-        with self._cache_lock:
-            entry = self._cache.get(cache_key)
-            if not entry:
-                return None
-            if time.time() - entry['timestamp'] > self._cache_ttl_seconds:
-                return None
-            return entry['data']
-
-    def set_cached_container_stats(self, cache_key, data):
-        with self._cache_lock:
-            self._cache[cache_key] = {'timestamp': time.time(), 'data': data}
+        # no caching needed for container listing
 
     def _get_host_color_maps(self):
         host_color_map = {}

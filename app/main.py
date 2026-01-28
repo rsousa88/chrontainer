@@ -61,6 +61,7 @@ from app.routes import (
 )
 from app.services.container_query_service import ContainerQueryService
 from app.services.container_service import ContainerService
+from app.services.container_stats_service import ContainerStatsService
 from app.services.disk_usage_service import DiskUsageService
 from app.services.host_metrics_service import HostMetricsService
 from app.services.docker_hosts import DockerHostManager
@@ -450,6 +451,8 @@ container_query_service = ContainerQueryService(
     get_contrast_text_color=get_contrast_text_color,
     strip_image_tag=strip_image_tag,
     get_image_links=get_image_links,
+)
+container_stats_service = ContainerStatsService(
     cache_ttl_seconds=CONTAINER_STATS_CACHE_TTL_SECONDS,
 )
 image_service = ImageService(
@@ -557,8 +560,8 @@ containers_blueprint = create_containers_blueprint(
     api_key_or_login_required=api_key_or_login_required,
     docker_manager=docker_manager,
     fetch_all_containers=container_query_service.fetch_all_containers,
-    get_cached_container_stats=container_query_service.get_cached_container_stats,
-    set_cached_container_stats=container_query_service.set_cached_container_stats,
+    get_cached_container_stats=container_stats_service.get_cached_container_stats,
+    set_cached_container_stats=container_stats_service.set_cached_container_stats,
     logger=logger,
     container_service=container_service,
     update_service=update_service,
