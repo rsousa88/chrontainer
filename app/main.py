@@ -1567,8 +1567,31 @@ def delete_container(container_id: str, container_name: str, remove_volumes: boo
 
     Removes the specified container on the given Docker host. Optionally removes
     associated volumes. If the container is running and force is False, it will
-    be stopped before removal. Any schedules linked to the container are disabled
-    to prevent future failures.
+    be stopped before removal. Any schedules linked to the container are automatically
+    disabled to prevent future failures.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Human-readable container name for logging
+        remove_volumes: If True, remove associated volumes (default: False)
+        force: If True, force removal without stopping first (default: False)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if deletion successful, False otherwise
+        - message: Description of the result, including number of schedules disabled
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Warning:
+        This is a destructive operation. The container and optionally its volumes
+        will be permanently removed. Any schedules associated with this container
+        will be disabled automatically.
+
+    Note:
+        Running containers will be stopped first unless force=True is specified.
     """
     try:
         docker_client = docker_manager.get_client(host_id)
@@ -1608,8 +1631,37 @@ def delete_container(container_id: str, container_name: str, remove_volumes: boo
         return False, message
 
 def rename_container(container_id: str, container_name: str, new_name: str, host_id: int = 1) -> Tuple[bool, str]:
-    """Rename a Docker container and update related schedules."""
+    """
+    Rename a Docker container and update related schedules.
+
+    Renames the specified container on the given Docker host. Automatically updates
+    all schedules that reference this container (by ID or name) to use the new name.
+    Logs the action to the database and sends notifications via configured channels.
+
+    Args:
+        container_id: Docker container ID (12 or 64 hex characters)
+        container_name: Current container name
+        new_name: New container name to assign
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if rename successful, False otherwise
+        - message: Description of the result, including number of schedules updated
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        This operation updates all schedules that reference the container, ensuring
+        scheduled actions continue to work after the rename.
+    """
     try:
+        # Validate new container name
+        is_valid, error_msg = validate_container_name(new_name)
+        if not is_valid:
+            return False, error_msg
+
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
             raise Exception(f"Cannot connect to Docker host {host_id}")
@@ -1640,8 +1692,50 @@ def rename_container(container_id: str, container_name: str, new_name: str, host
         return False, message
 
 def clone_container(container_id: str, container_name: str, new_name: str, start_after: bool = True, host_id: int = 1) -> Tuple[bool, str]:
-    """Clone a Docker container with a new name."""
+    """
+    Clone a Docker container with a new name and identical configuration.
+
+    Creates a new container on the given Docker host by copying the configuration
+    of an existing container. Preserves all settings including:
+    - Image and tag
+    - Environment variables
+    - Volume binds and mounts
+    - Port bindings and exposed ports
+    - Restart policy
+    - Network mode
+    - Privileges and capabilities
+    - Labels and metadata
+    - Working directory and user
+
+    The new container is created with the same configuration but a different name.
+    Optionally starts the new container immediately after creation.
+
+    Args:
+        container_id: Source container ID (12 or 64 hex characters)
+        container_name: Source container name for logging
+        new_name: Name for the cloned container
+        start_after: If True, start the cloned container after creation (default: True)
+        host_id: Docker host ID from hosts table (default: 1 for local)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if clone successful, False otherwise
+        - message: Description of the result
+
+    Raises:
+        None - All exceptions are caught and returned as (False, error_message)
+
+    Note:
+        Volume data is NOT copied - the cloned container will have empty volumes or
+        share the same volume mounts as the source container depending on volume type.
+        The source container does not need to be running to be cloned.
+    """
     try:
+        # Validate new container name
+        is_valid, error_msg = validate_container_name(new_name)
+        if not is_valid:
+            return False, error_msg
+
         docker_client = docker_manager.get_client(host_id)
         if not docker_client:
             raise Exception(f"Cannot connect to Docker host {host_id}")
