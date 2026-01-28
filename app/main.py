@@ -30,6 +30,7 @@ from typing import Tuple, Optional, List, Dict, Any
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
 from app.repositories import (
+    ApiKeyRepository,
     ContainerTagRepository,
     HostRepository,
     LogsRepository,
@@ -489,41 +490,28 @@ def api_key_or_login_required(f):
                 return jsonify({'error': 'Invalid API key format'}), 401
 
             key_hash = hash_api_key(api_key)
-            conn = get_db()
-            try:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT ak.id, ak.user_id, ak.permissions, ak.expires_at, u.role
-                    FROM api_keys ak
-                    JOIN users u ON ak.user_id = u.id
-                    WHERE ak.key_hash = ?
-                ''', (key_hash,))
-                result = cursor.fetchone()
+            result = api_key_repo.get_auth_record(key_hash)
+            if not result:
+                return jsonify({'error': 'Invalid API key'}), 401
 
-                if not result:
-                    return jsonify({'error': 'Invalid API key'}), 401
+            key_id, user_id, permissions, expires_at, user_role = result
 
-                key_id, user_id, permissions, expires_at, user_role = result
+            if expires_at:
+                try:
+                    expires_dt = datetime.fromisoformat(expires_at)
+                    if expires_dt < datetime.now():
+                        return jsonify({'error': 'API key expired'}), 401
+                except ValueError as e:
+                    logger.error(f"Invalid datetime format in API key {key_id} expiry: {expires_at} - {e}")
+                    return jsonify({'error': 'Invalid API key expiry'}), 401
 
-                if expires_at:
-                    try:
-                        expires_dt = datetime.fromisoformat(expires_at)
-                        if expires_dt < datetime.now():
-                            return jsonify({'error': 'API key expired'}), 401
-                    except ValueError as e:
-                        logger.error(f"Invalid datetime format in API key {key_id} expiry: {expires_at} - {e}")
-                        return jsonify({'error': 'Invalid API key expiry'}), 401
+            api_key_repo.touch_last_used(key_id)
 
-                cursor.execute('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?', (key_id,))
-                conn.commit()
-
-                request.api_key_auth = True
-                request.api_key_permissions = permissions
-                request.api_key_user_id = user_id
-                request.api_key_user_role = user_role
-                return f(*args, **kwargs)
-            finally:
-                conn.close()
+            request.api_key_auth = True
+            request.api_key_permissions = permissions
+            request.api_key_user_id = user_id
+            request.api_key_user_role = user_role
+            return f(*args, **kwargs)
 
         if current_user.is_authenticated:
             request.api_key_auth = False
@@ -544,6 +532,7 @@ tag_repo = TagRepository(get_db)
 container_tag_repo = ContainerTagRepository(get_db)
 webui_url_repo = WebuiUrlRepository(get_db)
 user_repo = UserRepository(get_db)
+api_key_repo = ApiKeyRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -2828,15 +2817,7 @@ def test_discord_webhook():
 def list_api_keys():
     """List all API keys for current user"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, name, key_prefix, permissions, last_used, expires_at, created_at
-            FROM api_keys WHERE user_id = ?
-            ORDER BY created_at DESC
-        ''', (current_user.id,))
-        keys = cursor.fetchall()
-        conn.close()
+        keys = api_key_repo.list_for_user(current_user.id)
 
         return jsonify([{
             'id': k[0],
@@ -2880,15 +2861,14 @@ def create_api_key():
             except (TypeError, ValueError):
                 return jsonify({'error': 'Invalid expires_days value'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO api_keys (user_id, name, key_hash, key_prefix, permissions, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (current_user.id, name, key_hash, key_prefix, permissions, expires_at))
-        key_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+        key_id = api_key_repo.create(
+            user_id=current_user.id,
+            name=name,
+            key_hash=key_hash,
+            key_prefix=key_prefix,
+            permissions=permissions,
+            expires_at=expires_at,
+        )
 
         logger.info(f"API key created: {key_prefix}... for user {current_user.username}")
 
@@ -2911,22 +2891,14 @@ def create_api_key():
 def delete_api_key(key_id):
     """Delete an API key"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT user_id FROM api_keys WHERE id = ?', (key_id,))
-        result = cursor.fetchone()
-
-        if not result:
-            conn.close()
+        key_owner_id = api_key_repo.get_user_id(key_id)
+        if key_owner_id is None:
             return jsonify({'error': 'API key not found'}), 404
 
-        if result[0] != current_user.id and current_user.role != 'admin':
-            conn.close()
+        if key_owner_id != current_user.id and current_user.role != 'admin':
             return jsonify({'error': 'Not authorized to delete this key'}), 403
 
-        cursor.execute('DELETE FROM api_keys WHERE id = ?', (key_id,))
-        conn.commit()
-        conn.close()
+        api_key_repo.delete(key_id)
 
         logger.info(f"API key {key_id} deleted by user {current_user.username}")
         return jsonify({'success': True})
