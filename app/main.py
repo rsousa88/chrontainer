@@ -29,7 +29,7 @@ from typing import Tuple, Optional, List, Dict, Any
 
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
-from app.repositories import HostRepository, LogsRepository, SettingsRepository, UpdateStatusRepository
+from app.repositories import HostRepository, LogsRepository, ScheduleRepository, SettingsRepository, UpdateStatusRepository
 from app.services.docker_hosts import DockerHostManager
 from app.utils.validators import (
     sanitize_string,
@@ -533,6 +533,7 @@ docker_manager = DockerHostManager(host_repo)
 settings_repo = SettingsRepository(get_db)
 logs_repo = LogsRepository(get_db)
 update_status_repo = UpdateStatusRepository(get_db)
+schedule_repo = ScheduleRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -726,15 +727,7 @@ def update_container(container_id: str, container_name: str, schedule_id: Option
         send_ntfy_notification(container_name, 'update', 'success', message, schedule_id)
 
         # Update last_run in schedules
-        if schedule_id:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                'UPDATE schedules SET last_run = ? WHERE id = ?',
-                (datetime.now(), schedule_id)
-            )
-            conn.commit()
-            conn.close()
+        update_schedule_last_run(schedule_id)
 
         return True, message
 
@@ -878,15 +871,7 @@ def restart_container(container_id: str, container_name: str, schedule_id: Optio
         send_ntfy_notification(container_name, 'restart', 'success', message, schedule_id)
 
         # Update last_run in schedules
-        if schedule_id:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                'UPDATE schedules SET last_run = ? WHERE id = ?',
-                (datetime.now(), schedule_id)
-            )
-            conn.commit()
-            conn.close()
+        update_schedule_last_run(schedule_id)
 
         return True, message
     except Exception as e:
@@ -941,15 +926,7 @@ def start_container(container_id: str, container_name: str, schedule_id: Optiona
         send_ntfy_notification(container_name, 'start', 'success', message, schedule_id)
 
         # Update last_run in schedules
-        if schedule_id:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                'UPDATE schedules SET last_run = ? WHERE id = ?',
-                (datetime.now(), schedule_id)
-            )
-            conn.commit()
-            conn.close()
+        update_schedule_last_run(schedule_id)
 
         return True, message
     except Exception as e:
@@ -1004,15 +981,7 @@ def stop_container(container_id: str, container_name: str, schedule_id: Optional
         send_ntfy_notification(container_name, 'stop', 'success', message, schedule_id)
 
         # Update last_run in schedules
-        if schedule_id:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                'UPDATE schedules SET last_run = ? WHERE id = ?',
-                (datetime.now(), schedule_id)
-            )
-            conn.commit()
-            conn.close()
+        update_schedule_last_run(schedule_id)
 
         return True, message
     except Exception as e:
@@ -1312,15 +1281,7 @@ def pause_container(container_id: str, container_name: str, schedule_id: Optiona
         send_ntfy_notification(container_name, 'pause', 'success', message, schedule_id)
 
         # Update last_run in schedules
-        if schedule_id:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                'UPDATE schedules SET last_run = ? WHERE id = ?',
-                (datetime.now(), schedule_id)
-            )
-            conn.commit()
-            conn.close()
+        update_schedule_last_run(schedule_id)
 
         return True, message
     except Exception as e:
@@ -1375,15 +1336,7 @@ def unpause_container(container_id: str, container_name: str, schedule_id: Optio
         send_ntfy_notification(container_name, 'unpause', 'success', message, schedule_id)
 
         # Update last_run in schedules
-        if schedule_id:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                'UPDATE schedules SET last_run = ? WHERE id = ?',
-                (datetime.now(), schedule_id)
-            )
-            conn.commit()
-            conn.close()
+        update_schedule_last_run(schedule_id)
 
         return True, message
     except Exception as e:
@@ -1407,6 +1360,15 @@ def log_action(schedule_id: Optional[int], container_name: str, action: str, sta
         )
     except Exception as e:
         logger.error(f"Failed to log action: {e}")
+
+
+def update_schedule_last_run(schedule_id: Optional[int]) -> None:
+    if not schedule_id:
+        return
+    try:
+        schedule_repo.update_last_run(schedule_id, datetime.now())
+    except Exception as e:
+        logger.error(f"Failed to update schedule {schedule_id} last_run: {e}")
 
 def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
     """Get a setting value from the database"""
@@ -1510,11 +1472,7 @@ def send_ntfy_notification(container_name: str, action: str, status: str, messag
 
 def load_schedules():
     """Load all enabled schedules from database and add to scheduler"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, host_id, container_id, container_name, action, cron_expression, one_time, run_at FROM schedules WHERE enabled = 1')
-    schedules = cursor.fetchall()
-    conn.close()
+    schedules = schedule_repo.list_enabled()
 
     for schedule in schedules:
         schedule_id, host_id, container_id, container_name, action, cron_expr, one_time, run_at = schedule
@@ -1545,11 +1503,7 @@ def load_schedules():
                 def one_time_action(cid, cname, sid, hid, func=action_func):
                     func(cid, cname, sid, hid)
                     try:
-                        conn = get_db()
-                        cursor = conn.cursor()
-                        cursor.execute('DELETE FROM schedules WHERE id = ?', (sid,))
-                        conn.commit()
-                        conn.close()
+                        schedule_repo.delete(sid)
                     except Exception as e:
                         logger.error(f"Failed to delete one-time schedule {sid}: {e}")
 
@@ -2685,11 +2639,7 @@ def delete_schedule(schedule_id):
             pass  # Job might not exist in scheduler
         
         # Remove from database
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM schedules WHERE id = ?', (schedule_id,))
-        conn.commit()
-        conn.close()
+        schedule_repo.delete(schedule_id)
         
         logger.info(f"Deleted schedule {schedule_id}")
         return jsonify({'success': True})
@@ -2704,10 +2654,7 @@ def toggle_schedule(schedule_id):
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT enabled, host_id, container_id, container_name, action, cron_expression, one_time, run_at FROM schedules WHERE id = ?', (schedule_id,))
-        result = cursor.fetchone()
+        result = schedule_repo.get_by_id(schedule_id)
 
         if not result:
             return jsonify({'error': 'Schedule not found'}), 404
@@ -2715,9 +2662,7 @@ def toggle_schedule(schedule_id):
         enabled, host_id, container_id, container_name, action, cron_expression, one_time, run_at = result
         new_enabled = 0 if enabled else 1
 
-        cursor.execute('UPDATE schedules SET enabled = ? WHERE id = ?', (new_enabled, schedule_id))
-        conn.commit()
-        conn.close()
+        schedule_repo.set_enabled(schedule_id, new_enabled)
 
         # Update scheduler
         if new_enabled:
@@ -2745,11 +2690,7 @@ def toggle_schedule(schedule_id):
                 def one_time_action(cid, cname, sid, hid, func=action_func):
                     func(cid, cname, sid, hid)
                     try:
-                        conn = get_db()
-                        cursor = conn.cursor()
-                        cursor.execute('DELETE FROM schedules WHERE id = ?', (sid,))
-                        conn.commit()
-                        conn.close()
+                        schedule_repo.delete(sid)
                     except Exception as e:
                         logger.error(f"Failed to delete one-time schedule {sid}: {e}")
 
@@ -3686,16 +3627,13 @@ def delete_host(host_id):
         if host_id == 1:
             return jsonify({'error': 'Cannot delete the local Docker host (ID: 1). This host is required for Chrontainer to function.'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-
         # Check if host has any schedules
-        cursor.execute('SELECT COUNT(*) FROM schedules WHERE host_id = ?', (host_id,))
-        count = cursor.fetchone()[0]
+        count = schedule_repo.count_by_host(host_id)
         if count > 0:
-            conn.close()
             return jsonify({'error': f'Cannot delete host with {count} active schedule(s). Please delete or move the schedules first.'}), 400
 
+        conn = get_db()
+        cursor = conn.cursor()
         cursor.execute('DELETE FROM hosts WHERE id = ?', (host_id,))
         conn.commit()
         conn.close()
