@@ -29,7 +29,7 @@ from typing import Tuple, Optional, List, Dict, Any
 
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
-from app.repositories import HostRepository, SettingsRepository
+from app.repositories import HostRepository, LogsRepository, SettingsRepository
 from app.utils.validators import (
     sanitize_string,
     validate_action,
@@ -622,6 +622,7 @@ class DockerHostManager:
 # Initialize Docker host manager
 docker_manager = DockerHostManager()
 settings_repo = SettingsRepository(get_db)
+logs_repo = LogsRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -1486,14 +1487,14 @@ def unpause_container(container_id: str, container_name: str, schedule_id: Optio
 def log_action(schedule_id: Optional[int], container_name: str, action: str, status: str, message: str, host_id: int = 1) -> None:
     """Log an action to the database"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO logs (schedule_id, host_id, container_name, action, status, message) VALUES (?, ?, ?, ?, ?, ?)',
-            (schedule_id, host_id, container_name, action, status, message)
+        logs_repo.insert_action_log(
+            schedule_id=schedule_id,
+            container_name=container_name,
+            action=action,
+            status=status,
+            message=message,
+            host_id=host_id,
         )
-        conn.commit()
-        conn.close()
     except Exception as e:
         logger.error(f"Failed to log action: {e}")
 
