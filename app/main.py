@@ -61,7 +61,10 @@ from app.routes import (
     create_tags_blueprint,
     create_webhooks_blueprint,
 )
+from app.services.container_service import ContainerService
 from app.services.docker_hosts import DockerHostManager
+from app.services.docker_service import DockerService
+from app.services.notification_service import NotificationService
 from app.utils.validators import (
     sanitize_string,
     validate_action,
@@ -559,6 +562,16 @@ schedule_view_repo = ScheduleViewRepository(get_db)
 host_metrics_repo = HostMetricsRepository(get_db)
 login_repo = LoginRepository(get_db)
 stats_repo = StatsRepository(get_db)
+docker_service = DockerService(docker_manager)
+notification_service = NotificationService(settings_repo)
+container_service = ContainerService(
+    docker_service=docker_service,
+    logs_repo=logs_repo,
+    schedule_repo=schedule_repo,
+    notification_service=notification_service,
+    container_tag_repo=container_tag_repo,
+    webui_url_repo=webui_url_repo,
+)
 
 health_blueprint = create_health_blueprint(
     stats_repo=stats_repo,
@@ -661,15 +674,7 @@ containers_blueprint = create_containers_blueprint(
     get_cached_container_stats=get_cached_container_stats,
     set_cached_container_stats=set_cached_container_stats,
     logger=logger,
-    restart_container=restart_container,
-    start_container=start_container,
-    stop_container=stop_container,
-    pause_container=pause_container,
-    unpause_container=unpause_container,
-    update_container=update_container,
-    delete_container=delete_container,
-    rename_container=rename_container,
-    clone_container=clone_container,
+    container_service=container_service,
     check_for_update=check_for_update,
     write_update_status=write_update_status,
     validate_container_id=validate_container_id,

@@ -15,15 +15,7 @@ def create_containers_blueprint(
     get_cached_container_stats,
     set_cached_container_stats,
     logger,
-    restart_container,
-    start_container,
-    stop_container,
-    pause_container,
-    unpause_container,
-    update_container,
-    delete_container,
-    rename_container,
-    clone_container,
+    container_service,
     check_for_update,
     write_update_status,
     validate_container_id,
@@ -79,7 +71,8 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = restart_container(container_id, container_name, host_id=host_id)
+        result = container_service.restart_container(container_id, container_name, host_id=host_id)
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/start', methods=['POST'])
@@ -101,7 +94,8 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = start_container(container_id, container_name, host_id=host_id)
+        result = container_service.start_container(container_id, container_name, host_id=host_id)
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/stop', methods=['POST'])
@@ -123,7 +117,8 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = stop_container(container_id, container_name, host_id=host_id)
+        result = container_service.stop_container(container_id, container_name, host_id=host_id)
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/pause', methods=['POST'])
@@ -145,7 +140,8 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = pause_container(container_id, container_name, host_id=host_id)
+        result = container_service.pause_container(container_id, container_name, host_id=host_id)
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/unpause', methods=['POST'])
@@ -167,7 +163,8 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = unpause_container(container_id, container_name, host_id=host_id)
+        result = container_service.unpause_container(container_id, container_name, host_id=host_id)
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/delete', methods=['POST'])
@@ -191,13 +188,14 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = delete_container(
+        result = container_service.delete_container(
             container_id,
             container_name,
             remove_volumes=remove_volumes,
             force=force,
             host_id=host_id,
         )
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/rename', methods=['POST'])
@@ -227,7 +225,8 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = rename_container(container_id, container_name, new_name, host_id=host_id)
+        result = container_service.rename_container(container_id, container_name, new_name, host_id=host_id)
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/clone', methods=['POST'])
@@ -258,13 +257,14 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        success, message = clone_container(
+        result = container_service.clone_container(
             container_id,
             container_name,
             new_name,
             start_after=start_after,
             host_id=host_id,
         )
+        success, message = result.success, result.message
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/check-update', methods=['GET'])
@@ -377,7 +377,8 @@ def create_containers_blueprint(
             return jsonify({'error': error_msg}), 400
 
         try:
-            success, message = update_container(container_id, container_name, host_id)
+            result = container_service.update_container(container_id, container_name, host_id=host_id)
+            success, message = result.success, result.message
             return jsonify({'success': success, 'message': message})
 
         except Exception as e:
