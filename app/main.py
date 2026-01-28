@@ -29,7 +29,14 @@ from typing import Tuple, Optional, List, Dict, Any
 
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
-from app.repositories import HostRepository, LogsRepository, ScheduleRepository, SettingsRepository, UpdateStatusRepository
+from app.repositories import (
+    HostRepository,
+    LogsRepository,
+    ScheduleRepository,
+    SettingsRepository,
+    TagRepository,
+    UpdateStatusRepository,
+)
 from app.services.docker_hosts import DockerHostManager
 from app.utils.validators import (
     sanitize_string,
@@ -534,6 +541,7 @@ settings_repo = SettingsRepository(get_db)
 logs_repo = LogsRepository(get_db)
 update_status_repo = UpdateStatusRepository(get_db)
 schedule_repo = ScheduleRepository(get_db)
+tag_repo = TagRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -3692,11 +3700,10 @@ def test_host_connection(host_id):
 def get_tags():
     """Get all tags"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, name, color FROM tags ORDER BY name')
-        tags = [{'id': row[0], 'name': row[1], 'color': row[2]} for row in cursor.fetchall()]
-        conn.close()
+        tags = [
+            {'id': row[0], 'name': row[1], 'color': row[2]}
+            for row in tag_repo.list_all()
+        ]
         return jsonify(tags)
     except Exception as e:
         logger.error(f"Failed to get tags: {e}")
@@ -3716,12 +3723,7 @@ def create_tag():
         if not name:
             return jsonify({'error': 'Tag name is required'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO tags (name, color) VALUES (?, ?)', (name, color))
-        tag_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+        tag_id = tag_repo.create(name, color)
 
         return jsonify({'success': True, 'id': tag_id, 'name': name, 'color': color})
     except sqlite3.IntegrityError:
@@ -3737,11 +3739,7 @@ def delete_tag(tag_id):
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM tags WHERE id = ?', (tag_id,))
-        conn.commit()
-        conn.close()
+        tag_repo.delete(tag_id)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to delete tag: {e}")
