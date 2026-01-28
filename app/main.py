@@ -4,14 +4,13 @@ Main Flask application
 """
 import os
 import time
-import concurrent.futures
 import sqlite3
 import bcrypt
 import secrets
 import hashlib
 import hmac
 import threading
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from flask import Flask, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_required, current_user
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_talisman import Talisman
@@ -19,12 +18,12 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 from functools import wraps
 from dotenv import load_dotenv
 import re
-from typing import Tuple, Optional, List, Dict, Any
+from typing import Tuple, Optional
 
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
