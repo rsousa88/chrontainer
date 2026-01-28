@@ -27,6 +27,19 @@ from dotenv import load_dotenv
 import re
 from typing import Tuple, Optional, List, Dict, Any
 
+from app.utils.validators import (
+    sanitize_string,
+    validate_action,
+    validate_color,
+    validate_container_id,
+    validate_container_name,
+    validate_cron_expression,
+    validate_host_id,
+    validate_required_fields,
+    validate_url,
+    validate_webhook_url,
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -152,151 +165,6 @@ def write_update_status(container_id, host_id, payload):
         logger.warning("Failed to persist update status for %s/%s: %s", host_id, container_id, error)
 
 
-# ============================================================================
-# Input Validation Functions
-# ============================================================================
-
-def validate_container_id(container_id: str) -> Tuple[bool, str]:
-    """
-    Validate Docker container ID format.
-
-    Args:
-        container_id: Container ID to validate
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not container_id:
-        return False, "Container ID is required"
-
-    if not isinstance(container_id, str):
-        return False, "Container ID must be a string"
-
-    # Docker container IDs are 64 hex chars (full) or 12 hex chars (short)
-    if not re.match(r'^[a-f0-9]{12}$|^[a-f0-9]{64}$', container_id.lower()):
-        return False, "Container ID must be 12 or 64 hexadecimal characters"
-
-    return True, ""
-
-
-def validate_host_id(host_id: Any) -> Tuple[bool, str]:
-    """
-    Validate Docker host ID.
-
-    Args:
-        host_id: Host ID to validate
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if host_id is None:
-        return False, "Host ID is required"
-
-    try:
-        host_id_int = int(host_id)
-        if host_id_int < 1:
-            return False, "Host ID must be a positive integer"
-        return True, ""
-    except (ValueError, TypeError):
-        return False, "Host ID must be a valid integer"
-
-
-def validate_cron_expression(expression: str) -> Tuple[bool, str]:
-    """
-    Validate cron expression format.
-
-    Args:
-        expression: Cron expression to validate
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not expression:
-        return False, "Cron expression is required"
-
-    if not isinstance(expression, str):
-        return False, "Cron expression must be a string"
-
-    # Try to create a CronTrigger to validate the expression
-    try:
-        CronTrigger.from_crontab(expression)
-        return True, ""
-    except Exception as e:
-        return False, f"Invalid cron expression: {str(e)}"
-
-
-def validate_action(action: str) -> Tuple[bool, str]:
-    """
-    Validate container action type.
-
-    Args:
-        action: Action to validate
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    valid_actions = ['restart', 'start', 'stop', 'pause', 'unpause', 'update']
-
-    if not action:
-        return False, "Action is required"
-
-    if not isinstance(action, str):
-        return False, "Action must be a string"
-
-    if action.lower() not in valid_actions:
-        return False, f"Action must be one of: {', '.join(valid_actions)}"
-
-    return True, ""
-
-
-def validate_container_name(name: str) -> Tuple[bool, str]:
-    """
-    Validate a container name.
-
-    Args:
-        name: Container name to validate
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not name:
-        return False, "Container name is required"
-
-    if not isinstance(name, str):
-        return False, "Container name must be a string"
-
-    if len(name) > 255:
-        return False, "Container name is too long"
-
-    # Docker allows [a-zA-Z0-9][a-zA-Z0-9_.-]+, starting with alphanumeric
-    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]+$', name):
-        return False, "Container name must start with alphanumeric and use only letters, numbers, '.', '_' or '-'"
-
-    return True, ""
-
-
-def validate_required_fields(data: Dict, required_fields: List[str]) -> Tuple[bool, str]:
-    """
-    Validate that required fields are present in a dictionary.
-
-    Args:
-        data: Dictionary to validate
-        required_fields: List of required field names
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not isinstance(data, dict):
-        return False, "Request body must be a JSON object"
-
-    missing_fields = [field for field in required_fields if field not in data]
-
-    if missing_fields:
-        return False, f"Missing required fields: {', '.join(missing_fields)}"
-
-    return True, ""
-
-
 def load_update_status_map():
     try:
         conn = get_db()
@@ -403,13 +271,6 @@ def get_image_links(image_name):
 
 HOST_DEFAULT_COLOR = '#e8f4f8'
 UPDATE_CHECK_CRON_DEFAULT = '*/30 * * * *'
-
-def validate_color(color):
-    if not color:
-        return False, 'Color is required'
-    if not re.match(r'^#[0-9a-fA-F]{6}$', color):
-        return False, 'Color must be a hex value like #1ea7e1'
-    return True, None
 
 def get_contrast_text_color(color, default='#2c3e50'):
     if not color or not re.match(r'^#[0-9a-fA-F]{6}$', color):
@@ -608,54 +469,6 @@ def admin_required(f):
             return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
-
-# Input Validation Functions
-def validate_container_id(container_id):
-    """Validate container ID format (12 or 64 hex chars)"""
-    if not container_id:
-        return False, "Container ID is required"
-    if not re.match(r'^[a-f0-9]{12}$|^[a-f0-9]{64}$', container_id):
-        return False, "Invalid container ID format"
-    return True, None
-
-def validate_container_name(name):
-    """Validate container name (Docker naming rules)"""
-    if not name:
-        return False, "Container name is required"
-    if len(name) > 255:
-        return False, "Container name is too long (max 255 characters)"
-    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$', name):
-        return False, "Container name contains invalid characters"
-    return True, None
-
-def validate_url(url, schemes=['http', 'https']):
-    """Validate URL format"""
-    if not url:
-        return False, "URL is required"
-    if len(url) > 2048:
-        return False, "URL is too long"
-    # Basic URL pattern check
-    pattern = r'^(https?|unix|tcp)://[^\s]+'
-    if not re.match(pattern, url):
-        return False, "Invalid URL format"
-    return True, None
-
-def validate_webhook_url(url):
-    """Validate Discord webhook URL"""
-    if not url:
-        return True, None  # Empty is allowed (disables webhook)
-    if not url.startswith('https://discord.com/api/webhooks/'):
-        return False, "Invalid Discord webhook URL. Must start with https://discord.com/api/webhooks/"
-    return validate_url(url)
-
-def sanitize_string(value: str, max_length: int = 255) -> str:
-    """Sanitize string input"""
-    if not value:
-        return ""
-    # Remove null bytes and control characters
-    value = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', str(value))
-    # Truncate to max length
-    return value[:max_length].strip()
 
 def generate_api_key():
     """Generate a new API key"""

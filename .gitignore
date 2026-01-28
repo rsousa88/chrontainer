@@ -50,10 +50,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
-CLAUDE.md
-TRACKING_LOG.md
+*.md
+!/README.md
 local/
 temp/
-INTERNAL_NOTES.md
-V0.5.0_PLANNING.md
-V1_REFACTOR_PLAN.md
