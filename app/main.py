@@ -38,6 +38,7 @@ from app.repositories import (
     TagRepository,
     UpdateStatusRepository,
     WebuiUrlRepository,
+    UserRepository,
 )
 from app.services.docker_hosts import DockerHostManager
 from app.utils.validators import (
@@ -444,11 +445,7 @@ class User(UserMixin):
 def load_user(user_id):
     """Load user by ID for Flask-Login"""
     try:
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, username, role FROM users WHERE id = ?', (user_id,))
-        user_data = cursor.fetchone()
-        conn.close()
+        user_data = user_repo.get_by_id(user_id)
 
         if user_data:
             return User(id=user_data[0], username=user_data[1], role=user_data[2])
@@ -546,6 +543,7 @@ schedule_repo = ScheduleRepository(get_db)
 tag_repo = TagRepository(get_db)
 container_tag_repo = ContainerTagRepository(get_db)
 webui_url_repo = WebuiUrlRepository(get_db)
+user_repo = UserRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -3910,27 +3908,16 @@ def change_password():
             return jsonify({'error': 'New password must be at least 6 characters'}), 400
 
         # Verify current password
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT password_hash FROM users WHERE id = ?', (current_user.id,))
-        result = cursor.fetchone()
-
-        if not result:
-            conn.close()
+        password_hash = user_repo.get_password_hash(current_user.id)
+        if not password_hash:
             return jsonify({'error': 'User not found'}), 404
 
-        if not bcrypt.checkpw(current_password.encode('utf-8'), result[0].encode('utf-8')):
-            conn.close()
+        if not bcrypt.checkpw(current_password.encode('utf-8'), password_hash.encode('utf-8')):
             return jsonify({'error': 'Current password is incorrect'}), 400
 
         # Update password
         new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-        cursor.execute(
-            'UPDATE users SET password_hash = ? WHERE id = ?',
-            (new_hash.decode('utf-8'), current_user.id)
-        )
-        conn.commit()
-        conn.close()
+        user_repo.update_password(current_user.id, new_hash.decode('utf-8'))
 
         logger.info(f"User {current_user.username} changed their password")
         return jsonify({'success': True, 'message': 'Password changed successfully'})
