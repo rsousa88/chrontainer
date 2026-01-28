@@ -6,6 +6,7 @@ from .health import create_health_blueprint
 from .hosts import create_hosts_blueprint
 from .images import create_images_blueprint
 from .logs import create_logs_blueprint
+from .pages import create_pages_blueprint
 from .schedules import create_schedules_blueprint
 from .settings import create_settings_blueprint
 from .tags import create_tags_blueprint
@@ -19,6 +20,7 @@ __all__ = [
     'create_hosts_blueprint',
     'create_images_blueprint',
     'create_logs_blueprint',
+    'create_pages_blueprint',
     'create_schedules_blueprint',
     'create_settings_blueprint',
     'create_tags_blueprint',

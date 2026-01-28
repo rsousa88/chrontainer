@@ -55,6 +55,7 @@ from app.routes import (
     create_hosts_blueprint,
     create_images_blueprint,
     create_logs_blueprint,
+    create_pages_blueprint,
     create_schedules_blueprint,
     create_settings_blueprint,
     create_tags_blueprint,
@@ -571,10 +572,12 @@ app.register_blueprint(health_blueprint)
 auth_blueprint = create_auth_blueprint(
     login_repo=login_repo,
     user_class=User,
+    user_repo=user_repo,
     limiter=limiter,
     csrf=csrf,
     version=VERSION,
     logger=logger,
+    bcrypt_module=bcrypt,
 )
 app.register_blueprint(auth_blueprint)
 
@@ -624,7 +627,6 @@ images_blueprint = create_images_blueprint(
     clear_image_usage_cache=clear_image_usage_cache,
     fetch_all_images=fetch_all_images,
     docker_manager=docker_manager,
-    host_repo=host_repo,
     sanitize_string=sanitize_string,
     validate_host_id=validate_host_id,
     logger=logger,
@@ -711,6 +713,9 @@ tags_blueprint = create_tags_blueprint(
     logger=logger,
 )
 app.register_blueprint(tags_blueprint)
+
+pages_blueprint = create_pages_blueprint(version=VERSION)
+app.register_blueprint(pages_blueprint)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -1953,58 +1958,6 @@ def fetch_all_images() -> List[Dict[str, Any]]:
 
 
 # ===== Tags API =====
-
-@app.route('/metrics')
-@login_required
-def metrics_page():
-    """Host metrics dashboard page"""
-    dark_mode = request.cookies.get('darkMode', 'false') == 'true'
-    return render_template('metrics.html', dark_mode=dark_mode)
-
-@app.route('/hosts')
-@login_required
-def hosts_page():
-    """Redirect to unified settings page (hosts tab)"""
-    return redirect('/settings#hosts')
-
-@app.route('/api/user/change-password', methods=['POST'])
-@login_required
-def change_password():
-    """Change current user's password"""
-    try:
-        data = request.json
-        current_password = data.get('current_password', '')
-        new_password = data.get('new_password', '')
-        confirm_password = data.get('confirm_password', '')
-
-        # Validate inputs
-        if not current_password or not new_password or not confirm_password:
-            return jsonify({'error': 'All fields are required'}), 400
-
-        if new_password != confirm_password:
-            return jsonify({'error': 'New passwords do not match'}), 400
-
-        if len(new_password) < 6:
-            return jsonify({'error': 'New password must be at least 6 characters'}), 400
-
-        # Verify current password
-        password_hash = user_repo.get_password_hash(current_user.id)
-        if not password_hash:
-            return jsonify({'error': 'User not found'}), 404
-
-        if not bcrypt.checkpw(current_password.encode('utf-8'), password_hash.encode('utf-8')):
-            return jsonify({'error': 'Current password is incorrect'}), 400
-
-        # Update password
-        new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-        user_repo.update_password(current_user.id, new_hash.decode('utf-8'))
-
-        logger.info(f"User {current_user.username} changed their password")
-        return jsonify({'success': True, 'message': 'Password changed successfully'})
-
-    except Exception as e:
-        logger.error(f"Error changing password: {e}")
-        return jsonify({'error': 'Failed to change password'}), 500
 
 if __name__ == '__main__':
     try:

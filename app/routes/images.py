@@ -10,7 +10,6 @@ def create_images_blueprint(
     clear_image_usage_cache,
     fetch_all_images,
     docker_manager,
-    host_repo,
     sanitize_string,
     validate_host_id,
     logger,

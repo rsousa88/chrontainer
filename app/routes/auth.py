@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 
 import bcrypt
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.utils.validators import sanitize_string
 
 
-def create_auth_blueprint(login_repo, user_class, limiter, csrf, version: str, logger):
+def create_auth_blueprint(login_repo, user_class, user_repo, limiter, csrf, version: str, logger, bcrypt_module):
     """Create authentication routes with injected dependencies."""
     blueprint = Blueprint('auth', __name__)
 
@@ -67,5 +67,41 @@ def create_auth_blueprint(login_repo, user_class, limiter, csrf, version: str, l
     def user_settings_page():
         """Redirect to unified settings page (account tab)."""
         return redirect('/settings#account')
+
+    @blueprint.route('/api/user/change-password', methods=['POST'])
+    @login_required
+    def change_password():
+        """Change current user's password."""
+        try:
+            data = request.json or {}
+            current_password = data.get('current_password', '')
+            new_password = data.get('new_password', '')
+            confirm_password = data.get('confirm_password', '')
+
+            if not current_password or not new_password or not confirm_password:
+                return jsonify({'error': 'All fields are required'}), 400
+
+            if new_password != confirm_password:
+                return jsonify({'error': 'New passwords do not match'}), 400
+
+            if len(new_password) < 6:
+                return jsonify({'error': 'New password must be at least 6 characters'}), 400
+
+            password_hash = user_repo.get_password_hash(current_user.id)
+            if not password_hash:
+                return jsonify({'error': 'User not found'}), 404
+
+            if not bcrypt_module.checkpw(current_password.encode('utf-8'), password_hash.encode('utf-8')):
+                return jsonify({'error': 'Current password is incorrect'}), 400
+
+            new_hash = bcrypt_module.hashpw(new_password.encode('utf-8'), bcrypt_module.gensalt())
+            user_repo.update_password(current_user.id, new_hash.decode('utf-8'))
+
+            logger.info(f"User {current_user.username} changed their password")
+            return jsonify({'success': True, 'message': 'Password changed successfully'})
+
+        except Exception as e:
+            logger.error(f"Error changing password: {e}")
+            return jsonify({'error': 'Failed to change password'}), 500
 
     return blueprint
