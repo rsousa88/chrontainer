@@ -30,12 +30,14 @@ from typing import Tuple, Optional, List, Dict, Any
 from app.config import Config
 from app.db import ensure_data_dir, get_db, init_db
 from app.repositories import (
+    ContainerTagRepository,
     HostRepository,
     LogsRepository,
     ScheduleRepository,
     SettingsRepository,
     TagRepository,
     UpdateStatusRepository,
+    WebuiUrlRepository,
 )
 from app.services.docker_hosts import DockerHostManager
 from app.utils.validators import (
@@ -542,6 +544,8 @@ logs_repo = LogsRepository(get_db)
 update_status_repo = UpdateStatusRepository(get_db)
 schedule_repo = ScheduleRepository(get_db)
 tag_repo = TagRepository(get_db)
+container_tag_repo = ContainerTagRepository(get_db)
+webui_url_repo = WebuiUrlRepository(get_db)
 
 # Container update management functions
 def check_for_update(container, client) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -1608,17 +1612,9 @@ def fetch_all_containers() -> List[Dict[str, Any]]:
             logger.error(f"Error getting containers from host {host_name}: {e}")
 
     # Load tags and manual webui URLs for all containers
-    conn = get_db()
-    cursor = conn.cursor()
-
     # Get all tags for containers
     tags_map = {}  # Key: (container_id, host_id), Value: list of tags
-    cursor.execute('''
-        SELECT ct.container_id, ct.host_id, t.id, t.name, t.color
-        FROM container_tags ct
-        JOIN tags t ON ct.tag_id = t.id
-    ''')
-    for row in cursor.fetchall():
+    for row in container_tag_repo.list_all():
         key = (row[0], row[1])
         if key not in tags_map:
             tags_map[key] = []
@@ -1626,11 +1622,8 @@ def fetch_all_containers() -> List[Dict[str, Any]]:
 
     # Get all manual webui URLs
     webui_map = {}  # Key: (container_id, host_id), Value: url
-    cursor.execute('SELECT container_id, host_id, url FROM container_webui_urls')
-    for row in cursor.fetchall():
+    for row in webui_url_repo.list_all():
         webui_map[(row[0], row[1])] = row[2]
-
-    conn.close()
 
     # Load update status from cache
     update_status_map = load_update_status_map()
@@ -3657,16 +3650,10 @@ def delete_tag(tag_id):
 def get_container_tags(container_id, host_id):
     """Get tags for a specific container"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT t.id, t.name, t.color
-            FROM tags t
-            JOIN container_tags ct ON t.id = ct.tag_id
-            WHERE ct.container_id = ? AND ct.host_id = ?
-        ''', (container_id, host_id))
-        tags = [{'id': row[0], 'name': row[1], 'color': row[2]} for row in cursor.fetchall()]
-        conn.close()
+        tags = [
+            {'id': row[0], 'name': row[1], 'color': row[2]}
+            for row in container_tag_repo.list_for_container(container_id, host_id)
+        ]
         return jsonify(tags)
     except Exception as e:
         logger.error(f"Failed to get container tags: {e}")
@@ -3685,14 +3672,7 @@ def add_container_tag(container_id, host_id):
         if not tag_id:
             return jsonify({'error': 'Tag ID is required. Please select a tag to add.'}), 400
 
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT OR IGNORE INTO container_tags (container_id, host_id, tag_id) VALUES (?, ?, ?)',
-            (container_id, host_id, tag_id)
-        )
-        conn.commit()
-        conn.close()
+        container_tag_repo.add(container_id, host_id, tag_id)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to add container tag: {e}")
@@ -3705,14 +3685,7 @@ def remove_container_tag(container_id, host_id, tag_id):
     if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
         return jsonify({'error': 'API key does not have write permission'}), 403
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'DELETE FROM container_tags WHERE container_id = ? AND host_id = ? AND tag_id = ?',
-            (container_id, host_id, tag_id)
-        )
-        conn.commit()
-        conn.close()
+        container_tag_repo.remove(container_id, host_id, tag_id)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to remove container tag: {e}")
@@ -3723,15 +3696,8 @@ def remove_container_tag(container_id, host_id, tag_id):
 def get_container_webui(container_id, host_id):
     """Get Web UI URL for a container"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT url FROM container_webui_urls WHERE container_id = ? AND host_id = ?',
-            (container_id, host_id)
-        )
-        result = cursor.fetchone()
-        conn.close()
-        return jsonify({'url': result[0] if result else None})
+        url = webui_url_repo.get(container_id, host_id)
+        return jsonify({'url': url})
     except Exception as e:
         logger.error(f"Failed to get container Web UI URL: {e}")
         return jsonify({'error': 'Failed to load Web UI URL.'}), 500
@@ -3743,26 +3709,10 @@ def set_container_webui(container_id, host_id):
     try:
         data = request.json
         url = data.get('url', '').strip()
-
-        conn = get_db()
-        cursor = conn.cursor()
-
         if url:
-            # Insert or update
-            cursor.execute('''
-                INSERT INTO container_webui_urls (container_id, host_id, url, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(container_id, host_id) DO UPDATE SET url = ?, updated_at = ?
-            ''', (container_id, host_id, url, datetime.now(), url, datetime.now()))
+            webui_url_repo.upsert(container_id, host_id, url)
         else:
-            # Delete if URL is empty
-            cursor.execute(
-                'DELETE FROM container_webui_urls WHERE container_id = ? AND host_id = ?',
-                (container_id, host_id)
-            )
-
-        conn.commit()
-        conn.close()
+            webui_url_repo.delete(container_id, host_id)
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Failed to set container Web UI URL: {e}")
