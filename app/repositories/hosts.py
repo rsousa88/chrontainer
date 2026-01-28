@@ -7,7 +7,7 @@ import sqlite3
 
 
 class HostRepository:
-    """Repository for host persistence.""""
+    """Repository for host persistence."""
     def __init__(self, db_factory: Callable[[], sqlite3.Connection]):
         self._db_factory = db_factory
 

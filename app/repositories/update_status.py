@@ -6,7 +6,7 @@ import sqlite3
 
 
 class UpdateStatusRepository:
-    """Repository for container update status cache.""""
+    """Repository for container update status cache."""
     def __init__(self, db_factory: Callable[[], sqlite3.Connection]):
         self._db_factory = db_factory
 

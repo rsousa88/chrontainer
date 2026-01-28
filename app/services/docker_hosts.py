@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class DockerHostManager:
-    """Manages connections to multiple Docker hosts.""""
+    """Manages connections to multiple Docker hosts."""
 
     def __init__(self, host_repo: HostRepository):
         self.clients = {}
@@ -19,7 +19,7 @@ class DockerHostManager:
         self.host_repo = host_repo
 
     def get_client(self, host_id: int = 1):
-        """Get Docker client for a specific host.""""
+        """Get Docker client for a specific host."""
         if host_id in self.clients:
             return self.clients[host_id]
 
@@ -49,7 +49,7 @@ class DockerHostManager:
             return None
 
     def get_all_clients(self):
-        """Get all enabled Docker clients with their host info.""""
+        """Get all enabled Docker clients with their host info."""
         try:
             hosts = self.host_repo.list_enabled()
             result = []
@@ -64,7 +64,7 @@ class DockerHostManager:
             return []
 
     def test_connection(self, host_url: str):
-        """Test connection to a Docker host.""""
+        """Test connection to a Docker host."""
         try:
             client = docker.DockerClient(base_url=host_url)
             client.ping()
