@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 def create_schedules_blueprint(
     *,
     api_key_or_login_required,
+    schedule_view_repo,
     schedule_repo,
     scheduler,
     container_service,
@@ -141,6 +142,160 @@ def create_schedules_blueprint(
         except Exception as e:
             logger.error(f"Failed to add schedule: {e}")
             return jsonify({'error': 'Failed to create schedule. Please check the logs for details.'}), 500
+
+    @blueprint.route('/api/schedules', methods=['GET'])
+    @api_key_or_login_required
+    def list_schedules():
+        """List all schedules with host names."""
+        try:
+            rows = schedule_view_repo.list_with_host_names()
+            schedules = [
+                {
+                    'id': row[0],
+                    'container_name': row[1],
+                    'action': row[2],
+                    'cron_expression': row[3],
+                    'enabled': bool(row[4]),
+                    'last_run': row[5],
+                    'host_name': row[6],
+                    'one_time': bool(row[7]),
+                    'run_at': row[8],
+                    'host_id': row[9],
+                    'container_id': row[10],
+                }
+                for row in rows
+            ]
+            return jsonify(schedules)
+        except Exception as e:
+            logger.error(f"Failed to list schedules: {e}")
+            return jsonify({'error': 'Failed to load schedules. Please try again.'}), 500
+
+    @blueprint.route('/api/schedule/<int:schedule_id>', methods=['PUT'])
+    @api_key_or_login_required
+    def update_schedule(schedule_id):
+        """Update an existing schedule."""
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+            return jsonify({'error': 'API key does not have write permission'}), 403
+        data = request.json or {}
+        container_id = sanitize_string(data.get('container_id', ''), max_length=64)
+        container_name = sanitize_string(data.get('container_name', ''), max_length=255)
+        action = sanitize_string(data.get('action', 'restart'), max_length=20)
+        cron_expression = sanitize_string(data.get('cron_expression', ''), max_length=50)
+        host_id = data.get('host_id', 1)
+        one_time = data.get('one_time', False)
+        run_at = data.get('run_at')
+        enabled = data.get('enabled', True)
+
+        valid, error = validate_container_id(container_id)
+        if not valid:
+            return jsonify({'error': error}), 400
+
+        valid, error = validate_container_name(container_name)
+        if not valid:
+            return jsonify({'error': error}), 400
+
+        valid, error = validate_host_id(host_id)
+        if not valid:
+            return jsonify({'error': error}), 400
+
+        valid, error = validate_action(action)
+        if not valid:
+            return jsonify({'error': error}), 400
+
+        run_at_dt = None
+        trigger = None
+
+        if one_time:
+            if not run_at:
+                return jsonify({'error': 'run_at is required for one-time schedules'}), 400
+            try:
+                run_at_dt = datetime.fromisoformat(run_at.replace('Z', '+00:00'))
+                if run_at_dt <= datetime.now(run_at_dt.tzinfo):
+                    return jsonify({'error': 'run_at must be in the future'}), 400
+            except ValueError:
+                return jsonify({'error': 'Invalid run_at format. Use ISO format.'}), 400
+        else:
+            valid, error = validate_cron_expression(cron_expression)
+            if not valid:
+                return jsonify({'error': error}), 400
+
+            try:
+                parts = cron_expression.split()
+                trigger = CronTrigger(
+                    minute=parts[0],
+                    hour=parts[1],
+                    day=parts[2],
+                    month=parts[3],
+                    day_of_week=parts[4],
+                )
+            except ValueError:
+                return jsonify({'error': 'Invalid cron expression values. Please check your cron syntax.'}), 400
+            except Exception:
+                return jsonify({'error': 'Failed to parse cron expression. Please verify your syntax.'}), 400
+
+        try:
+            schedule_repo.update_schedule(
+                schedule_id,
+                host_id=host_id,
+                container_id=container_id,
+                container_name=container_name,
+                action=action,
+                cron_expression=cron_expression if not one_time else '',
+                one_time=1 if one_time else 0,
+                run_at=run_at if one_time else None,
+                enabled=1 if enabled else 0,
+            )
+
+            try:
+                scheduler.remove_job(f"schedule_{schedule_id}")
+            except Exception:
+                pass
+
+            if enabled:
+                action_map = {
+                    'restart': container_service.restart_container,
+                    'start': container_service.start_container,
+                    'stop': container_service.stop_container,
+                    'pause': container_service.pause_container,
+                    'unpause': container_service.unpause_container,
+                    'update': container_service.update_container,
+                }
+                action_func = action_map.get(action)
+                if not action_func:
+                    return jsonify({'error': f'Invalid action: {action}'}), 400
+
+                if one_time:
+                    from apscheduler.triggers.date import DateTrigger
+                    trigger = DateTrigger(run_date=run_at_dt)
+
+                    def one_time_action(cid, cname, sid, hid, func=action_func):
+                        func(cid, cname, sid, hid)
+                        try:
+                            schedule_repo.delete(sid)
+                        except Exception as e:
+                            logger.error(f"Failed to delete one-time schedule {sid}: {e}")
+
+                    scheduler.add_job(
+                        one_time_action,
+                        trigger,
+                        args=[container_id, container_name, schedule_id, host_id],
+                        id=f"schedule_{schedule_id}",
+                        replace_existing=True,
+                    )
+                else:
+                    scheduler.add_job(
+                        action_func,
+                        trigger,
+                        args=[container_id, container_name, schedule_id, host_id],
+                        id=f"schedule_{schedule_id}",
+                        replace_existing=True,
+                    )
+
+            logger.info(f"Updated schedule {schedule_id}")
+            return jsonify({'success': True})
+        except Exception as e:
+            logger.error(f"Failed to update schedule: {e}")
+            return jsonify({'error': 'Failed to update schedule. Please try again.'}), 500
 
     @blueprint.route('/api/schedule/<int:schedule_id>', methods=['DELETE'])
     @api_key_or_login_required

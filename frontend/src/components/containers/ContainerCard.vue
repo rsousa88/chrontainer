@@ -26,7 +26,7 @@
       </div>
     </div>
     <div class="mt-4">
-      <ContainerActions />
+      <ContainerActions :container="container" />
     </div>
   </Card>
 </template>

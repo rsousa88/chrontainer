@@ -16,7 +16,7 @@ class ScheduleViewRepository:
             cursor = conn.cursor()
             cursor.execute(
                 '''
-                SELECT s.id, s.container_name, s.action, s.cron_expression, s.enabled, s.last_run, h.name, s.one_time, s.run_at
+                SELECT s.id, s.container_name, s.action, s.cron_expression, s.enabled, s.last_run, h.name, s.one_time, s.run_at, s.host_id, s.container_id
                 FROM schedules s
                 LEFT JOIN hosts h ON s.host_id = h.id
                 '''

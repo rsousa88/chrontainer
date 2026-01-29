@@ -20,5 +20,21 @@ export const useScheduleStore = defineStore('schedules', {
         this.loading = false
       }
     },
+    async createSchedule(payload) {
+      const { data } = await api.post('/schedule', payload)
+      return data
+    },
+    async updateSchedule(id, payload) {
+      const { data } = await api.put(`/schedule/${id}`, payload)
+      return data
+    },
+    async deleteSchedule(id) {
+      const { data } = await api.delete(`/schedule/${id}`)
+      return data
+    },
+    async toggleSchedule(id) {
+      const { data } = await api.post(`/schedule/${id}/toggle`)
+      return data
+    },
   },
 })

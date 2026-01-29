@@ -19,7 +19,7 @@
       <td class="px-4 py-4 text-sm text-surface-200">{{ container.memory }}</td>
       <td class="px-4 py-4 text-sm text-surface-200">{{ container.image }}</td>
       <td class="px-4 py-4">
-        <ContainerActions />
+        <ContainerActions :container="container" />
       </td>
     </tr>
   </Table>

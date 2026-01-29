@@ -612,6 +612,7 @@ def create_app():
 
     schedules_blueprint = create_schedules_blueprint(
         api_key_or_login_required=api_key_or_login_required,
+        schedule_view_repo=schedule_view_repo,
         schedule_repo=schedule_repo,
         scheduler=scheduler,
         container_service=container_service,

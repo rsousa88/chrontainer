@@ -33,5 +33,21 @@ export const useHostStore = defineStore('hosts', {
         this.loading = false
       }
     },
+    async createHost(payload) {
+      const { data } = await api.post('/hosts', payload)
+      return data
+    },
+    async updateHost(id, payload) {
+      const { data } = await api.put(`/hosts/${id}`, payload)
+      return data
+    },
+    async deleteHost(id) {
+      const { data } = await api.delete(`/hosts/${id}`)
+      return data
+    },
+    async testHost(id) {
+      const { data } = await api.post(`/hosts/${id}/test`)
+      return data
+    },
   },
 })

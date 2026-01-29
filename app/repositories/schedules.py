@@ -117,6 +117,51 @@ class ScheduleRepository:
         finally:
             conn.close()
 
+    def update_schedule(
+        self,
+        schedule_id: int,
+        *,
+        host_id: int,
+        container_id: str,
+        container_name: str,
+        action: str,
+        cron_expression: str,
+        one_time: int,
+        run_at: str | None,
+        enabled: int,
+    ) -> None:
+        conn = self._db_factory()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                UPDATE schedules
+                SET host_id = ?,
+                    container_id = ?,
+                    container_name = ?,
+                    action = ?,
+                    cron_expression = ?,
+                    one_time = ?,
+                    run_at = ?,
+                    enabled = ?
+                WHERE id = ?
+                ''',
+                (
+                    host_id,
+                    container_id,
+                    container_name,
+                    action,
+                    cron_expression,
+                    one_time,
+                    run_at,
+                    enabled,
+                    schedule_id,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def update_container_name(self, host_id: int, container_id: str, old_name: str, new_name: str) -> int:
         short_id = (container_id or '')[:12]
         conn = self._db_factory()
