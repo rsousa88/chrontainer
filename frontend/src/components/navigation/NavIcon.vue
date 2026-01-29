@@ -12,6 +12,8 @@ import {
   DocumentTextIcon,
   ChartBarIcon,
   Cog6ToothIcon,
+  CalendarDaysIcon,
+  ServerStackIcon,
 } from '@heroicons/vue/24/outline'
 
 const props = defineProps({
@@ -28,6 +30,8 @@ const iconComponent = computed(() => {
     document: DocumentTextIcon,
     chart: ChartBarIcon,
     cog: Cog6ToothIcon,
+    calendar: CalendarDaysIcon,
+    server: ServerStackIcon,
   }
   return map[props.name] || HomeIcon
 })

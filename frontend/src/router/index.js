@@ -7,6 +7,9 @@ const ImagesView = () => import('../views/ImagesView.vue')
 const LogsView = () => import('../views/LogsView.vue')
 const HostMetricsView = () => import('../views/HostMetricsView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
+const SchedulesView = () => import('../views/SchedulesView.vue')
+const HostsView = () => import('../views/HostsView.vue')
+const LoginView = () => import('../views/LoginView.vue')
 
 const routes = [
   { path: '/', name: 'dashboard', component: DashboardView },
@@ -16,6 +19,9 @@ const routes = [
   { path: '/logs', name: 'logs', component: LogsView },
   { path: '/metrics', name: 'metrics', component: HostMetricsView },
   { path: '/settings', name: 'settings', component: SettingsView },
+  { path: '/schedules', name: 'schedules', component: SchedulesView },
+  { path: '/hosts', name: 'hosts', component: HostsView },
+  { path: '/login', name: 'login', component: LoginView },
 ]
 
 const router = createRouter({
