@@ -114,7 +114,9 @@ class ImageService:
                         image_id = container.image.id
                         if not image_id:
                             continue
+                        stripped_id = image_id.replace('sha256:', '')
                         container_count_map[image_id] = container_count_map.get(image_id, 0) + 1
+                        container_count_map[stripped_id] = container_count_map.get(stripped_id, 0) + 1
                         image_name = None
                         if container.image.tags:
                             image_name = container.image.tags[0]
@@ -123,6 +125,7 @@ class ImageService:
                         if image_name:
                             repo, _ = self._split_image_reference(image_name)
                             container_repo_map[image_id] = repo or container_repo_map.get(image_id)
+                            container_repo_map[stripped_id] = repo or container_repo_map.get(stripped_id)
                     except Exception:
                         continue
             except Exception as error:
@@ -136,7 +139,8 @@ class ImageService:
                     size = entry.get('Size')
                     shared_size = entry.get('SharedSize')
                     containers_count = entry.get('Containers')
-                    fallback_count = container_count_map.get(image_id)
+                    stripped_id = image_id.replace('sha256:', '')
+                    fallback_count = container_count_map.get(image_id) or container_count_map.get(stripped_id)
                     if containers_count is None:
                         containers_count = fallback_count
                     elif containers_count == 0 and fallback_count:
@@ -183,7 +187,8 @@ class ImageService:
                     size = entry.get('Size')
                     shared_size = entry.get('SharedSize')
                     containers_count = entry.get('Containers')
-                    fallback_count = container_count_map.get(image_id)
+                    stripped_id = image_id.replace('sha256:', '')
+                    fallback_count = container_count_map.get(image_id) or container_count_map.get(stripped_id)
                     if containers_count is None:
                         containers_count = fallback_count
                     elif containers_count == 0 and fallback_count:
