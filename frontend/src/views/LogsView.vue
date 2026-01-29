@@ -6,17 +6,21 @@
         <h2 class="text-2xl font-semibold text-surface-50">Activity Stream</h2>
         <p class="text-sm text-surface-400">Inspect container events and application logs.</p>
       </div>
-      <Button variant="ghost" @click="notify">Refresh</Button>
+      <Button variant="ghost" @click="refresh">Refresh</Button>
+    </div>
+
+    <div v-if="logStore.loading" class="flex justify-end">
+      <Spinner label="Loading logs" />
     </div>
 
     <Card>
       <div class="space-y-3 text-sm text-surface-300">
-        <div v-for="entry in logs" :key="entry.id" class="rounded-xl border border-surface-800 bg-surface-900/60 px-4 py-3">
+        <div v-for="entry in logStore.entries" :key="entry.id" class="rounded-xl border border-surface-800 bg-surface-900/60 px-4 py-3">
           <div class="flex items-center justify-between">
-            <span class="font-semibold text-surface-100">{{ entry.source }}</span>
-            <span class="text-xs text-surface-500">{{ entry.timestamp }}</span>
+            <span class="font-semibold text-surface-100">{{ entry.source || entry.level || 'app' }}</span>
+            <span class="text-xs text-surface-500">{{ entry.timestamp || entry.created_at || '' }}</span>
           </div>
-          <p class="mt-2 text-sm text-surface-300">{{ entry.message }}</p>
+          <p class="mt-2 text-sm text-surface-300">{{ entry.message || entry.details || entry.action || '' }}</p>
         </div>
       </div>
     </Card>
@@ -27,15 +31,19 @@
 import Button from '../components/ui/Button.vue'
 import Card from '../components/ui/Card.vue'
 import { useToastStore } from '../stores/useToastStore'
+import Spinner from '../components/ui/Spinner.vue'
+import { useLogStore } from '../stores/useLogStore'
+import { onMounted } from 'vue'
 
 const toastStore = useToastStore()
+const logStore = useLogStore()
 
-const logs = [
-  { id: 1, source: 'chrontainer', message: 'Scheduler started', timestamp: 'Just now' },
-  { id: 2, source: 'socket-proxy', message: 'Connected to docker host', timestamp: '2m ago' },
-]
-
-const notify = () => {
+const refresh = async () => {
+  await logStore.fetchLogs()
   toastStore.push({ title: 'Logs refreshed', message: 'Latest log entries loaded.' })
 }
+
+onMounted(() => {
+  logStore.fetchLogs()
+})
 </script>

@@ -16,3 +16,14 @@ body {
 * {
   scrollbar-color: #4b5f76 #1d2430;
 }
+
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
