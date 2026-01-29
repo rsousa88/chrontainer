@@ -3,13 +3,23 @@
     <Button variant="ghost" @click="runAction('restart')">Restart</Button>
     <Button variant="ghost" @click="runAction('stop')">Stop</Button>
     <Button variant="ghost" @click="runAction('start')">Start</Button>
+    <Button variant="ghost" @click="runAction('pause')">Pause</Button>
+    <Button variant="ghost" @click="runAction('unpause')">Unpause</Button>
     <Button variant="ghost" @click="runAction('update')">Update</Button>
-    <Button variant="ghost" @click="checkUpdates">Check Updates</Button>
+    <Button variant="ghost" :disabled="updateBusy" @click="checkUpdates">Check Updates</Button>
     <Button variant="ghost" @click="openLogs">Logs</Button>
+    <Button v-if="webuiUrl" variant="ghost" @click="openWebui">Open UI</Button>
   </div>
 
-  <Modal :open="logsOpen" title="Container Logs" :subtitle="container?.name" @close="closeLogs">
-    <div class="max-h-96 overflow-auto rounded-xl border border-surface-800 bg-surface-950 p-3 text-xs text-surface-200">
+  <Modal
+    :open="logsOpen"
+    title="Container Logs"
+    :subtitle="container?.name"
+    panel-class="w-[90vw] max-w-none h-[75vh]"
+    body-class="h-full"
+    @close="closeLogs"
+  >
+    <div class="h-[60vh] overflow-auto rounded-xl border border-surface-800 bg-surface-950 p-3 text-xs text-surface-200">
       <pre class="whitespace-pre-wrap">{{ logsContent || (logsLoading ? 'Loading logs...' : 'No logs available.') }}</pre>
     </div>
     <template #actions>
@@ -42,6 +52,8 @@ const containerPayload = computed(() => ({
 const logsOpen = ref(false)
 const logsContent = ref('')
 const logsLoading = ref(false)
+const updateBusy = ref(false)
+const webuiUrl = computed(() => props.container?.webui_url || props.container?.webuiUrl || props.container?.webui_url_label)
 
 const runAction = async (action) => {
   const id = props.container?.id
@@ -69,6 +81,8 @@ const checkUpdates = async () => {
     toastStore.push({ title: 'Update check failed', message: 'Missing container ID.', tone: 'danger' })
     return
   }
+  if (updateBusy.value) return
+  updateBusy.value = true
   try {
     const { data } = await api.get(`/container/${id}/check-update`, { params: { host_id: hostId } })
     if (data?.has_update) {
@@ -79,11 +93,24 @@ const checkUpdates = async () => {
       toastStore.push({ title: 'Up to date', message: 'No updates found.' })
     }
   } catch (err) {
-    toastStore.push({
-      title: 'Update check failed',
-      message: err?.response?.data?.error || 'Unable to check updates.',
-      tone: 'danger',
-    })
+    const status = err?.response?.status
+    if (status === 429) {
+      toastStore.push({
+        title: 'Update check limited',
+        message: 'Registry rate limit hit. Authenticate with the registry to raise limits.',
+        tone: 'warning',
+      })
+    } else {
+      toastStore.push({
+        title: 'Update check failed',
+        message: err?.response?.data?.error || 'Unable to check updates.',
+        tone: 'danger',
+      })
+    }
+  } finally {
+    setTimeout(() => {
+      updateBusy.value = false
+    }, 3000)
   }
 }
 
@@ -109,5 +136,10 @@ const openLogs = async () => {
 
 const closeLogs = () => {
   logsOpen.value = false
+}
+
+const openWebui = () => {
+  if (!webuiUrl.value) return
+  window.open(webuiUrl.value, '_blank', 'noopener')
 }
 </script>

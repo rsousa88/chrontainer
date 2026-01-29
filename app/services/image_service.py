@@ -136,8 +136,11 @@ class ImageService:
                     size = entry.get('Size')
                     shared_size = entry.get('SharedSize')
                     containers_count = entry.get('Containers')
+                    fallback_count = container_count_map.get(image_id)
                     if containers_count is None:
-                        containers_count = container_count_map.get(image_id)
+                        containers_count = fallback_count
+                    elif containers_count == 0 and fallback_count:
+                        containers_count = fallback_count
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
                     repo_tags = entry.get('RepoTags') or []
@@ -180,8 +183,11 @@ class ImageService:
                     size = entry.get('Size')
                     shared_size = entry.get('SharedSize')
                     containers_count = entry.get('Containers')
+                    fallback_count = container_count_map.get(image_id)
                     if containers_count is None:
-                        containers_count = container_count_map.get(image_id)
+                        containers_count = fallback_count
+                    elif containers_count == 0 and fallback_count:
+                        containers_count = fallback_count
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
                     repo_tags = entry.get('RepoTags') or []

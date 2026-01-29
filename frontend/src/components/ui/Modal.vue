@@ -1,7 +1,10 @@
 <template>
   <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/70" @click="onClose" />
-    <div class="relative z-10 w-full max-w-lg rounded-2xl border border-surface-800 bg-surface-900 p-6">
+    <div
+      class="relative z-10 w-full rounded-2xl border border-surface-800 bg-surface-900 p-6"
+      :class="panelClass"
+    >
       <div class="flex items-start justify-between">
         <div>
           <h3 class="text-lg font-semibold text-surface-50">{{ title }}</h3>
@@ -9,7 +12,7 @@
         </div>
         <button class="text-surface-400 hover:text-surface-200" @click="onClose">✕</button>
       </div>
-      <div class="mt-4 text-sm text-surface-300">
+      <div class="mt-4 text-sm text-surface-300" :class="bodyClass">
         <slot />
       </div>
       <div class="mt-6 flex justify-end gap-3">
@@ -30,6 +33,14 @@ const props = defineProps({
     default: 'Modal Title',
   },
   subtitle: String,
+  panelClass: {
+    type: String,
+    default: 'max-w-lg',
+  },
+  bodyClass: {
+    type: String,
+    default: '',
+  },
 })
 
 const emit = defineEmits(['close'])

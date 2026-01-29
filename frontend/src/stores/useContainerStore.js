@@ -19,7 +19,7 @@ export const useContainerStore = defineStore('containers', {
           const { data: stats } = await api.get('/containers/stats')
           const statsMap = stats || {}
           items = items.map((container) => {
-            const hostId = container.host_id || container.hostId || 1
+            const hostId = Number(container.host_id || container.hostId || 1)
             const key = `${container.id}_${hostId}`
             const metrics = statsMap[key]
             const cpuValue = metrics?.cpu_percent

@@ -590,6 +590,7 @@ def create_app():
         logger=logger,
     )
     app.register_blueprint(hosts_blueprint)
+    csrf.exempt(hosts_blueprint)
 
     containers_blueprint = create_containers_blueprint(
         api_key_or_login_required=api_key_or_login_required,
