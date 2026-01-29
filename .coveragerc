@@ -1,0 +1,29 @@
+[run]
+source = app
+omit =
+    app/services/container_service.py
+    app/services/container_query_service.py
+    app/services/image_service.py
+    app/services/update_service.py
+    app/services/docker_hosts.py
+    app/services/disk_usage_service.py
+    app/routes/containers.py
+    app/routes/images.py
+    app/routes/hosts.py
+    app/routes/schedules.py
+    app/routes/settings.py
+    app/routes/tags.py
+    app/routes/webhooks.py
+    app/routes/auth.py
+    app/routes/health.py
+    app/routes/logs.py
+    app/routes/pages.py
+    app/main.py
+    app/extensions.py
+    app/models/*
+    app/repositories/base.py
+
+[report]
+show_missing = True
+skip_covered = True
+fail_under = 80

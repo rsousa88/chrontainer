@@ -16,14 +16,19 @@ DATABASE_PATH = Config.DATABASE_PATH
 HOST_DEFAULT_COLOR = '#e8f4f8'
 
 
+def _get_database_path() -> str:
+    """Resolve database path at runtime (supports tests overriding env)."""
+    return os.getenv('DATABASE_PATH', DATABASE_PATH)
+
+
 def get_db() -> sqlite3.Connection:
     """Get database connection."""
-    return sqlite3.connect(DATABASE_PATH)
+    return sqlite3.connect(_get_database_path())
 
 
 def init_db() -> None:
     """Initialize SQLite database."""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(_get_database_path())
     cursor = conn.cursor()
 
     # Create hosts table
