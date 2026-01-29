@@ -20,6 +20,7 @@ def create_hosts_blueprint(
     host_default_color: str,
     datetime_factory,
     sqlite3_module,
+    csrf,
     logger,
 ):
     """Create hosts routes with injected dependencies."""
@@ -105,6 +106,7 @@ def create_hosts_blueprint(
             return jsonify({'error': 'Failed to load Docker hosts. Please check the database connection.'}), 500
 
     @blueprint.route('/api/hosts', methods=['POST'])
+    @csrf.exempt
     @login_required
     def add_host():
         """Add a new Docker host."""
@@ -143,6 +145,7 @@ def create_hosts_blueprint(
             return jsonify({'error': 'Failed to add Docker host. Please try again.'}), 500
 
     @blueprint.route('/api/hosts/<int:host_id>', methods=['PUT'])
+    @csrf.exempt
     @login_required
     def update_host(host_id: int):
         """Update a Docker host."""
@@ -184,6 +187,7 @@ def create_hosts_blueprint(
             return jsonify({'error': 'Failed to update Docker host. Please try again.'}), 500
 
     @blueprint.route('/api/hosts/<int:host_id>', methods=['DELETE'])
+    @csrf.exempt
     @login_required
     def delete_host(host_id: int):
         """Delete a Docker host."""
@@ -206,6 +210,7 @@ def create_hosts_blueprint(
             return jsonify({'error': 'Failed to delete Docker host. Please try again.'}), 500
 
     @blueprint.route('/api/hosts/<int:host_id>/test', methods=['POST'])
+    @csrf.exempt
     @login_required
     def test_host_connection(host_id: int):
         """Test connection to a Docker host."""

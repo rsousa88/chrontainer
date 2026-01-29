@@ -145,10 +145,6 @@
       </Table>
     </div>
 
-    <div v-else-if="activeTab === 'Docker Hosts'" class="space-y-6">
-      <HostsView />
-    </div>
-
     <div v-else-if="activeTab === 'Account'" class="grid gap-6 lg:grid-cols-2">
       <Card title="Profile" subtitle="User details and access">
         <div class="space-y-4">
@@ -176,7 +172,6 @@ import Input from '../components/ui/Input.vue'
 import Select from '../components/ui/Select.vue'
 import Table from '../components/ui/Table.vue'
 import Badge from '../components/ui/Badge.vue'
-import HostsView from './HostsView.vue'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useApiKeyStore } from '../stores/useApiKeyStore'
 import { useWebhookStore } from '../stores/useWebhookStore'
@@ -184,7 +179,7 @@ import { useToastStore } from '../stores/useToastStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import api from '../lib/api'
 
-const tabs = ['Discord', 'ntfy', 'API Keys', 'Webhooks', 'Docker Hosts', 'Account']
+const tabs = ['Discord', 'ntfy', 'API Keys', 'Webhooks', 'Account']
 const activeTab = ref('Discord')
 
 const settingsStore = useSettingsStore()

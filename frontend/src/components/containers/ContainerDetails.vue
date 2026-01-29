@@ -7,19 +7,19 @@
       </div>
       <div>
         <p class="text-xs uppercase text-surface-500">Host</p>
-        <p class="text-sm text-surface-100">{{ container.host }}</p>
+        <p class="text-sm text-surface-100">{{ container.host || container.host_name || '—' }}</p>
       </div>
       <div>
         <p class="text-xs uppercase text-surface-500">CPU</p>
-        <p class="text-sm text-surface-100">{{ container.cpu }}</p>
+        <p class="text-sm text-surface-100">{{ container.cpu || '—' }}</p>
       </div>
       <div>
         <p class="text-xs uppercase text-surface-500">Memory</p>
-        <p class="text-sm text-surface-100">{{ container.memory }}</p>
+        <p class="text-sm text-surface-100">{{ container.memory || '—' }}</p>
       </div>
       <div>
         <p class="text-xs uppercase text-surface-500">IP</p>
-        <p class="text-sm text-surface-100">{{ container.ip }}</p>
+        <p class="text-sm text-surface-100">{{ container.ip || container.ip_addresses || '—' }}</p>
       </div>
       <div>
         <p class="text-xs uppercase text-surface-500">Tags</p>

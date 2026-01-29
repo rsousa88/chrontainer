@@ -33,6 +33,7 @@
 
     <Table>
       <template #head>
+        <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Host</th>
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Repository</th>
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Tag</th>
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Image ID</th>
@@ -41,12 +42,17 @@
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Actions</th>
       </template>
       <tr v-for="image in imageStore.items" :key="image.id">
+        <td class="px-4 py-4">
+          <Badge :tone="image.host_name ? 'info' : 'neutral'">{{ image.host_name || image.host || '—' }}</Badge>
+        </td>
         <td class="px-4 py-4 text-sm text-surface-100">{{ image.repository || image.repo || image.repo_name || 'unknown' }}</td>
         <td class="px-4 py-4 text-sm text-surface-300">{{ image.tag || image.image_tag || 'latest' }}</td>
         <td class="px-4 py-4 text-sm text-surface-300">{{ image.short_id || image.shortId || image.id?.slice?.(7, 17) }}</td>
-        <td class="px-4 py-4 text-sm text-surface-300">{{ image.size_human || image.size || '—' }}</td>
+        <td class="px-4 py-4 text-sm text-surface-300">{{ formatSize(image.size_bytes ?? image.size) }}</td>
         <td class="px-4 py-4">
-          <Badge :tone="image.containers === 0 ? 'warning' : 'info'">{{ image.containers ?? image.containers_count ?? 0 }}</Badge>
+          <Badge :tone="(image.containers ?? image.containers_count ?? 0) === 0 ? 'warning' : 'info'">
+            {{ image.containers ?? image.containers_count ?? 0 }}
+          </Badge>
         </td>
         <td class="px-4 py-4">
           <Button variant="ghost" @click="deleteImage(image)">Delete</Button>
@@ -76,6 +82,19 @@ const filters = ref({
 
 const toastStore = useToastStore()
 const imageStore = useImageStore()
+
+const formatSize = (bytes) => {
+  const value = typeof bytes === 'number' ? bytes : Number(bytes)
+  if (!Number.isFinite(value) || value <= 0) return '—'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = value
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`
+}
 
 const refresh = () => imageStore.fetchImages(true)
 

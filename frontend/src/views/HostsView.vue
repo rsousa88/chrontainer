@@ -35,7 +35,7 @@
           <div class="flex flex-wrap gap-2">
             <Button variant="ghost" @click="openEdit(host)">Edit</Button>
             <Button variant="ghost" @click="testHost(host)">Test</Button>
-            <Button variant="danger" @click="confirmDelete(host)">Delete</Button>
+            <Button variant="danger" :disabled="host.id === 1" @click="confirmDelete(host)">Delete</Button>
           </div>
         </td>
       </tr>
@@ -69,9 +69,12 @@
       @close="closeDelete"
     >
       <p>Delete host <span class="font-semibold text-surface-100">{{ deleteTarget?.name }}</span>?</p>
+      <p v-if="deleteTarget?.id === 1" class="mt-2 text-sm text-surface-400">
+        The local host cannot be deleted.
+      </p>
       <template #actions>
         <Button variant="ghost" @click="closeDelete">Cancel</Button>
-        <Button variant="danger" @click="deleteHost">Delete</Button>
+        <Button variant="danger" :disabled="deleteTarget?.id === 1" @click="deleteHost">Delete</Button>
       </template>
     </Modal>
   </section>
@@ -158,6 +161,14 @@ const submitForm = async () => {
 }
 
 const confirmDelete = (host) => {
+  if (host.id === 1) {
+    toastStore.push({
+      title: 'Delete not allowed',
+      message: 'The local host cannot be deleted.',
+      tone: 'danger',
+    })
+    return
+  }
   deleteTarget.value = host
   deleteModalOpen.value = true
 }
@@ -193,9 +204,16 @@ const testHost = async (host) => {
     })
     refresh()
   } catch (err) {
+    const responseData = err?.response?.data
+    const fallbackMessage =
+      typeof responseData === 'string'
+        ? responseData
+        : err?.response?.status
+          ? `Request failed (${err.response.status})`
+          : 'Unable to test host.'
     toastStore.push({
       title: 'Test failed',
-      message: err?.response?.data?.error || 'Unable to test host.',
+      message: responseData?.error || responseData?.message || fallbackMessage,
       tone: 'danger',
     })
   }

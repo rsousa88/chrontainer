@@ -106,6 +106,7 @@ class ImageService:
             host_text_color = host_text_color_map.get(host_id, self._get_contrast_text_color(host_color))
 
             container_repo_map = {}
+            container_count_map = {}
             try:
                 containers = docker_client.containers.list(all=True)
                 for container in containers:
@@ -113,6 +114,7 @@ class ImageService:
                         image_id = container.image.id
                         if not image_id:
                             continue
+                        container_count_map[image_id] = container_count_map.get(image_id, 0) + 1
                         image_name = None
                         if container.image.tags:
                             image_name = container.image.tags[0]
@@ -134,6 +136,8 @@ class ImageService:
                     size = entry.get('Size')
                     shared_size = entry.get('SharedSize')
                     containers_count = entry.get('Containers')
+                    if containers_count is None:
+                        containers_count = container_count_map.get(image_id)
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
                     repo_tags = entry.get('RepoTags') or []
@@ -176,6 +180,8 @@ class ImageService:
                     size = entry.get('Size')
                     shared_size = entry.get('SharedSize')
                     containers_count = entry.get('Containers')
+                    if containers_count is None:
+                        containers_count = container_count_map.get(image_id)
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
                     repo_tags = entry.get('RepoTags') or []

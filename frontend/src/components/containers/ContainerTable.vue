@@ -11,7 +11,7 @@
     </template>
     <tr v-for="container in containers" :key="container.id">
       <td class="px-4 py-4 text-sm font-semibold text-surface-50">{{ container.name }}</td>
-      <td class="px-4 py-4 text-sm text-surface-300">{{ container.host }}</td>
+      <td class="px-4 py-4 text-sm text-surface-300">{{ container.host || container.host_name || '—' }}</td>
       <td class="px-4 py-4">
         <Badge :tone="statusTone(container.status)">{{ container.status }}</Badge>
       </td>

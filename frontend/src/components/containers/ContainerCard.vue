@@ -2,7 +2,7 @@
   <Card>
     <div class="flex items-center justify-between">
       <div>
-        <p class="text-sm text-surface-400">{{ container.host }}</p>
+        <p class="text-sm text-surface-400">{{ container.host || container.host_name || '—' }}</p>
         <h3 class="text-lg font-semibold text-surface-50">{{ container.name }}</h3>
       </div>
       <Badge :tone="statusTone">{{ container.status }}</Badge>

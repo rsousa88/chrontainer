@@ -586,6 +586,7 @@ def create_app():
         host_default_color=HOST_DEFAULT_COLOR,
         datetime_factory=datetime.now,
         sqlite3_module=sqlite3,
+        csrf=csrf,
         logger=logger,
     )
     app.register_blueprint(hosts_blueprint)
