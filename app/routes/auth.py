@@ -52,6 +52,38 @@ def create_auth_blueprint(login_repo, user_class, user_repo, limiter, csrf, vers
 
         return render_template('login.html', version=version)
 
+    @blueprint.route('/api/login', methods=['POST'])
+    @limiter.limit('10 per minute')
+    def api_login():
+        """API login for SPA clients."""
+        if current_user.is_authenticated:
+            return jsonify({'success': True, 'username': current_user.username})
+
+        username = sanitize_string(request.form.get('username', ''), max_length=50).strip()
+        password = request.form.get('password', '')
+
+        if not username or not password:
+            return jsonify({'error': 'Username and password are required'}), 400
+
+        try:
+            user_data = login_repo.get_user_for_login(username)
+
+            if user_data and bcrypt.checkpw(password.encode('utf-8'), user_data[2].encode('utf-8')):
+                login_repo.update_last_login(user_data[0], datetime.now())
+
+                user = user_class(id=user_data[0], username=user_data[1], role=user_data[3])
+                login_user(user)
+                logger.info(f"User {username} logged in via API")
+                return jsonify({'success': True, 'username': user.username})
+
+            return jsonify({'error': 'Invalid username or password'}), 401
+
+        except Exception as e:
+            logger.error(f"API login error: {e}")
+            return jsonify({'error': 'Login failed'}), 500
+
+    csrf.exempt(api_login)
+
     @blueprint.route('/logout')
     @login_required
     def logout():
@@ -61,6 +93,18 @@ def create_auth_blueprint(login_repo, user_class, user_repo, limiter, csrf, vers
         logger.info(f"User {username} logged out")
         flash('You have been logged out', 'success')
         return redirect(url_for('auth.login'))
+
+    @blueprint.route('/api/logout', methods=['POST'])
+    def api_logout():
+        """API logout for SPA clients."""
+        if not current_user.is_authenticated:
+            return jsonify({'success': True})
+        username = current_user.username
+        logout_user()
+        logger.info(f"User {username} logged out via API")
+        return jsonify({'success': True})
+
+    csrf.exempt(api_logout)
 
     @blueprint.route('/user-settings')
     @login_required

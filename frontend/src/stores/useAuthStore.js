@@ -17,8 +17,10 @@ export const useAuthStore = defineStore('auth', {
         form.set('password', payload.password || '')
         await api.post('/login', form)
         this.user = { username: payload.username }
+        return true
       } catch (err) {
         this.error = err
+        return false
       } finally {
         this.loading = false
       }

@@ -224,5 +224,86 @@ const testNtfy = async () => {
 }
 
 const createKey = async () => {
-  const payload = {\n    name: apiKeyForm.name,\n    permissions: apiKeyForm.permissions,\n    expires_days: apiKeyForm.expiresDays ? Number(apiKeyForm.expiresDays) : undefined,\n  }\n  await apiKeyStore.createKey(payload)\n  await apiKeyStore.fetchKeys()\n  toastStore.push({ title: 'API key created', message: 'Key generated successfully.' })\n  resetKeyForm()\n}\n\nconst resetKeyForm = () => {\n  apiKeyForm.name = ''\n  apiKeyForm.permissions = 'read'\n  apiKeyForm.expiresDays = ''\n}\n\nconst deleteKey = async (id) => {\n  await apiKeyStore.deleteKey(id)\n  await apiKeyStore.fetchKeys()\n  toastStore.push({ title: 'API key revoked', message: 'Key removed.' })\n}\n\nconst createWebhook = async () => {\n  await webhookStore.createWebhook({\n    name: webhookForm.name,\n    container_id: webhookForm.containerId || undefined,\n    action: webhookForm.action,\n    locked: webhookForm.locked === 'true',\n  })\n  await webhookStore.fetchWebhooks()\n  toastStore.push({ title: 'Webhook created', message: 'Webhook is ready.' })\n  resetWebhookForm()\n}\n\nconst resetWebhookForm = () => {\n  webhookForm.name = ''\n  webhookForm.containerId = ''\n  webhookForm.action = 'restart'\n  webhookForm.locked = 'false'\n}\n\nconst toggleWebhook = async (id) => {\n  await webhookStore.toggleWebhook(id)\n  await webhookStore.fetchWebhooks()\n}\n\nconst regenerateWebhook = async (id) => {\n  await webhookStore.regenerateToken(id)\n  await webhookStore.fetchWebhooks()\n  toastStore.push({ title: 'Token regenerated', message: 'New webhook token created.' })\n}\n\nconst deleteWebhook = async (id) => {\n  await webhookStore.deleteWebhook(id)\n  await webhookStore.fetchWebhooks()\n  toastStore.push({ title: 'Webhook deleted', message: 'Webhook removed.' })\n}\n\nconst changePassword = async () => {\n  await api.post('/user/change-password', {\n    current_password: passwordForm.current,\n    new_password: passwordForm.next,\n    confirm_password: passwordForm.confirm,\n  })\n  toastStore.push({ title: 'Password updated', message: 'Credentials updated.' })\n  passwordForm.current = ''\n  passwordForm.next = ''\n  passwordForm.confirm = ''\n}\n+\n+onMounted(async () => {\n+  await settingsStore.fetchSettings()\n+  await apiKeyStore.fetchKeys()\n+  await webhookStore.fetchWebhooks()\n+\n+  discord.webhook = settingsStore.data.discord_webhook_url || ''\n+  ntfy.server = settingsStore.data.ntfy_server || 'https://ntfy.sh'\n+  ntfy.topic = settingsStore.data.ntfy_topic || ''\n+  ntfy.priority = settingsStore.data.ntfy_priority || '3'\n+})\n </script>
+  const payload = {
+    name: apiKeyForm.name,
+    permissions: apiKeyForm.permissions,
+    expires_days: apiKeyForm.expiresDays ? Number(apiKeyForm.expiresDays) : undefined,
+  }
+  await apiKeyStore.createKey(payload)
+  await apiKeyStore.fetchKeys()
+  toastStore.push({ title: 'API key created', message: 'Key generated successfully.' })
+  resetKeyForm()
+}
+
+const resetKeyForm = () => {
+  apiKeyForm.name = ''
+  apiKeyForm.permissions = 'read'
+  apiKeyForm.expiresDays = ''
+}
+
+const deleteKey = async (id) => {
+  await apiKeyStore.deleteKey(id)
+  await apiKeyStore.fetchKeys()
+  toastStore.push({ title: 'API key revoked', message: 'Key removed.' })
+}
+
+const createWebhook = async () => {
+  await webhookStore.createWebhook({
+    name: webhookForm.name,
+    container_id: webhookForm.containerId || undefined,
+    action: webhookForm.action,
+    locked: webhookForm.locked === 'true',
+  })
+  await webhookStore.fetchWebhooks()
+  toastStore.push({ title: 'Webhook created', message: 'Webhook is ready.' })
+  resetWebhookForm()
+}
+
+const resetWebhookForm = () => {
+  webhookForm.name = ''
+  webhookForm.containerId = ''
+  webhookForm.action = 'restart'
+  webhookForm.locked = 'false'
+}
+
+const toggleWebhook = async (id) => {
+  await webhookStore.toggleWebhook(id)
+  await webhookStore.fetchWebhooks()
+}
+
+const regenerateWebhook = async (id) => {
+  await webhookStore.regenerateToken(id)
+  await webhookStore.fetchWebhooks()
+  toastStore.push({ title: 'Token regenerated', message: 'New webhook token created.' })
+}
+
+const deleteWebhook = async (id) => {
+  await webhookStore.deleteWebhook(id)
+  await webhookStore.fetchWebhooks()
+  toastStore.push({ title: 'Webhook deleted', message: 'Webhook removed.' })
+}
+
+const changePassword = async () => {
+  await api.post('/user/change-password', {
+    current_password: passwordForm.current,
+    new_password: passwordForm.next,
+    confirm_password: passwordForm.confirm,
+  })
+  toastStore.push({ title: 'Password updated', message: 'Credentials updated.' })
+  passwordForm.current = ''
+  passwordForm.next = ''
+  passwordForm.confirm = ''
+}
+
+onMounted(async () => {
+  await settingsStore.fetchSettings()
+  await apiKeyStore.fetchKeys()
+  await webhookStore.fetchWebhooks()
+
+  discord.webhook = settingsStore.data.discord_webhook_url || ''
+  ntfy.server = settingsStore.data.ntfy_server || 'https://ntfy.sh'
+  ntfy.topic = settingsStore.data.ntfy_topic || ''
+  ntfy.priority = settingsStore.data.ntfy_priority || '3'
+})
 </script>
+

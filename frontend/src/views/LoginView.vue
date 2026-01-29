@@ -23,17 +23,22 @@
 
 <script setup>
 import { reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
 import { useAuthStore } from '../stores/useAuthStore'
 
 const store = useAuthStore()
+const router = useRouter()
 const form = reactive({
   username: '',
   password: '',
 })
 
-const submit = () => {
-  store.login(form)
+const submit = async () => {
+  const ok = await store.login(form)
+  if (ok) {
+    router.push('/')
+  }
 }
 </script>

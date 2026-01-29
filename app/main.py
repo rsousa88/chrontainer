@@ -110,6 +110,20 @@ UPDATE_CHECK_CRON_DEFAULT = '0 3 * * *'
 HOST_DEFAULT_COLOR = '#3498db'
 
 
+class ApiV1RewriteMiddleware:
+    """Rewrite /api/v1/* requests to /api/* and mark version for response headers."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        path = environ.get('PATH_INFO', '')
+        if path.startswith('/api/v1/'):
+            environ['PATH_INFO'] = '/api/' + path[len('/api/v1/'):]
+            environ['CHRON_API_VERSION'] = 'v1'
+        return self.app(environ, start_response)
+
+
 
 
 
@@ -408,6 +422,7 @@ image_service = ImageService(
 def create_app():
     """Application factory."""
     app = Flask(__name__, template_folder='../templates')
+    app.wsgi_app = ApiV1RewriteMiddleware(app.wsgi_app)
 
     # Security Configuration
     secret_key = Config.SECRET_KEY
@@ -463,6 +478,13 @@ def create_app():
 
     # CSRF protection
     csrf = CSRFProtect(app)
+
+    @app.after_request
+    def add_api_deprecation_headers(response):
+        if request.path.startswith('/api/') and not request.environ.get('CHRON_API_VERSION'):
+            response.headers['X-Api-Deprecated'] = 'true'
+            response.headers['X-Api-Deprecation-Notice'] = 'Use /api/v1 endpoints instead.'
+        return response
 
     # User loader
     @login_manager.user_loader

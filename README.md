@@ -161,30 +161,32 @@ Chrontainer will send rich notifications with color-coded embeds when containers
 
 ## API Endpoints
 
+Chrontainer now supports versioned APIs. Use `/api/v1` for all new integrations. The legacy `/api` routes continue to work for now but will emit deprecation headers.
+
 ### Containers
-- `GET /api/containers` - List all containers (from all hosts)
-- `POST /api/container/<id>/restart` - Restart container
-- `POST /api/container/<id>/start` - Start container
-- `POST /api/container/<id>/stop` - Stop container
-- `POST /api/container/<id>/pause` - Pause container
-- `POST /api/container/<id>/unpause` - Unpause container
-- `GET /api/container/<id>/logs` - Get container logs (supports tail, timestamps params)
+- `GET /api/v1/containers` - List all containers (from all hosts)
+- `POST /api/v1/container/<id>/restart` - Restart container
+- `POST /api/v1/container/<id>/start` - Start container
+- `POST /api/v1/container/<id>/stop` - Stop container
+- `POST /api/v1/container/<id>/pause` - Pause container
+- `POST /api/v1/container/<id>/unpause` - Unpause container
+- `GET /api/v1/container/<id>/logs` - Get container logs (supports tail, timestamps params)
 
 ### Schedules
-- `POST /api/schedule` - Create new schedule
-- `DELETE /api/schedule/<id>` - Delete schedule
-- `POST /api/schedule/<id>/toggle` - Enable/disable schedule
+- `POST /api/v1/schedule` - Create new schedule
+- `DELETE /api/v1/schedule/<id>` - Delete schedule
+- `POST /api/v1/schedule/<id>/toggle` - Enable/disable schedule
 
 ### Docker Hosts
-- `GET /api/hosts` - List all Docker hosts
-- `POST /api/hosts` - Add new Docker host
-- `DELETE /api/hosts/<id>` - Delete Docker host
-- `POST /api/hosts/<id>/test` - Test host connection
+- `GET /api/v1/hosts` - List all Docker hosts
+- `POST /api/v1/hosts` - Add new Docker host
+- `DELETE /api/v1/hosts/<id>` - Delete Docker host
+- `POST /api/v1/hosts/<id>/test` - Test host connection
 
 ### Settings
-- `GET /api/settings` - Get current settings
-- `POST /api/settings/discord` - Update Discord webhook URL
-- `POST /api/settings/discord/test` - Send test notification
+- `GET /api/v1/settings` - Get current settings
+- `POST /api/v1/settings/discord` - Update Discord webhook URL
+- `POST /api/v1/settings/discord/test` - Send test notification
 
 ## Configuration
 

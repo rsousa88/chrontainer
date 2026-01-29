@@ -1,12 +1,16 @@
 <template>
   <AppLayout v-if="!isLogin">
-    <Transition name="page" mode="out-in">
-      <RouterView />
-    </Transition>
+    <RouterView v-slot="{ Component }">
+      <Transition name="page" mode="out-in">
+        <component :is="Component" />
+      </Transition>
+    </RouterView>
   </AppLayout>
-  <Transition v-else name="page" mode="out-in">
-    <RouterView />
-  </Transition>
+  <RouterView v-else v-slot="{ Component }">
+    <Transition name="page" mode="out-in">
+      <component :is="Component" />
+    </Transition>
+  </RouterView>
   <ToastContainer />
 </template>
 
