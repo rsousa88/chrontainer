@@ -2,7 +2,7 @@
   <aside class="fixed inset-y-0 left-0 w-64 border-r border-surface-800 bg-surface-900/95 px-6 py-8">
     <div class="flex items-center gap-3 text-lg font-semibold text-surface-50">
       <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-300">
-        <span class="text-xl">C</span>
+        <img src="../assets/chrontainer.svg" alt="Chrontainer" class="h-6 w-6" />
       </div>
       <div>
         <div class="leading-tight">Chrontainer</div>
@@ -23,15 +23,27 @@
       </RouterLink>
     </nav>
 
-    <div class="mt-auto pt-10 text-xs text-surface-500">
+    <div class="mt-auto space-y-3 pt-10 text-xs text-surface-500">
       <div>Build: v0.4.17</div>
-      <div>Dark default theme</div>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" v-model="isLight" class="h-4 w-4 rounded border-surface-600 bg-surface-800" />
+        Light mode
+      </label>
     </div>
   </aside>
 </template>
 
 <script setup>
+import { ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { navItems } from './navItems'
 import NavIcon from './NavIcon.vue'
+
+const isLight = ref(document.documentElement.dataset.theme === 'light')
+
+watch(isLight, (value) => {
+  const theme = value ? 'light' : 'dark'
+  document.documentElement.dataset.theme = theme
+  localStorage.setItem('theme', theme)
+})
 </script>

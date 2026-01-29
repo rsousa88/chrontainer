@@ -147,6 +147,7 @@ class ImageService:
                         containers_count = fallback_count
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
+                    containers_pending = False
                     repo_tags = entry.get('RepoTags') or []
                     repo_digests = entry.get('RepoDigests') or []
                     if not repo_tags:
@@ -170,6 +171,7 @@ class ImageService:
                             'size_bytes': size,
                             'shared_size_bytes': shared_size,
                             'containers': containers_count,
+                            'containers_pending': containers_pending,
                             'created': created,
                             'host_id': host_id,
                             'host_name': host_name,
@@ -195,6 +197,7 @@ class ImageService:
                         containers_count = fallback_count
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
+                    containers_pending = cached_df is None and (containers_count is None)
                     repo_tags = entry.get('RepoTags') or []
                     repo_digests = entry.get('RepoDigests') or []
                     if not repo_tags:
@@ -218,6 +221,7 @@ class ImageService:
                             'size_bytes': size,
                             'shared_size_bytes': shared_size,
                             'containers': containers_count,
+                            'containers_pending': containers_pending,
                             'created': created,
                             'host_id': host_id,
                             'host_name': host_name,

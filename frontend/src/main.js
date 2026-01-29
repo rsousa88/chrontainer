@@ -8,3 +8,8 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.mount('#app')
+
+const storedTheme = localStorage.getItem('theme')
+if (storedTheme) {
+  document.documentElement.dataset.theme = storedTheme
+}

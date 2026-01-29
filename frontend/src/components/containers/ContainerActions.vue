@@ -1,31 +1,60 @@
 <template>
   <div class="flex flex-wrap items-center gap-2">
     <Button variant="ghost" aria-label="Restart" title="Restart" @click="runAction('restart')">
-      <IconRefresh />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-3-6.7" />
+        <path d="M21 3v6h-6" />
+      </svg>
     </Button>
     <Button variant="ghost" aria-label="Stop" title="Stop" @click="runAction('stop')">
-      <IconStop />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="2" />
+      </svg>
     </Button>
     <Button variant="ghost" aria-label="Start" title="Start" @click="runAction('start')">
-      <IconPlay />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z" />
+      </svg>
     </Button>
     <Button variant="ghost" aria-label="Pause" title="Pause" @click="runAction('pause')">
-      <IconPause />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="5" width="4" height="14" rx="1" />
+        <rect x="14" y="5" width="4" height="14" rx="1" />
+      </svg>
     </Button>
     <Button variant="ghost" aria-label="Unpause" title="Unpause" @click="runAction('unpause')">
-      <IconPlay />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z" />
+      </svg>
     </Button>
     <Button variant="ghost" aria-label="Update" title="Update" @click="runAction('update')">
-      <IconUpload />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 16V4" />
+        <path d="m5 11 7-7 7 7" />
+        <path d="M4 20h16" />
+      </svg>
     </Button>
     <Button variant="ghost" aria-label="Check Updates" title="Check Updates" :disabled="updateBusy" @click="checkUpdates">
-      <IconCheck />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m5 12 4 4 10-10" />
+      </svg>
     </Button>
     <Button variant="ghost" aria-label="Logs" title="Logs" @click="openLogs">
-      <IconList />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 6h13" />
+        <path d="M8 12h13" />
+        <path d="M8 18h13" />
+        <circle cx="4" cy="6" r="1" />
+        <circle cx="4" cy="12" r="1" />
+        <circle cx="4" cy="18" r="1" />
+      </svg>
     </Button>
     <Button v-if="webuiUrl" variant="ghost" aria-label="Open UI" title="Open UI" @click="openWebui">
-      <IconExternal />
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 3h7v7" />
+        <path d="M10 14 21 3" />
+        <path d="M21 14v7H3V3h7" />
+      </svg>
     </Button>
   </div>
 
@@ -208,36 +237,4 @@ onBeforeUnmount(() => {
   }
 })
 
-const IconRefresh = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12a9 9 0 1 1-3-6.7\"/><path d=\"M21 3v6h-6\"/></svg>',
-}
-const IconStop = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><rect x=\"6\" y=\"6\" width=\"12\" height=\"12\" rx=\"2\"/></svg>',
-}
-const IconPlay = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M8 5v14l11-7z\"/></svg>',
-}
-const IconPause = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><rect x=\"6\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"/><rect x=\"14\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"/></svg>',
-}
-const IconUpload = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V4\"/><path d=\"m5 11 7-7 7 7\"/><path d=\"M4 20h16\"/></svg>',
-}
-const IconCheck = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m5 12 4 4 10-10\"/></svg>',
-}
-const IconList = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 6h13\"/><path d=\"M8 12h13\"/><path d=\"M8 18h13\"/><circle cx=\"4\" cy=\"6\" r=\"1\"/><circle cx=\"4\" cy=\"12\" r=\"1\"/><circle cx=\"4\" cy=\"18\" r=\"1\"/></svg>',
-}
-const IconExternal = {
-  template:
-    '<svg class=\"h-4 w-4\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 3h7v7\"/><path d=\"M10 14 21 3\"/><path d=\"M21 14v7H3V3h7\"/></svg>',
-}
 </script>

@@ -6,6 +6,7 @@ export const useImageStore = defineStore('images', {
     items: [],
     loading: false,
     error: null,
+    pendingCounts: false,
   }),
   actions: {
     async fetchImages(refresh = false) {
@@ -14,6 +15,7 @@ export const useImageStore = defineStore('images', {
       try {
         const { data } = await api.get('/images', { params: { refresh: refresh ? 1 : 0 } })
         this.items = data
+        this.pendingCounts = data.some((image) => image?.containers_pending)
       } catch (err) {
         this.error = err
       } finally {

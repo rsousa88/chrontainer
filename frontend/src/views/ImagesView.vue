@@ -7,8 +7,8 @@
         <p class="text-sm text-surface-400">Review and prune unused images.</p>
       </div>
       <div class="flex items-center gap-2">
-        <Button variant="ghost" @click="refresh">Refresh</Button>
-        <Button variant="danger" @click="notify">Prune Unused</Button>
+        <Button variant="ghost" :disabled="controlsDisabled" @click="refresh">Refresh</Button>
+        <Button variant="danger" :disabled="controlsDisabled" @click="notify">Prune Unused</Button>
       </div>
     </div>
 
@@ -27,7 +27,7 @@
       </div>
     </Card>
 
-    <div v-if="imageStore.loading" class="flex justify-end">
+    <div v-if="imageStore.loading || imageStore.pendingCounts" class="flex justify-end">
       <Spinner label="Loading images" />
     </div>
 
@@ -50,12 +50,12 @@
         <td class="px-4 py-4 text-sm text-surface-300">{{ image.short_id || image.shortId || image.id?.slice?.(7, 17) }}</td>
         <td class="px-4 py-4 text-sm text-surface-300">{{ formatSize(image.size_bytes ?? image.size) }}</td>
         <td class="px-4 py-4">
-          <Badge :tone="(image.containers ?? image.containers_count ?? 0) === 0 ? 'warning' : 'info'">
-            {{ image.containers ?? image.containers_count ?? 0 }}
+          <Badge :tone="displayCount(image) === '-' ? 'neutral' : (displayCount(image) === 0 ? 'warning' : 'info')">
+            {{ displayCount(image) }}
           </Badge>
         </td>
         <td class="px-4 py-4">
-          <Button variant="ghost" @click="deleteImage(image)">Delete</Button>
+          <Button variant="ghost" :disabled="controlsDisabled" @click="deleteImage(image)">Delete</Button>
         </td>
       </tr>
     </Table>
@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
 import Badge from '../components/ui/Badge.vue'
@@ -83,6 +83,8 @@ const filters = ref({
 const toastStore = useToastStore()
 const imageStore = useImageStore()
 
+const controlsDisabled = computed(() => imageStore.loading || imageStore.pendingCounts)
+
 const formatSize = (bytes) => {
   const value = typeof bytes === 'number' ? bytes : Number(bytes)
   if (!Number.isFinite(value) || value <= 0) return '—'
@@ -94,6 +96,11 @@ const formatSize = (bytes) => {
     unitIndex += 1
   }
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`
+}
+
+const displayCount = (image) => {
+  if (imageStore.pendingCounts) return '-'
+  return image.containers ?? image.containers_count ?? 0
 }
 
 const refresh = () => imageStore.fetchImages(true)

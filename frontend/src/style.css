@@ -17,6 +17,32 @@ body {
   scrollbar-color: #4b5f76 #1d2430;
 }
 
+/* Light theme overrides */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='light'] body {
+  background-color: #f8fafc;
+  color: #1d2430;
+}
+
+:root[data-theme='light'] .bg-surface-900 { background-color: #f8fafc; }
+:root[data-theme='light'] .bg-surface-800 { background-color: #eef2f7; }
+:root[data-theme='light'] .bg-surface-700 { background-color: #d7e0ea; }
+:root[data-theme='light'] .bg-surface-600 { background-color: #b1c1d6; }
+:root[data-theme='light'] .text-surface-50 { color: #1d2430; }
+:root[data-theme='light'] .text-surface-100 { color: #2c3542; }
+:root[data-theme='light'] .text-surface-200 { color: #3d4c5d; }
+:root[data-theme='light'] .text-surface-300 { color: #4b5f76; }
+:root[data-theme='light'] .text-surface-400 { color: #5f7894; }
+:root[data-theme='light'] .border-surface-800 { border-color: #d7e0ea; }
+:root[data-theme='light'] .border-surface-700 { border-color: #b1c1d6; }
+:root[data-theme='light'] .border-surface-600 { border-color: #7d95b2; }
+:root[data-theme='light'] .hover\\:bg-surface-800:hover { background-color: #eef2f7; }
+:root[data-theme='light'] .hover\\:border-surface-700:hover { border-color: #b1c1d6; }
+:root[data-theme='light'] .hover\\:text-surface-50:hover { color: #1d2430; }
+
 .page-enter-active,
 .page-leave-active {
   transition: opacity 0.25s ease, transform 0.25s ease;
