@@ -46,6 +46,7 @@ A lightweight, web-based scheduler for automating Docker container restarts and 
    environment:
      - SECRET_KEY=your-secret-key-here  # Change for production!
    ```
+   The default compose uses the published GHCR image. Uncomment `build: .` if you prefer a local build.
 
 3. **Start Chrontainer**:
    ```bash

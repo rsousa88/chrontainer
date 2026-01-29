@@ -16,7 +16,7 @@
           <span v-else>Login</span>
         </Button>
       </div>
-      <p v-if="store.error" class="mt-4 text-xs text-rose-400">Login failed.</p>
+      <p v-if="store.error" class="mt-4 text-xs text-rose-400">{{ store.error }}</p>
     </div>
   </div>
 </template>

@@ -1,19 +1,42 @@
 services:
   chrontainer:
-    build: .
+    image: ghcr.io/rsousa88/chrontainer:latest
+    # build: .  # Uncomment to build locally instead of pulling
     container_name: chrontainer
     restart: unless-stopped
     ports:
       - "5000:5000"
+    environment:
+      - PORT=5000
+      - TZ=UTC
+      - SECRET_KEY=change-me
+      # - SESSION_COOKIE_SECURE=true
+      # - SESSION_COOKIE_SAMESITE=Lax
+      # - FORCE_HTTPS=true
     volumes:
       # Mount Docker socket to control containers
       - /var/run/docker.sock:/var/run/docker.sock
       # Persistent data storage for database
-      - ./data:/data
-    environment:
-      # Optional: Set custom port
-      - PORT=5000
-      # Secret key for session management
-      - SECRET_KEY=h1WnZz09Ceg9VdsyL7Y0ppG1dZC7FqrJ8saaquINfWg
+      - chrontainer_data:/data
+      # Or bind-mount a local folder instead:
+      # - ./data:/data
     labels:
       - "com.chrontainer.managed=false"  # Don't manage itself
+    # Optional macvlan network example:
+    # networks:
+    #   macvlan:
+    #     ipv4_address: 192.168.50.10
+
+# Optional macvlan network definition:
+# networks:
+#   macvlan:
+#     driver: macvlan
+#     driver_opts:
+#       parent: eth0
+#     ipam:
+#       config:
+#         - subnet: 192.168.50.0/24
+#           gateway: 192.168.50.1
+
+volumes:
+  chrontainer_data:

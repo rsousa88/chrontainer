@@ -54,6 +54,12 @@ class NotificationService:
                 embed['fields'].append({'name': 'Schedule ID', 'value': str(schedule_id), 'inline': True})
 
             payload = {'embeds': [embed]}
+            username = self._get_setting('discord_username')
+            avatar_url = self._get_setting('discord_avatar_url')
+            if username:
+                payload['username'] = username
+            if avatar_url:
+                payload['avatar_url'] = avatar_url
 
             response = requests.post(webhook_url, json=payload, timeout=10)
             if response.status_code not in [200, 204]:
@@ -95,6 +101,11 @@ class NotificationService:
                     'Title': title,
                     'Priority': str(self._get_setting('ntfy_priority', '3')),
                     'Tags': emoji,
+                    **(
+                        {'Authorization': f"Bearer {self._get_setting('ntfy_access_token', '').strip()}"}
+                        if self._get_setting('ntfy_access_token', '').strip()
+                        else {}
+                    ),
                 },
                 timeout=10,
             )

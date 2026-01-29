@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, render_template
+from pathlib import Path
+from flask import Blueprint, jsonify, render_template, send_from_directory
 from flask_login import login_required
 
 
 def create_logs_blueprint(app_log_repo, version: str):
     """Create logs routes with injected dependencies."""
     blueprint = Blueprint('logs', __name__)
+    dist_dir = Path(__file__).resolve().parents[3] / 'frontend' / 'dist'
 
     @blueprint.route('/logs')
     @login_required
     def logs():
         """View logs page."""
+        if dist_dir.joinpath('index.html').exists():
+            return send_from_directory(dist_dir, 'index.html')
         logs_data = app_log_repo.list_recent(100)
         return render_template('logs.html', logs=logs_data, version=version)
 

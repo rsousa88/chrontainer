@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 
 import bcrypt
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from pathlib import Path
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.utils.validators import sanitize_string
@@ -12,6 +13,7 @@ from app.utils.validators import sanitize_string
 def create_auth_blueprint(login_repo, user_class, user_repo, limiter, csrf, version: str, logger, bcrypt_module):
     """Create authentication routes with injected dependencies."""
     blueprint = Blueprint('auth', __name__)
+    dist_dir = Path(__file__).resolve().parents[3] / 'frontend' / 'dist'
 
     @blueprint.route('/login', methods=['GET', 'POST'])
     @csrf.exempt
@@ -20,6 +22,9 @@ def create_auth_blueprint(login_repo, user_class, user_repo, limiter, csrf, vers
         """Login page."""
         if current_user.is_authenticated:
             return redirect(url_for('index'))
+
+        if request.method == 'GET' and dist_dir.joinpath('index.html').exists():
+            return send_from_directory(dist_dir, 'index.html')
 
         if request.method == 'POST':
             username = sanitize_string(request.form.get('username', ''), max_length=50).strip()
@@ -105,6 +110,15 @@ def create_auth_blueprint(login_repo, user_class, user_repo, limiter, csrf, vers
         return jsonify({'success': True})
 
     csrf.exempt(api_logout)
+
+    @blueprint.route('/api/user', methods=['GET'])
+    @login_required
+    def api_user():
+        """Return current user information."""
+        return jsonify({
+            'username': current_user.username,
+            'role': getattr(current_user, 'role', 'user'),
+        })
 
     @blueprint.route('/user-settings')
     @login_required

@@ -1,6 +1,13 @@
 # Multi-architecture Dockerfile for Chrontainer
 # Optimized for ARM64 (Raspberry Pi 5) and AMD64
 
+FROM node:20-alpine AS frontend-build
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 # Set working directory
@@ -21,6 +28,9 @@ COPY app/ /app/app/
 COPY templates/ /app/templates/
 COPY wsgi.py /app/
 COPY gunicorn.conf.py /app/
+
+# Copy built frontend assets
+COPY --from=frontend-build /frontend/dist /app/frontend/dist
 
 # Create data directory
 RUN mkdir -p /data

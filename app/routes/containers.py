@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import concurrent.futures
+from pathlib import Path
 import docker
 from datetime import datetime
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, send_from_directory, redirect
 from flask_login import login_required
 
 
@@ -28,18 +29,53 @@ def create_containers_blueprint(
 ):
     """Create container-related routes with injected dependencies."""
     blueprint = Blueprint('containers', __name__)
+    dist_dir = Path(__file__).resolve().parents[3] / 'frontend' / 'dist'
+    dist_assets_dir = dist_dir / 'assets'
 
     @blueprint.route('/')
     @login_required
     def index():
         """Main dashboard."""
         try:
+            if dist_dir.joinpath('index.html').exists():
+                return send_from_directory(dist_dir, 'index.html')
             container_list = fetch_all_containers()
             schedules = schedule_view_repo.list_with_host_names()
             return render_template('index.html', containers=container_list, schedules=schedules, version=version)
         except Exception as e:
             logger.error(f"Error loading dashboard: {e}")
             return render_template('error.html', error=str(e))
+
+    @blueprint.route('/containers')
+    @login_required
+    def containers_page():
+        """Containers list page (SPA fallback)."""
+        if dist_dir.joinpath('index.html').exists():
+            return send_from_directory(dist_dir, 'index.html')
+        return redirect('/')
+
+    @blueprint.route('/containers/<container_id>')
+    @login_required
+    def container_details_page(container_id):
+        """Container details page (SPA fallback)."""
+        if dist_dir.joinpath('index.html').exists():
+            return send_from_directory(dist_dir, 'index.html')
+        return redirect('/')
+
+    @blueprint.route('/schedules')
+    @login_required
+    def schedules_page():
+        """Schedules page (SPA fallback)."""
+        if dist_dir.joinpath('index.html').exists():
+            return send_from_directory(dist_dir, 'index.html')
+        return redirect('/')
+
+    @blueprint.route('/assets/<path:filename>')
+    def frontend_assets(filename):
+        """Serve built frontend assets."""
+        if dist_assets_dir.exists():
+            return send_from_directory(dist_assets_dir, filename)
+        return jsonify({'error': 'Frontend assets not found'}), 404
 
     @blueprint.route('/api/containers')
     @api_key_or_login_required

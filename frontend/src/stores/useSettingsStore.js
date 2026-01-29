@@ -5,10 +5,13 @@ export const useSettingsStore = defineStore('settings', {
   state: () => ({
     data: {
       discord_webhook_url: '',
+      discord_username: '',
+      discord_avatar_url: '',
       ntfy_enabled: 'false',
       ntfy_server: 'https://ntfy.sh',
       ntfy_topic: '',
       ntfy_priority: '3',
+      ntfy_access_token: '',
       update_check_enabled: 'true',
       update_check_cron: '0 3 * * *',
     },
@@ -28,8 +31,8 @@ export const useSettingsStore = defineStore('settings', {
         this.loading = false
       }
     },
-    saveDiscord(webhookUrl) {
-      return api.post('/settings/discord', { webhook_url: webhookUrl })
+    saveDiscord(payload) {
+      return api.post('/settings/discord', payload)
     },
     saveNtfy(payload) {
       return api.post('/settings/ntfy', payload)

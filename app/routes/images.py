@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, render_template, request
+from pathlib import Path
+from flask import Blueprint, jsonify, render_template, request, send_from_directory
 from flask_login import login_required
 
 
@@ -17,11 +18,14 @@ def create_images_blueprint(
 ):
     """Create image routes with injected dependencies."""
     blueprint = Blueprint('images', __name__)
+    dist_dir = Path(__file__).resolve().parents[3] / 'frontend' / 'dist'
 
     @blueprint.route('/images')
     @login_required
     def images_page():
         """Image management page."""
+        if dist_dir.joinpath('index.html').exists():
+            return send_from_directory(dist_dir, 'index.html')
         return render_template('images.html', version=version)
 
     @blueprint.route('/api/images', methods=['GET'])

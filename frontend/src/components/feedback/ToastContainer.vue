@@ -4,7 +4,8 @@
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        class="rounded-xl border border-surface-800 bg-surface-900/90 px-4 py-3 text-sm text-surface-100 shadow-xl"
+        class="rounded-xl border px-4 py-3 text-sm text-surface-100 shadow-xl"
+        :class="toastClass(toast.tone)"
       >
         <div class="flex items-start justify-between gap-3">
           <div>
@@ -26,6 +27,16 @@ const store = useToastStore()
 const toasts = computed(() => store.toasts)
 
 const remove = (id) => store.remove(id)
+
+const toastClass = (tone) => {
+  if (tone === 'danger') {
+    return 'border-rose-500/60 bg-rose-500/10'
+  }
+  if (tone === 'success') {
+    return 'border-emerald-500/60 bg-emerald-500/10'
+  }
+  return 'border-surface-800 bg-surface-900/90'
+}
 </script>
 
 <style scoped>

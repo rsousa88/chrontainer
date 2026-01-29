@@ -16,11 +16,17 @@
 
 <script setup>
 import { RouterView } from 'vue-router'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppLayout from './layouts/AppLayout.vue'
 import ToastContainer from './components/feedback/ToastContainer.vue'
+import { useAuthStore } from './stores/useAuthStore'
 
 const route = useRoute()
 const isLogin = computed(() => route.name === 'login')
+const authStore = useAuthStore()
+
+onMounted(() => {
+  authStore.fetchUser()
+})
 </script>

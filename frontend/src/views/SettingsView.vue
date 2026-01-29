@@ -6,7 +6,6 @@
         <h2 class="text-2xl font-semibold text-surface-50">System Preferences</h2>
         <p class="text-sm text-surface-400">Configure notifications, automation, and access.</p>
       </div>
-      <Button variant="primary">Save</Button>
     </div>
 
     <div class="flex flex-wrap gap-2 rounded-2xl border border-surface-800 bg-surface-900/60 p-2">
@@ -25,8 +24,8 @@
       <Card title="Discord Webhook" subtitle="Send notifications to a Discord channel">
         <div class="space-y-4">
           <Input v-model="discord.webhook" label="Webhook URL" placeholder="https://discord.com/api/webhooks/..." />
-          <Input label="Username" placeholder="Chrontainer" />
-          <Input label="Avatar URL" placeholder="https://..." />
+          <Input v-model="discord.username" label="Username" placeholder="Chrontainer" />
+          <Input v-model="discord.avatarUrl" label="Avatar URL" placeholder="https://..." />
           <div class="flex gap-3">
             <Button variant="ghost" @click="testDiscord">Send Test</Button>
             <Button variant="primary" @click="saveDiscord">Save</Button>
@@ -48,7 +47,7 @@
         <div class="space-y-4">
           <Input v-model="ntfy.server" label="Server" placeholder="https://ntfy.sh" />
           <Input v-model="ntfy.topic" label="Topic" placeholder="chrontainer" />
-          <Input label="Access Token" placeholder="Optional" />
+          <Input v-model="ntfy.accessToken" label="Access Token" placeholder="Optional" />
           <Button variant="ghost" @click="testNtfy">Send Test</Button>
         </div>
       </Card>
@@ -153,8 +152,8 @@
     <div v-else-if="activeTab === 'Account'" class="grid gap-6 lg:grid-cols-2">
       <Card title="Profile" subtitle="User details and access">
         <div class="space-y-4">
-          <Input label="Username" placeholder="admin" />
-          <Input label="Role" placeholder="admin" />
+          <Input label="Username" :model-value="authStore.user?.username || '—'" readonly />
+          <Input label="Role" :model-value="authStore.user?.role || '—'" readonly />
         </div>
       </Card>
       <Card title="Security" subtitle="Update your password">
@@ -182,6 +181,7 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useApiKeyStore } from '../stores/useApiKeyStore'
 import { useWebhookStore } from '../stores/useWebhookStore'
 import { useToastStore } from '../stores/useToastStore'
+import { useAuthStore } from '../stores/useAuthStore'
 import api from '../lib/api'
 
 const tabs = ['Discord', 'ntfy', 'API Keys', 'Webhooks', 'Docker Hosts', 'Account']
@@ -191,48 +191,79 @@ const settingsStore = useSettingsStore()
 const apiKeyStore = useApiKeyStore()
 const webhookStore = useWebhookStore()
 const toastStore = useToastStore()
+const authStore = useAuthStore()
 
-const discord = reactive({ webhook: '' })
-const ntfy = reactive({ server: 'https://ntfy.sh', topic: '', priority: '3' })
+const discord = reactive({ webhook: '', username: '', avatarUrl: '' })
+const ntfy = reactive({ server: 'https://ntfy.sh', topic: '', priority: '3', accessToken: '' })
 const apiKeyForm = reactive({ name: '', permissions: 'read', expiresDays: '' })
 const webhookForm = reactive({ name: '', containerId: '', action: 'restart', locked: 'false' })
 const passwordForm = reactive({ current: '', next: '', confirm: '' })
 
+const notifyError = (title, err) => {
+  const message = err?.response?.data?.error || err?.message || 'Request failed'
+  toastStore.push({ title, message, tone: 'danger' })
+}
+
 const saveDiscord = async () => {
-  await settingsStore.saveDiscord(discord.webhook)
-  toastStore.push({ title: 'Discord saved', message: 'Webhook updated.' })
+  try {
+    await settingsStore.saveDiscord({
+      webhook_url: discord.webhook,
+      username: discord.username,
+      avatar_url: discord.avatarUrl,
+    })
+    toastStore.push({ title: 'Discord saved', message: 'Webhook updated.' })
+  } catch (err) {
+    notifyError('Discord save failed', err)
+  }
 }
 
 const saveNtfy = async () => {
-  await settingsStore.saveNtfy({
-    enabled: true,
-    server: ntfy.server,
-    topic: ntfy.topic,
-    priority: parseInt(ntfy.priority, 10),
-  })
-  toastStore.push({ title: 'ntfy saved', message: 'Settings updated.' })
+  try {
+    await settingsStore.saveNtfy({
+      enabled: true,
+      server: ntfy.server,
+      topic: ntfy.topic,
+      priority: parseInt(ntfy.priority, 10),
+      access_token: ntfy.accessToken,
+    })
+    toastStore.push({ title: 'ntfy saved', message: 'Settings updated.' })
+  } catch (err) {
+    notifyError('ntfy save failed', err)
+  }
 }
 
 const testDiscord = async () => {
-  await settingsStore.testDiscord()
-  toastStore.push({ title: 'Discord test sent', message: 'Check your channel.' })
+  try {
+    await settingsStore.testDiscord()
+    toastStore.push({ title: 'Discord test sent', message: 'Check your channel.' })
+  } catch (err) {
+    notifyError('Discord test failed', err)
+  }
 }
 
 const testNtfy = async () => {
-  await settingsStore.testNtfy()
-  toastStore.push({ title: 'ntfy test sent', message: 'Check your device.' })
+  try {
+    await settingsStore.testNtfy()
+    toastStore.push({ title: 'ntfy test sent', message: 'Check your device.' })
+  } catch (err) {
+    notifyError('ntfy test failed', err)
+  }
 }
 
 const createKey = async () => {
-  const payload = {
-    name: apiKeyForm.name,
-    permissions: apiKeyForm.permissions,
-    expires_days: apiKeyForm.expiresDays ? Number(apiKeyForm.expiresDays) : undefined,
+  try {
+    const payload = {
+      name: apiKeyForm.name,
+      permissions: apiKeyForm.permissions,
+      expires_days: apiKeyForm.expiresDays ? Number(apiKeyForm.expiresDays) : undefined,
+    }
+    await apiKeyStore.createKey(payload)
+    await apiKeyStore.fetchKeys()
+    toastStore.push({ title: 'API key created', message: 'Key generated successfully.' })
+    resetKeyForm()
+  } catch (err) {
+    notifyError('API key creation failed', err)
   }
-  await apiKeyStore.createKey(payload)
-  await apiKeyStore.fetchKeys()
-  toastStore.push({ title: 'API key created', message: 'Key generated successfully.' })
-  resetKeyForm()
 }
 
 const resetKeyForm = () => {
@@ -242,21 +273,29 @@ const resetKeyForm = () => {
 }
 
 const deleteKey = async (id) => {
-  await apiKeyStore.deleteKey(id)
-  await apiKeyStore.fetchKeys()
-  toastStore.push({ title: 'API key revoked', message: 'Key removed.' })
+  try {
+    await apiKeyStore.deleteKey(id)
+    await apiKeyStore.fetchKeys()
+    toastStore.push({ title: 'API key revoked', message: 'Key removed.' })
+  } catch (err) {
+    notifyError('API key revoke failed', err)
+  }
 }
 
 const createWebhook = async () => {
-  await webhookStore.createWebhook({
-    name: webhookForm.name,
-    container_id: webhookForm.containerId || undefined,
-    action: webhookForm.action,
-    locked: webhookForm.locked === 'true',
-  })
-  await webhookStore.fetchWebhooks()
-  toastStore.push({ title: 'Webhook created', message: 'Webhook is ready.' })
-  resetWebhookForm()
+  try {
+    await webhookStore.createWebhook({
+      name: webhookForm.name,
+      container_id: webhookForm.containerId || undefined,
+      action: webhookForm.action,
+      locked: webhookForm.locked === 'true',
+    })
+    await webhookStore.fetchWebhooks()
+    toastStore.push({ title: 'Webhook created', message: 'Webhook is ready.' })
+    resetWebhookForm()
+  } catch (err) {
+    notifyError('Webhook creation failed', err)
+  }
 }
 
 const resetWebhookForm = () => {
@@ -267,43 +306,65 @@ const resetWebhookForm = () => {
 }
 
 const toggleWebhook = async (id) => {
-  await webhookStore.toggleWebhook(id)
-  await webhookStore.fetchWebhooks()
+  try {
+    await webhookStore.toggleWebhook(id)
+    await webhookStore.fetchWebhooks()
+  } catch (err) {
+    notifyError('Webhook update failed', err)
+  }
 }
 
 const regenerateWebhook = async (id) => {
-  await webhookStore.regenerateToken(id)
-  await webhookStore.fetchWebhooks()
-  toastStore.push({ title: 'Token regenerated', message: 'New webhook token created.' })
+  try {
+    await webhookStore.regenerateToken(id)
+    await webhookStore.fetchWebhooks()
+    toastStore.push({ title: 'Token regenerated', message: 'New webhook token created.' })
+  } catch (err) {
+    notifyError('Token regeneration failed', err)
+  }
 }
 
 const deleteWebhook = async (id) => {
-  await webhookStore.deleteWebhook(id)
-  await webhookStore.fetchWebhooks()
-  toastStore.push({ title: 'Webhook deleted', message: 'Webhook removed.' })
+  try {
+    await webhookStore.deleteWebhook(id)
+    await webhookStore.fetchWebhooks()
+    toastStore.push({ title: 'Webhook deleted', message: 'Webhook removed.' })
+  } catch (err) {
+    notifyError('Webhook deletion failed', err)
+  }
 }
 
 const changePassword = async () => {
-  await api.post('/user/change-password', {
-    current_password: passwordForm.current,
-    new_password: passwordForm.next,
-    confirm_password: passwordForm.confirm,
-  })
-  toastStore.push({ title: 'Password updated', message: 'Credentials updated.' })
-  passwordForm.current = ''
-  passwordForm.next = ''
-  passwordForm.confirm = ''
+  try {
+    await api.post('/user/change-password', {
+      current_password: passwordForm.current,
+      new_password: passwordForm.next,
+      confirm_password: passwordForm.confirm,
+    })
+    toastStore.push({ title: 'Password updated', message: 'Credentials updated.' })
+    passwordForm.current = ''
+    passwordForm.next = ''
+    passwordForm.confirm = ''
+  } catch (err) {
+    notifyError('Password update failed', err)
+  }
 }
 
 onMounted(async () => {
-  await settingsStore.fetchSettings()
-  await apiKeyStore.fetchKeys()
-  await webhookStore.fetchWebhooks()
+  try {
+    await settingsStore.fetchSettings()
+    await apiKeyStore.fetchKeys()
+    await webhookStore.fetchWebhooks()
+  } catch (err) {
+    notifyError('Failed to load settings', err)
+  }
 
   discord.webhook = settingsStore.data.discord_webhook_url || ''
+  discord.username = settingsStore.data.discord_username || ''
+  discord.avatarUrl = settingsStore.data.discord_avatar_url || ''
   ntfy.server = settingsStore.data.ntfy_server || 'https://ntfy.sh'
   ntfy.topic = settingsStore.data.ntfy_topic || ''
   ntfy.priority = settingsStore.data.ntfy_priority || '3'
+  ntfy.accessToken = settingsStore.data.ntfy_access_token || ''
 })
 </script>
-

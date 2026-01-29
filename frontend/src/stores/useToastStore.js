@@ -7,9 +7,9 @@ export const useToastStore = defineStore('toasts', {
     toasts: [],
   }),
   actions: {
-    push({ title, message }) {
+    push({ title, message, tone = 'default' }) {
       const id = nextId++
-      this.toasts.push({ id, title, message })
+      this.toasts.push({ id, title, message, tone })
       setTimeout(() => this.remove(id), 5000)
     },
     remove(id) {
