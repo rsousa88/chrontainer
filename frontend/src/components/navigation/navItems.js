@@ -1,5 +1,6 @@
 export const navItems = [
   { name: 'Dashboard', path: '/', icon: 'home' },
+  { name: 'Containers', path: '/containers', icon: 'cube' },
   { name: 'Images', path: '/images', icon: 'cube' },
   { name: 'Logs', path: '/logs', icon: 'document' },
   { name: 'Host Metrics', path: '/metrics', icon: 'chart' },
