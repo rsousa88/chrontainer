@@ -85,7 +85,7 @@ from app.utils.validators import (
 load_dotenv()
 
 # Version
-VERSION = "0.4.17"
+VERSION = "1.0.0"
 
 HOST_METRICS_CACHE_TTL_SECONDS = 20
 CONTAINER_STATS_CACHE_TTL_SECONDS = 10

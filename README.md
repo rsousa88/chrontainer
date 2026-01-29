@@ -261,6 +261,57 @@ Chrontainer now supports versioned APIs. Use `/api/v1` for all new integrations.
 2. Backup and remove database: `mv data/chrontainer.db data/chrontainer.db.bak`
 3. Restart container to recreate: `docker restart chrontainer`
 
+## Migration Guide (v0.4.x -> v1.0.0)
+
+### Breaking Changes
+
+1. **API Endpoints Changed**
+   - Old: `/api/container/<id>/restart`
+   - New: `/api/v1/containers/<id>/restart`
+   - Old API still works but is deprecated.
+
+2. **Frontend Redesigned**
+   - New Vue-based UI and new navigation structure.
+
+3. **Docker Compose Consolidated**
+   - Single `docker-compose.yml` with optional commented sections.
+
+### Migration Steps
+
+1. **Backup**
+   ```bash
+   cp -r /path/to/data /path/to/data.backup
+   cp docker-compose.yml docker-compose.yml.backup
+   ```
+
+2. **Update Image**
+   ```bash
+   docker pull ghcr.io/rsousa88/chrontainer:1.0.0
+   docker-compose down
+   ```
+
+3. **Run Migration Helper (recommended)**
+   ```bash
+   python3 scripts/migrate_v1.py
+   ```
+
+4. **Start v1.0.0**
+   ```bash
+   docker-compose up -d
+   docker-compose logs -f
+   ```
+
+5. **Verify**
+   - Open `http://localhost:5000`
+   - Login with existing credentials
+   - Check containers, schedules, and settings
+
+### Release & Verification Helpers
+
+- Migration helper: `scripts/migrate_v1.py`
+- Smoke tests: `scripts/smoke_test.sh http://localhost:5000`
+- Release checklist (manual): `scripts/release_v1.sh`
+
 ## Roadmap
 
 ### ✅ Completed

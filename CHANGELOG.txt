@@ -1,0 +1,10 @@
+Changelog
+=========
+
+1.0.0 (2026-01-29)
+- Refactor to layered architecture (routes/services/repositories)
+- Vue.js frontend with consolidated navigation
+- Versioned API under /api/v1 (legacy API still supported)
+- Consolidated Docker Compose into single file
+- Added migration helper scripts and smoke tests
+- Test suite expanded; coverage >= 80%
