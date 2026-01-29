@@ -7,17 +7,33 @@
         <p class="text-sm text-surface-400">Welcome back to your container hub.</p>
       </div>
       <div class="space-y-4">
-        <Input label="Username" placeholder="admin" />
-        <Input label="Password" type="password" placeholder="••••••••" />
+        <Input v-model="form.username" label="Username" placeholder="admin" />
+        <Input v-model="form.password" label="Password" type="password" placeholder="••••••••" />
       </div>
       <div class="mt-6">
-        <Button variant="primary" full-width>Login</Button>
+        <Button variant="primary" full-width @click="submit">
+          <span v-if="store.loading">Signing in...</span>
+          <span v-else>Login</span>
+        </Button>
       </div>
+      <p v-if="store.error" class="mt-4 text-xs text-rose-400">Login failed.</p>
     </div>
   </div>
 </template>
 
 <script setup>
+import { reactive } from 'vue'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
+import { useAuthStore } from '../stores/useAuthStore'
+
+const store = useAuthStore()
+const form = reactive({
+  username: '',
+  password: '',
+})
+
+const submit = () => {
+  store.login(form)
+}
 </script>

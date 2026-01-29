@@ -20,28 +20,34 @@
         <option>everest</option>
       </Select>
       <div class="ml-auto flex items-center gap-2">
-        <Button variant="ghost">Clear</Button>
-        <Button variant="primary">Refresh</Button>
+        <Button variant="ghost" @click="refresh">Clear</Button>
+        <Button variant="primary" @click="refresh">Refresh</Button>
       </div>
     </div>
 
+    <div v-if="store.loading" class="flex justify-end">
+      <Spinner label="Fetching containers" />
+    </div>
+
     <div class="grid gap-4 lg:hidden">
-      <ContainerCard v-for="container in containers" :key="container.id" :container="container" />
+      <ContainerCard v-for="container in store.items" :key="container.id" :container="container" />
     </div>
 
     <div class="hidden lg:block">
-      <ContainerTable :containers="containers" />
+      <ContainerTable :containers="store.items" />
     </div>
   </section>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import Input from '../components/ui/Input.vue'
 import Select from '../components/ui/Select.vue'
 import Button from '../components/ui/Button.vue'
+import Spinner from '../components/ui/Spinner.vue'
 import ContainerCard from '../components/containers/ContainerCard.vue'
 import ContainerTable from '../components/containers/ContainerTable.vue'
+import { useContainerStore } from '../stores/useContainerStore'
 
 const filters = ref({
   query: '',
@@ -49,39 +55,11 @@ const filters = ref({
   host: '',
 })
 
-const containers = [
-  {
-    id: '1',
-    name: 'chrontainer',
-    host: 'rpi5',
-    status: 'running',
-    cpu: '1.3%',
-    memory: '220 MB',
-    image: 'ghcr.io/rsousa88/chrontainer',
-    ip: '192.168.50.21',
-    tags: ['core'],
-  },
-  {
-    id: '2',
-    name: 'grafana',
-    host: 'everest',
-    status: 'running',
-    cpu: '0.4%',
-    memory: '410 MB',
-    image: 'grafana/grafana-enterprise',
-    ip: '192.168.50.12',
-    tags: ['monitoring'],
-  },
-  {
-    id: '3',
-    name: 'rabbitmq',
-    host: 'everest',
-    status: 'stopped',
-    cpu: '0%',
-    memory: '0 MB',
-    image: 'rabbitmq:management-alpine',
-    ip: '192.168.50.4',
-    tags: ['queue'],
-  },
-]
+const store = useContainerStore()
+
+const refresh = () => store.fetchContainers()
+
+onMounted(() => {
+  store.fetchContainers()
+})
 </script>

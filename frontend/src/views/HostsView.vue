@@ -6,7 +6,14 @@
         <h2 class="text-2xl font-semibold text-surface-50">Docker Hosts</h2>
         <p class="text-sm text-surface-400">Manage host connections and colors.</p>
       </div>
-      <Button variant="primary">Add Host</Button>
+      <div class="flex items-center gap-2">
+        <Button variant="ghost" @click="refresh">Refresh</Button>
+        <Button variant="primary">Add Host</Button>
+      </div>
+    </div>
+
+    <div v-if="store.loading" class="flex justify-end">
+      <Spinner label="Loading hosts" />
     </div>
 
     <Table>
@@ -16,7 +23,7 @@
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Status</th>
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Actions</th>
       </template>
-      <tr v-for="host in hosts" :key="host.id">
+      <tr v-for="host in store.items" :key="host.id">
         <td class="px-4 py-4 text-sm text-surface-100">{{ host.name }}</td>
         <td class="px-4 py-4 text-sm text-surface-300">{{ host.url }}</td>
         <td class="px-4 py-4">
@@ -33,12 +40,17 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
 import Table from '../components/ui/Table.vue'
 import Button from '../components/ui/Button.vue'
 import Badge from '../components/ui/Badge.vue'
+import Spinner from '../components/ui/Spinner.vue'
+import { useHostStore } from '../stores/useHostStore'
 
-const hosts = [
-  { id: 1, name: 'rpi5', url: 'unix:///var/run/docker.sock', enabled: true },
-  { id: 2, name: 'everest', url: 'tcp://192.168.50.22:2375', enabled: true },
-]
+const store = useHostStore()
+const refresh = () => store.fetchHosts()
+
+onMounted(() => {
+  store.fetchHosts()
+})
 </script>

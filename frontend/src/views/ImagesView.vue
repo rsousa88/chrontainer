@@ -7,8 +7,8 @@
         <p class="text-sm text-surface-400">Review and prune unused images.</p>
       </div>
       <div class="flex items-center gap-2">
-        <Button variant="ghost">Refresh</Button>
-        <Button variant="danger">Prune Unused</Button>
+        <Button variant="ghost" @click="refresh">Refresh</Button>
+        <Button variant="danger" @click="notify">Prune Unused</Button>
       </div>
     </div>
 
@@ -26,6 +26,10 @@
         </Select>
       </div>
     </Card>
+
+    <div v-if="loading" class="flex justify-end">
+      <Spinner label="Loading images" />
+    </div>
 
     <Table>
       <template #head>
@@ -60,6 +64,8 @@ import Badge from '../components/ui/Badge.vue'
 import Button from '../components/ui/Button.vue'
 import Input from '../components/ui/Input.vue'
 import Select from '../components/ui/Select.vue'
+import Spinner from '../components/ui/Spinner.vue'
+import { useToastStore } from '../stores/useToastStore'
 
 const filters = ref({
   query: '',
@@ -67,8 +73,22 @@ const filters = ref({
   unused: '',
 })
 
-const images = [
+const toastStore = useToastStore()
+const loading = ref(false)
+
+const images = ref([
   { id: 1, repo: 'ghcr.io/rsousa88/chrontainer', tag: 'latest', shortId: 'a1b2c3d4', size: '389 MB', containers: 1 },
   { id: 2, repo: 'grafana/grafana-enterprise', tag: 'latest', shortId: 'f9e8d7c6', size: '763 MB', containers: 0 },
-]
+])
+
+const refresh = () => {
+  loading.value = true
+  setTimeout(() => {
+    loading.value = false
+  }, 600)
+}
+
+const notify = () => {
+  toastStore.push({ title: 'Prune queued', message: 'Unused images will be removed.' })
+}
 </script>

@@ -6,7 +6,7 @@
         <h2 class="text-2xl font-semibold text-surface-50">Containers Overview</h2>
         <p class="text-sm text-surface-400">Live container inventory and quick actions.</p>
       </div>
-      <Button variant="ghost">Refresh</Button>
+      <Button variant="ghost" @click="notify">Refresh</Button>
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -40,4 +40,11 @@
 import Button from '../components/ui/Button.vue'
 import Card from '../components/ui/Card.vue'
 import ContainersView from './ContainersView.vue'
+import { useToastStore } from '../stores/useToastStore'
+
+const toastStore = useToastStore()
+
+const notify = () => {
+  toastStore.push({ title: 'Refresh queued', message: 'Fetching latest container data.' })
+}
 </script>
