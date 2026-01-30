@@ -351,35 +351,91 @@ class ContainerService:
             if not docker_client:
                 raise Exception("Cannot connect to Docker host")
 
-            container = docker_client.containers.get(container_id)
-            attrs = container.attrs
-            image_name = attrs.get('Config', {}).get('Image', '')
+            container, _ = self.resolve_container(docker_client, container_id, container_name)
+            if not container:
+                raise docker.errors.NotFound(f"No such container: {container_id}")
+
+            container.reload()
+            attrs = container.attrs or {}
+            config = attrs.get('Config', {}) or {}
+            host_config = attrs.get('HostConfig', {}) or {}
+            image_name = config.get('Image', '')
 
             if not image_name:
                 return ContainerActionResult(False, "Unable to determine container image")
 
-            config = attrs.get('Config', {})
-            host_config = attrs.get('HostConfig', {})
+            mounts = []
+            for mount in attrs.get('Mounts', []) or []:
+                target = mount.get('Destination')
+                if not target:
+                    continue
+                mount_type = mount.get('Type', 'volume')
+                read_only = not mount.get('RW', True)
+                mounts.append(
+                    docker.types.Mount(
+                        target=target,
+                        source=mount.get('Source'),
+                        type=mount_type,
+                        read_only=read_only,
+                        propagation=mount.get('Propagation'),
+                    )
+                )
 
-            container_settings = {
-                'name': container.name,
-                'image': image_name,
-                'command': config.get('Cmd'),
-                'environment': config.get('Env', []),
-                'volumes': host_config.get('Binds', []),
-                'ports': config.get('ExposedPorts', {}),
-                'labels': config.get('Labels', {}),
-                'restart_policy': host_config.get('RestartPolicy', {}),
-                'network_mode': host_config.get('NetworkMode'),
-                'detach': True,
-            }
+            exposed_ports = config.get('ExposedPorts') or {}
+            port_bindings = host_config.get('PortBindings') or None
+            network_mode = host_config.get('NetworkMode')
+
+            new_host_config = docker.types.HostConfig(
+                binds=host_config.get('Binds'),
+                port_bindings=port_bindings,
+                restart_policy=host_config.get('RestartPolicy'),
+                network_mode=network_mode,
+                privileged=host_config.get('Privileged', False),
+                cap_add=host_config.get('CapAdd'),
+                cap_drop=host_config.get('CapDrop'),
+                extra_hosts=host_config.get('ExtraHosts'),
+                devices=host_config.get('Devices'),
+                mounts=mounts or None,
+            )
 
             container.stop(timeout=10)
             container.remove()
 
             docker_client.images.pull(image_name)
 
-            docker_client.containers.run(**container_settings)
+            create_kwargs = {
+                'image': image_name,
+                'name': container.name,
+                'command': config.get('Cmd'),
+                'environment': config.get('Env'),
+                'labels': config.get('Labels'),
+                'entrypoint': config.get('Entrypoint'),
+                'working_dir': config.get('WorkingDir'),
+                'user': config.get('User'),
+                'hostname': config.get('Hostname'),
+                'domainname': config.get('Domainname'),
+                'host_config': new_host_config,
+            }
+
+            if exposed_ports:
+                create_kwargs['ports'] = list(exposed_ports.keys())
+
+            new_container = docker_client.api.create_container(**create_kwargs)
+            new_container_id = new_container.get('Id')
+            docker_client.api.start(new_container_id)
+
+            networks = (attrs.get('NetworkSettings') or {}).get('Networks') or {}
+            if networks and network_mode and not str(network_mode).startswith('container:'):
+                for network_name in networks.keys():
+                    if network_name == network_mode:
+                        continue
+                    try:
+                        docker_client.api.connect_container_to_network(new_container_id, network_name)
+                    except Exception:
+                        pass
+
+            if schedule_id:
+                self.update_schedule_container_id(schedule_id, new_container_id[:12])
 
             message = f"Container {container_name} updated successfully"
             self.log_action(schedule_id, container_name, 'update', 'success', message, host_id)

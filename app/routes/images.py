@@ -38,9 +38,10 @@ def create_images_blueprint(
         """List all images across all Docker hosts."""
         try:
             refresh = request.args.get('refresh', '0') == '1'
+            host_id = request.args.get('host_id', type=int)
             if refresh:
                 clear_image_usage_cache()
-            images = fetch_all_images()
+            images = fetch_all_images(host_id)
             return jsonify(images)
         except Exception as e:
             logger.error(f"Failed to list images: {e}")
@@ -132,7 +133,10 @@ def create_images_blueprint(
             if not client:
                 return jsonify({'error': 'Cannot connect to Docker host. Check the host URL and socket availability.'}), 400
 
-            filters = {'dangling': True} if dangling_only else None
+            if dangling_only:
+                filters = {'dangling': ['true']}
+            else:
+                filters = {'dangling': ['false']}
             result = client.images.prune(filters=filters)
             if logs_repo:
                 reclaimed = result.get('SpaceReclaimed', 0)

@@ -87,47 +87,46 @@ class ImageService:
         with self._cache_lock:
             self._cache.clear()
 
-    def fetch_all_images(self) -> list[dict[str, Any]]:
+    def fetch_all_images(self, host_id: Optional[int] = None) -> list[dict[str, Any]]:
         image_list = []
         host_color_map, host_text_color_map = self._get_host_color_maps()
 
-        for host_id, host_name, docker_client in self._docker_manager.get_all_clients():
+        for host_id_row, host_name, docker_client in self._docker_manager.get_all_clients():
+            if host_id is not None and host_id_row != host_id:
+                continue
             df_images = {}
-            cached_df = self.get_cached_image_usage(host_id)
+            cached_df = self.get_cached_image_usage(host_id_row)
             cached_from_images = cached_df is not None
             if not cached_df:
-                cached_df = self._get_cached_disk_usage(host_id)
+                cached_df = self._get_cached_disk_usage(host_id_row)
             if cached_df:
                 df_images = {entry.get('Id'): entry for entry in (cached_df.get('Images', []) or [])}
             if not cached_from_images:
-                self.refresh_image_usage_async(host_id, docker_client, host_name)
+                self.refresh_image_usage_async(host_id_row, docker_client, host_name)
 
-            host_color = host_color_map.get(host_id, self._host_default_color)
-            host_text_color = host_text_color_map.get(host_id, self._get_contrast_text_color(host_color))
+            host_color = host_color_map.get(host_id_row, self._host_default_color)
+            host_text_color = host_text_color_map.get(host_id_row, self._get_contrast_text_color(host_color))
 
             container_repo_map = {}
             container_count_map = {}
+            container_name_count_map = {}
+            container_map_ready = False
             try:
-                containers = docker_client.containers.list(all=True)
+                containers = docker_client.api.containers(all=True)
+                container_map_ready = True
                 for container in containers:
-                    try:
-                        image_id = container.image.id
-                        if not image_id:
-                            continue
-                        stripped_id = image_id.replace('sha256:', '')
-                        container_count_map[image_id] = container_count_map.get(image_id, 0) + 1
-                        container_count_map[stripped_id] = container_count_map.get(stripped_id, 0) + 1
-                        image_name = None
-                        if container.image.tags:
-                            image_name = container.image.tags[0]
-                        else:
-                            image_name = container.attrs.get('Config', {}).get('Image')
-                        if image_name:
-                            repo, _ = self._split_image_reference(image_name)
-                            container_repo_map[image_id] = repo or container_repo_map.get(image_id)
-                            container_repo_map[stripped_id] = repo or container_repo_map.get(stripped_id)
-                    except Exception:
+                    image_id = container.get('ImageID')
+                    if not image_id:
                         continue
+                    stripped_id = image_id.replace('sha256:', '')
+                    container_count_map[image_id] = container_count_map.get(image_id, 0) + 1
+                    container_count_map[stripped_id] = container_count_map.get(stripped_id, 0) + 1
+                    image_name = container.get('Image')
+                    if image_name:
+                        container_name_count_map[image_name] = container_name_count_map.get(image_name, 0) + 1
+                        repo, _ = self._split_image_reference(image_name)
+                        container_repo_map[image_id] = repo or container_repo_map.get(image_id)
+                        container_repo_map[stripped_id] = repo or container_repo_map.get(stripped_id)
             except Exception as error:
                 self._logger.debug("Failed to map container images for host %s: %s", host_name, error)
 
@@ -141,15 +140,21 @@ class ImageService:
                     containers_count = entry.get('Containers')
                     stripped_id = image_id.replace('sha256:', '')
                     fallback_count = container_count_map.get(image_id) or container_count_map.get(stripped_id)
-                    if containers_count is None:
+                    if containers_count is None or (isinstance(containers_count, int) and containers_count < 0):
                         containers_count = fallback_count
                     elif containers_count == 0 and fallback_count:
                         containers_count = fallback_count
                     if containers_count is None and container_count_map:
                         containers_count = 0
+                    if containers_count == 0 and container_name_count_map:
+                        for tag in entry.get('RepoTags') or []:
+                            tag_count = container_name_count_map.get(tag)
+                            if tag_count:
+                                containers_count = tag_count
+                                break
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
-                    containers_pending = cached_df is None and containers_count is None and not container_count_map
+                    containers_pending = containers_count is None and not container_map_ready
                     repo_tags = entry.get('RepoTags') or []
                     repo_digests = entry.get('RepoDigests') or []
                     if not repo_tags:
@@ -175,7 +180,7 @@ class ImageService:
                             'containers': containers_count,
                             'containers_pending': containers_pending,
                             'created': created,
-                            'host_id': host_id,
+                            'host_id': host_id_row,
                             'host_name': host_name,
                             'host_color': host_color,
                             'host_text_color': host_text_color,
@@ -193,15 +198,21 @@ class ImageService:
                     containers_count = entry.get('Containers')
                     stripped_id = image_id.replace('sha256:', '')
                     fallback_count = container_count_map.get(image_id) or container_count_map.get(stripped_id)
-                    if containers_count is None:
+                    if containers_count is None or (isinstance(containers_count, int) and containers_count < 0):
                         containers_count = fallback_count
                     elif containers_count == 0 and fallback_count:
                         containers_count = fallback_count
                     if containers_count is None and container_count_map:
                         containers_count = 0
+                    if containers_count == 0 and container_name_count_map:
+                        for tag in entry.get('RepoTags') or []:
+                            tag_count = container_name_count_map.get(tag)
+                            if tag_count:
+                                containers_count = tag_count
+                                break
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
-                    containers_pending = cached_df is None and containers_count is None and not container_count_map
+                    containers_pending = containers_count is None and not container_map_ready
                     repo_tags = entry.get('RepoTags') or []
                     repo_digests = entry.get('RepoDigests') or []
                     if not repo_tags:
@@ -227,7 +238,7 @@ class ImageService:
                             'containers': containers_count,
                             'containers_pending': containers_pending,
                             'created': created,
-                            'host_id': host_id,
+                            'host_id': host_id_row,
                             'host_name': host_name,
                             'host_color': host_color,
                             'host_text_color': host_text_color,

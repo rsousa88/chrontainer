@@ -1,38 +1,9 @@
 <template>
   <div ref="rootEl" class="flex flex-nowrap items-center gap-1" :class="align === 'right' ? 'justify-end' : ''">
-    <Button size="icon" variant="ghost" aria-label="Logs" title="Logs" @click="openLogs">
+    <Button size="icon" variant="ghost" aria-label="Restart" title="Restart" @click="runAction('restart')">
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 6h16" />
-        <path d="M4 12h16" />
-        <path d="M4 18h16" />
-      </svg>
-    </Button>
-    <Button
-      v-if="updateAvailable"
-      size="icon"
-      variant="ghost"
-      aria-label="Update"
-      title="Update"
-      @click="runAction('update')"
-    >
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 3v12" />
-        <path d="m7 10 5 5 5-5" />
-        <path d="M5 21h14" />
-      </svg>
-    </Button>
-    <Button
-      v-else
-      size="icon"
-      variant="ghost"
-      aria-label="Check updates"
-      title="Check updates"
-      :disabled="updateBusy"
-      @click="checkUpdates"
-    >
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12a9 9 0 1 1-3-6.7" />
-        <path d="M21 3v6h-6" />
+        <path d="M3 12a9 9 0 1 1 3 6.7" />
+        <path d="M3 21v-6h6" />
       </svg>
     </Button>
     <Button
@@ -59,6 +30,41 @@
         <path d="M8 5v14l11-7z" />
       </svg>
     </Button>
+    <Button size="icon" variant="ghost" aria-label="Logs" title="Logs" @click="openLogs">
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 6h16" />
+        <path d="M4 12h16" />
+        <path d="M4 18h16" />
+      </svg>
+    </Button>
+    <Button
+      v-show="updateAvailable"
+      size="icon"
+      variant="ghost"
+      aria-label="Update"
+      title="Update"
+      @click="runAction('update')"
+    >
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </svg>
+    </Button>
+    <Button
+      v-show="!updateAvailable"
+      size="icon"
+      variant="ghost"
+      aria-label="Check updates"
+      title="Check updates"
+      :disabled="updateBusy"
+      @click="checkUpdates"
+    >
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-3-6.7" />
+        <path d="M21 3v6h-6" />
+      </svg>
+    </Button>
     <div class="relative">
       <Button size="icon" variant="ghost" aria-label="More actions" title="More actions" @click="toggleMenu">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -72,7 +78,6 @@
         v-if="menuOpen"
         class="absolute right-0 z-10 mt-2 w-40 rounded-xl border border-surface-800 bg-surface-900 p-2 text-xs text-surface-200 shadow-xl"
       >
-        <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-800" @click="runAction('restart')">Restart</button>
         <button
           v-if="isPaused"
           class="flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-800"

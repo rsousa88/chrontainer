@@ -8,17 +8,18 @@
       </div>
       <div class="flex items-center gap-2">
         <Button variant="ghost" :disabled="controlsDisabled" @click="refresh">Refresh</Button>
-        <Button variant="danger" :disabled="controlsDisabled" @click="notify">Prune Unused</Button>
+        <Button variant="danger" :disabled="controlsDisabled || !pruneHostId" @click="notify">Prune Unused</Button>
       </div>
     </div>
 
-    <Card>
+    <Card :class="controlsDisabled ? 'opacity-70 pointer-events-none' : ''">
       <div class="grid gap-4 md:grid-cols-3">
         <Input v-model="filters.query" label="Search" placeholder="Filter images" />
         <Select v-model="filters.host" label="Host">
           <option value="">All Hosts</option>
-          <option>rpi5</option>
-          <option>everest</option>
+          <option v-for="host in availableHosts" :key="host.id" :value="String(host.id)">
+            {{ host.name }}
+          </option>
         </Select>
         <Select v-model="filters.unused" label="Unused">
           <option value="">All</option>
@@ -27,11 +28,12 @@
       </div>
     </Card>
 
-    <div v-if="imageStore.loading || pendingCounts" class="flex justify-end">
-      <Spinner label="Loading images" />
+    <div v-if="showSpinner" class="flex justify-end">
+      <Spinner :label="spinnerLabel" />
     </div>
 
-    <Table>
+    <div :class="controlsDisabled ? 'opacity-70 pointer-events-none' : ''">
+      <Table>
       <template #head>
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Host</th>
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Repository</th>
@@ -41,7 +43,7 @@
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Containers</th>
         <th class="px-4 py-3 text-xs font-semibold uppercase tracking-widest">Actions</th>
       </template>
-      <tr v-for="image in imageStore.items" :key="image.id">
+      <tr v-for="image in filteredImages" :key="image.id">
         <td class="px-4 py-4">
           <span
             class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
@@ -66,12 +68,13 @@
           <Button variant="ghost" :disabled="controlsDisabled" @click="deleteImage(image)">Delete</Button>
         </td>
       </tr>
-    </Table>
+      </Table>
+    </div>
   </section>
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import Card from '../components/ui/Card.vue'
 import Table from '../components/ui/Table.vue'
 import Badge from '../components/ui/Badge.vue'
@@ -81,6 +84,7 @@ import Select from '../components/ui/Select.vue'
 import Spinner from '../components/ui/Spinner.vue'
 import { useToastStore } from '../stores/useToastStore'
 import { useImageStore } from '../stores/useImageStore'
+import { useHostStore } from '../stores/useHostStore'
 
 const filters = ref({
   query: '',
@@ -90,9 +94,39 @@ const filters = ref({
 
 const toastStore = useToastStore()
 const imageStore = useImageStore()
+const hostStore = useHostStore()
 
-const pendingCounts = computed(() => imageStore.items.some((image) => image?.containers_pending))
-const controlsDisabled = computed(() => imageStore.loading || pendingCounts.value)
+const refreshing = ref(false)
+const pendingCounts = computed(() => imageStore.loadingStage === 'loading' || refreshing.value)
+const controlsDisabled = computed(() => imageStore.loadingStage !== 'idle' || imageStore.pruning || pendingCounts.value)
+const isHostEnabled = (host) => host.enabled !== false && host.enabled !== 0 && host.enabled !== '0'
+const availableHosts = computed(() => hostStore.items.filter((host) => isHostEnabled(host)))
+const showSpinner = computed(() => imageStore.loadingStage === 'loading' || imageStore.pruning)
+const spinnerLabel = computed(() => (imageStore.pruning ? 'Pruning unused images' : 'Loading images'))
+const pruneHostId = computed(() => {
+  const allowedIds = new Set(availableHosts.value.map((host) => Number(host.id)))
+  if (filters.value.host && allowedIds.has(Number(filters.value.host))) {
+    return Number(filters.value.host)
+  }
+  const firstHost = availableHosts.value[0]
+  return firstHost ? Number(firstHost.id) : null
+})
+
+const filteredImages = computed(() => {
+  const query = filters.value.query.trim().toLowerCase()
+  const hostFilter = filters.value.host
+  const unusedOnly = filters.value.unused === 'true'
+
+  return imageStore.items.filter((image) => {
+    if (hostFilter && String(image.host_id) !== hostFilter) return false
+    if (unusedOnly && Number(image.containers || 0) !== 0) return false
+    if (query) {
+      const haystack = `${image.repository || ''} ${image.tag || ''} ${image.short_id || ''}`.toLowerCase()
+      if (!haystack.includes(query)) return false
+    }
+    return true
+  })
+})
 
 const formatSize = (bytes) => {
   const value = typeof bytes === 'number' ? bytes : Number(bytes)
@@ -108,16 +142,42 @@ const formatSize = (bytes) => {
 }
 
 const displayCount = (image) => {
+  if (refreshing.value) return '-'
+  if (imageStore.loadingStage === 'loading') {
+    const status = imageStore.hostStatus[Number(image?.host_id)]
+    if (status !== 'done') return '-'
+  }
   if (image?.containers_pending) return '-'
   return image.containers ?? image.containers_count ?? 0
 }
 
-const refresh = () => imageStore.fetchImages(true)
+const refresh = async () => {
+  const hostIds = availableHosts.value.map((host) => host.id)
+  refreshing.value = true
+  try {
+    await imageStore.fetchImagesForHosts(hostIds, true, true)
+  } finally {
+    refreshing.value = false
+  }
+}
 
 const notify = async () => {
+  if (!pruneHostId.value) {
+    toastStore.push({ title: 'Prune unavailable', message: 'Select a valid host first.', tone: 'warning' })
+    return
+  }
   try {
-    await imageStore.pruneImages(1, true)
-    toastStore.push({ title: 'Prune queued', message: 'Unused images will be removed.' })
+    const response = await imageStore.pruneImages(pruneHostId.value, false)
+    const deleted = response?.data?.images_deleted || []
+    const reclaimed = response?.data?.reclaimed || 0
+    if (!deleted.length) {
+      toastStore.push({ title: 'No unused images', message: 'No unused images were found to prune.', tone: 'warning' })
+    } else {
+      toastStore.push({
+        title: 'Prune completed',
+        message: `Removed ${deleted.length} image(s), reclaimed ${formatSize(reclaimed)}.`,
+      })
+    }
     refresh()
   } catch (err) {
     toastStore.push({ title: 'Prune failed', message: 'Unable to prune images.' })
@@ -134,7 +194,31 @@ const deleteImage = async (image) => {
   }
 }
 
-onMounted(() => {
-  imageStore.fetchImages()
+onMounted(async () => {
+  await hostStore.fetchHosts()
+  const hostIds = availableHosts.value.map((host) => host.id)
+  refreshing.value = true
+  try {
+    await imageStore.fetchImagesForHosts(hostIds, false)
+  } finally {
+    refreshing.value = false
+  }
 })
+
+watch(
+  availableHosts,
+  (hosts) => {
+    if (filters.value.host && !hosts.find((host) => String(host.id) === filters.value.host)) {
+      filters.value.host = ''
+    }
+    if (!hosts.length) return
+    if (imageStore.items.length) return
+    if (imageStore.loading || refreshing.value) return
+    refreshing.value = true
+    imageStore.fetchImagesForHosts(hosts.map((host) => host.id), false).finally(() => {
+      refreshing.value = false
+    })
+  },
+  { immediate: true }
+)
 </script>

@@ -6,35 +6,59 @@ export const useImageStore = defineStore('images', {
     items: [],
     loading: false,
     error: null,
-    pendingCounts: false,
-    pendingTimer: null,
+    hostStatus: {},
+    loadingStage: 'idle', // idle | loading | pruning
+    pruning: false,
   }),
   actions: {
-    async fetchImages(refresh = false) {
+    async fetchImagesForHosts(hostIds = [], refresh = false, preserveExisting = false) {
       this.loading = true
+      this.loadingStage = 'loading'
       this.error = null
-      try {
-        const { data } = await api.get('/images', { params: { refresh: refresh ? 1 : 0 } })
-        this.items = data
-        this.pendingCounts = data.some((image) => image?.containers_pending)
-        if (this.pendingCounts && !this.pendingTimer) {
-          this.pendingTimer = setTimeout(() => {
-            this.pendingTimer = null
-            this.fetchImages(false)
-          }, 5000)
-        }
-        if (!this.pendingCounts && this.pendingTimer) {
-          clearTimeout(this.pendingTimer)
-          this.pendingTimer = null
-        }
-      } catch (err) {
-        this.error = err
-      } finally {
-        this.loading = false
+      if (!preserveExisting) {
+        this.items = []
       }
+      this.hostStatus = Object.fromEntries(hostIds.map((id) => [Number(id), 'loading']))
+
+      if (!hostIds.length) {
+        this.loading = false
+        this.loadingStage = 'idle'
+        return
+      }
+
+      const mergeHostImages = (hostId, images) => {
+        const filtered = this.items.filter((image) => Number(image.host_id) !== Number(hostId))
+        this.items = [...filtered, ...images]
+      }
+
+      const tasks = hostIds.map(async (hostId, index) => {
+        try {
+          const { data } = await api.get('/images', {
+            params: { refresh: refresh && index === 0 ? 1 : 0, host_id: hostId, ts: Date.now() },
+          })
+          mergeHostImages(hostId, data || [])
+        } catch (err) {
+          this.error = err
+        } finally {
+          this.hostStatus = { ...this.hostStatus, [Number(hostId)]: 'done' }
+        }
+      })
+
+      await Promise.all(tasks)
+      this.loading = false
+      this.loadingStage = 'idle'
     },
     async pruneImages(hostId, danglingOnly = false) {
-      return api.post('/images/prune', { host_id: hostId, dangling_only: danglingOnly })
+      this.pruning = true
+      this.loadingStage = 'pruning'
+      try {
+        return await api.post('/images/prune', { host_id: hostId, dangling_only: danglingOnly })
+      } finally {
+        this.pruning = false
+        if (!this.loading) {
+          this.loadingStage = 'idle'
+        }
+      }
     },
     async deleteImage(imageId, hostId, force = false) {
       return api.delete(`/images/${imageId}`, { params: { host_id: hostId }, data: { force } })
