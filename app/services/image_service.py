@@ -145,9 +145,11 @@ class ImageService:
                         containers_count = fallback_count
                     elif containers_count == 0 and fallback_count:
                         containers_count = fallback_count
+                    if containers_count is None and container_count_map:
+                        containers_count = 0
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
-                    containers_pending = False
+                    containers_pending = cached_df is None and containers_count is None and not container_count_map
                     repo_tags = entry.get('RepoTags') or []
                     repo_digests = entry.get('RepoDigests') or []
                     if not repo_tags:
@@ -195,9 +197,11 @@ class ImageService:
                         containers_count = fallback_count
                     elif containers_count == 0 and fallback_count:
                         containers_count = fallback_count
+                    if containers_count is None and container_count_map:
+                        containers_count = 0
                     if containers_count is not None and containers_count < 0:
                         containers_count = None
-                    containers_pending = cached_df is None and (containers_count is None)
+                    containers_pending = cached_df is None and containers_count is None and not container_count_map
                     repo_tags = entry.get('RepoTags') or []
                     repo_digests = entry.get('RepoDigests') or []
                     if not repo_tags:

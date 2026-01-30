@@ -26,9 +26,13 @@ def create_containers_blueprint(
     webui_url_repo,
     schedule_view_repo,
     version: str,
+    csrf=None,
+    logs_repo=None,
 ):
     """Create container-related routes with injected dependencies."""
     blueprint = Blueprint('containers', __name__)
+    if csrf is not None:
+        csrf.exempt(blueprint)
     dist_dir = Path(__file__).resolve().parents[3] / 'frontend' / 'dist'
     dist_assets_dir = dist_dir / 'assets'
 
@@ -350,8 +354,13 @@ def create_containers_blueprint(
             update_service.write_update_status(container_id, host_id, payload)
 
             if error:
+                if logs_repo:
+                    logs_repo.insert_action_log(None, container.name, 'check_update', 'error', error, host_id)
                 return jsonify({'has_update': False, 'error': error})
 
+            if logs_repo:
+                message = 'Update available' if has_update else 'No updates found'
+                logs_repo.insert_action_log(None, container.name, 'check_update', 'success', message, host_id)
             return jsonify({
                 'has_update': has_update,
                 'remote_digest': remote_digest,
@@ -359,9 +368,13 @@ def create_containers_blueprint(
             })
 
         except docker.errors.NotFound:
+            if logs_repo:
+                logs_repo.insert_action_log(None, container_id, 'check_update', 'error', 'Container not found', host_id)
             return jsonify({'error': 'Container not found'}), 404
         except Exception as e:
             logger.error(f"Error checking for update: {e}")
+            if logs_repo:
+                logs_repo.insert_action_log(None, container_id, 'check_update', 'error', str(e), host_id)
             return jsonify({'error': 'Failed to check for updates'}), 500
 
     @blueprint.route('/api/containers/check-updates', methods=['GET'])
@@ -386,6 +399,10 @@ def create_containers_blueprint(
                                 'checked_at': datetime.utcnow().isoformat(),
                             }
                             update_service.write_update_status(container_id, host_id, payload)
+                            if logs_repo:
+                                message = 'Update available' if has_update else 'No updates found'
+                                status = 'success' if not error else 'error'
+                                logs_repo.insert_action_log(None, container.name, 'check_update', status, error or message, host_id)
                             results.append({
                                 'container_id': container_id,
                                 'container_name': container.name,

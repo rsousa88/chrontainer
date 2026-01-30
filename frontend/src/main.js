@@ -12,4 +12,6 @@ app.mount('#app')
 const storedTheme = localStorage.getItem('theme')
 if (storedTheme) {
   document.documentElement.dataset.theme = storedTheme
+} else {
+  document.documentElement.dataset.theme = 'dark'
 }

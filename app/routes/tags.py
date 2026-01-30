@@ -7,6 +7,7 @@ def create_tags_blueprint(
     *,
     api_key_or_login_required,
     tag_repo,
+    csrf=None,
     sanitize_string,
     validate_color,
     host_default_color: str,
@@ -15,6 +16,8 @@ def create_tags_blueprint(
 ):
     """Create tag routes with injected dependencies."""
     blueprint = Blueprint('tags', __name__)
+    if csrf is not None:
+        csrf.exempt(blueprint)
 
     @blueprint.route('/api/tags', methods=['GET'])
     @api_key_or_login_required

@@ -27,7 +27,7 @@
       </div>
     </Card>
 
-    <div v-if="imageStore.loading || imageStore.pendingCounts" class="flex justify-end">
+    <div v-if="imageStore.loading || pendingCounts" class="flex justify-end">
       <Spinner label="Loading images" />
     </div>
 
@@ -43,7 +43,15 @@
       </template>
       <tr v-for="image in imageStore.items" :key="image.id">
         <td class="px-4 py-4">
-          <Badge :tone="image.host_name ? 'info' : 'neutral'">{{ image.host_name || image.host || '—' }}</Badge>
+          <span
+            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
+            :style="{
+              backgroundColor: image.host_color || '#2c3542',
+              color: image.host_text_color || '#f8fafc'
+            }"
+          >
+            {{ image.host_name || image.host || '—' }}
+          </span>
         </td>
         <td class="px-4 py-4 text-sm text-surface-100">{{ image.repository || image.repo || image.repo_name || 'unknown' }}</td>
         <td class="px-4 py-4 text-sm text-surface-300">{{ image.tag || image.image_tag || 'latest' }}</td>
@@ -83,7 +91,8 @@ const filters = ref({
 const toastStore = useToastStore()
 const imageStore = useImageStore()
 
-const controlsDisabled = computed(() => imageStore.loading || imageStore.pendingCounts)
+const pendingCounts = computed(() => imageStore.items.some((image) => image?.containers_pending))
+const controlsDisabled = computed(() => imageStore.loading || pendingCounts.value)
 
 const formatSize = (bytes) => {
   const value = typeof bytes === 'number' ? bytes : Number(bytes)
@@ -99,7 +108,7 @@ const formatSize = (bytes) => {
 }
 
 const displayCount = (image) => {
-  if (imageStore.pendingCounts) return '-'
+  if (image?.containers_pending) return '-'
   return image.containers ?? image.containers_count ?? 0
 }
 

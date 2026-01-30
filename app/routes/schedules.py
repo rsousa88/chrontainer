@@ -13,6 +13,7 @@ def create_schedules_blueprint(
     schedule_repo,
     scheduler,
     container_service,
+    csrf=None,
     validate_action,
     validate_container_id,
     validate_container_name,
@@ -23,6 +24,8 @@ def create_schedules_blueprint(
 ):
     """Create schedule routes with injected dependencies."""
     blueprint = Blueprint('schedules', __name__)
+    if csrf is not None:
+        csrf.exempt(blueprint)
 
     @blueprint.route('/api/schedule', methods=['POST'])
     @api_key_or_login_required

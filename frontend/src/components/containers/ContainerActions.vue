@@ -1,69 +1,104 @@
 <template>
-  <div class="flex flex-wrap items-center gap-2">
-    <Button variant="ghost" aria-label="Restart" title="Restart" @click="runAction('restart')">
+  <div ref="rootEl" class="flex flex-nowrap items-center gap-1" :class="align === 'right' ? 'justify-end' : ''">
+    <Button size="icon" variant="ghost" aria-label="Logs" title="Logs" @click="openLogs">
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 6h16" />
+        <path d="M4 12h16" />
+        <path d="M4 18h16" />
+      </svg>
+    </Button>
+    <Button
+      v-if="updateAvailable"
+      size="icon"
+      variant="ghost"
+      aria-label="Update"
+      title="Update"
+      @click="runAction('update')"
+    >
+      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </svg>
+    </Button>
+    <Button
+      v-else
+      size="icon"
+      variant="ghost"
+      aria-label="Check updates"
+      title="Check updates"
+      :disabled="updateBusy"
+      @click="checkUpdates"
+    >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 12a9 9 0 1 1-3-6.7" />
         <path d="M21 3v6h-6" />
       </svg>
     </Button>
-    <Button variant="ghost" aria-label="Stop" title="Stop" @click="runAction('stop')">
+    <Button
+      v-if="canStop"
+      size="icon"
+      variant="ghost"
+      aria-label="Stop"
+      title="Stop"
+      @click="runAction('stop')"
+    >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
         <rect x="6" y="6" width="12" height="12" rx="2" />
       </svg>
     </Button>
-    <Button variant="ghost" aria-label="Start" title="Start" @click="runAction('start')">
+    <Button
+      v-if="canStart"
+      size="icon"
+      variant="ghost"
+      aria-label="Start"
+      title="Start"
+      @click="runAction('start')"
+    >
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
         <path d="M8 5v14l11-7z" />
       </svg>
     </Button>
-    <Button variant="ghost" aria-label="Pause" title="Pause" @click="runAction('pause')">
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-        <rect x="6" y="5" width="4" height="14" rx="1" />
-        <rect x="14" y="5" width="4" height="14" rx="1" />
-      </svg>
-    </Button>
-    <Button variant="ghost" aria-label="Unpause" title="Unpause" @click="runAction('unpause')">
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M8 5v14l11-7z" />
-      </svg>
-    </Button>
-    <Button variant="ghost" aria-label="Update" title="Update" @click="runAction('update')">
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 16V4" />
-        <path d="m5 11 7-7 7 7" />
-        <path d="M4 20h16" />
-      </svg>
-    </Button>
-    <Button variant="ghost" aria-label="Check Updates" title="Check Updates" :disabled="updateBusy" @click="checkUpdates">
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m5 12 4 4 10-10" />
-      </svg>
-    </Button>
-    <Button variant="ghost" aria-label="Logs" title="Logs" @click="openLogs">
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M8 6h13" />
-        <path d="M8 12h13" />
-        <path d="M8 18h13" />
-        <circle cx="4" cy="6" r="1" />
-        <circle cx="4" cy="12" r="1" />
-        <circle cx="4" cy="18" r="1" />
-      </svg>
-    </Button>
-    <Button v-if="webuiUrl" variant="ghost" aria-label="Open UI" title="Open UI" @click="openWebui">
-      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 3h7v7" />
-        <path d="M10 14 21 3" />
-        <path d="M21 14v7H3V3h7" />
-      </svg>
-    </Button>
+    <div class="relative">
+      <Button size="icon" variant="ghost" aria-label="More actions" title="More actions" @click="toggleMenu">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="19" cy="12" r="2" />
+        </svg>
+      </Button>
+      <div
+        ref="menuEl"
+        v-if="menuOpen"
+        class="absolute right-0 z-10 mt-2 w-40 rounded-xl border border-surface-800 bg-surface-900 p-2 text-xs text-surface-200 shadow-xl"
+      >
+        <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-800" @click="runAction('restart')">Restart</button>
+        <button
+          v-if="isPaused"
+          class="flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-800"
+          @click="runAction('unpause')"
+        >
+          Unpause
+        </button>
+        <button
+          v-else
+          class="flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-800"
+          @click="runAction('pause')"
+        >
+          Pause
+        </button>
+        <button class="flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-800" @click="openSchedule">Add Schedule</button>
+        <button v-if="webuiUrl" class="flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-surface-800" @click="openWebui">Open UI</button>
+      </div>
+    </div>
   </div>
 
   <Modal
     :open="logsOpen"
     title="Container Logs"
     :subtitle="container?.name"
-    panel-class="w-[90vw] max-w-none h-[75vh]"
-    body-class="h-full"
+    panel-class="w-[90vw] max-w-[90vw] h-[75vh]"
+    body-class="h-full text-left"
     @close="closeLogs"
   >
     <div class="flex items-center justify-between gap-2 text-xs text-surface-400">
@@ -86,7 +121,8 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import Button from '../ui/Button.vue'
 import Modal from '../ui/Modal.vue'
 import { useToastStore } from '../../stores/useToastStore'
@@ -97,14 +133,29 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  align: {
+    type: String,
+    default: 'left',
+  },
 })
 
 const toastStore = useToastStore()
+const router = useRouter()
 
 const containerPayload = computed(() => ({
   name: props.container?.name || 'unknown',
   host_id: props.container?.host_id || props.container?.hostId || 1,
 }))
+const statusValue = computed(() => (props.container?.status || '').toLowerCase())
+const isPaused = computed(() => statusValue.value.includes('paused'))
+const isRunning = computed(() => statusValue.value.includes('running'))
+const canStop = computed(() => isRunning.value || isPaused.value)
+const canStart = computed(() => !isRunning.value && !isPaused.value)
+const updateAvailable = computed(() => {
+  const status = props.container?.update_status || props.container?.updateStatus
+  const raw = status?.has_update
+  return raw === true || raw === 1 || raw === '1' || raw === 'true'
+})
 
 const logsOpen = ref(false)
 const logsContent = ref('')
@@ -114,6 +165,9 @@ const webuiUrl = computed(() => props.container?.webui_url || props.container?.w
 const logsContainer = ref(null)
 const autoRefresh = ref(true)
 const refreshTimer = ref(null)
+const menuOpen = ref(false)
+const rootEl = ref(null)
+const menuEl = ref(null)
 
 const runAction = async (action) => {
   const id = props.container?.id
@@ -121,12 +175,16 @@ const runAction = async (action) => {
     toastStore.push({ title: 'Action failed', message: 'Missing container ID.', tone: 'danger' })
     return
   }
+  menuOpen.value = false
 
   try {
     const { data } = await api.post(`/container/${id}/${action}`, containerPayload.value)
     if (data?.success === false) {
       toastStore.push({ title: 'Action failed', message: data?.message || 'Request failed.', tone: 'danger' })
       return
+    }
+    if (action === 'update' && props.container) {
+      props.container.update_status = { ...(props.container.update_status || {}), has_update: false }
     }
     toastStore.push({ title: 'Action queued', message: data?.message || `${action} request sent.` })
   } catch (err) {
@@ -142,14 +200,21 @@ const checkUpdates = async () => {
     return
   }
   if (updateBusy.value) return
+  menuOpen.value = false
   updateBusy.value = true
   try {
     const { data } = await api.get(`/container/${id}/check-update`, { params: { host_id: hostId } })
     if (data?.has_update) {
+      if (props.container) {
+        props.container.update_status = { ...(props.container.update_status || {}), has_update: true }
+      }
       toastStore.push({ title: 'Update available', message: 'A newer image is available.' })
     } else if (data?.error) {
       toastStore.push({ title: 'Update check failed', message: data.error, tone: 'danger' })
     } else {
+      if (props.container) {
+        props.container.update_status = { ...(props.container.update_status || {}), has_update: false }
+      }
       toastStore.push({ title: 'Up to date', message: 'No updates found.' })
     }
   } catch (err) {
@@ -193,6 +258,7 @@ const fetchLogs = async () => {
 }
 
 const openLogs = async () => {
+  menuOpen.value = false
   logsOpen.value = true
   await fetchLogs()
 }
@@ -203,7 +269,31 @@ const closeLogs = () => {
 
 const openWebui = () => {
   if (!webuiUrl.value) return
+  menuOpen.value = false
   window.open(webuiUrl.value, '_blank', 'noopener')
+}
+
+const openSchedule = () => {
+  menuOpen.value = false
+  router.push({
+    name: 'schedules',
+    query: {
+      host_id: containerPayload.value.host_id,
+      container_id: props.container?.id,
+      container_name: props.container?.name,
+    },
+  })
+}
+
+const toggleMenu = () => {
+  menuOpen.value = !menuOpen.value
+}
+
+const handleOutsideClick = (event) => {
+  if (!menuOpen.value) return
+  if (rootEl.value && !rootEl.value.contains(event.target)) {
+    menuOpen.value = false
+  }
 }
 
 const scrollLogsToBottom = async () => {
@@ -235,6 +325,12 @@ onBeforeUnmount(() => {
   if (refreshTimer.value) {
     clearInterval(refreshTimer.value)
   }
+  document.removeEventListener('click', handleOutsideClick)
 })
+
+onMounted(() => {
+  document.addEventListener('click', handleOutsideClick)
+})
+
 
 </script>

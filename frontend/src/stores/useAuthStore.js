@@ -11,7 +11,11 @@ export const useAuthStore = defineStore('auth', {
     async fetchUser() {
       try {
         const { data } = await api.get('/user')
-        this.user = data
+        if (data && typeof data === 'object' && data.username) {
+          this.user = data
+        } else {
+          this.user = null
+        }
       } catch (err) {
         this.user = null
       }

@@ -50,7 +50,13 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <Input v-model="form.name" label="Name" placeholder="rpi5" />
         <Input v-model="form.url" label="Docker URL" placeholder="unix:///var/run/docker.sock" />
-        <Input v-model="form.color" label="Color" placeholder="#3498db" />
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-widest text-surface-400">Color</label>
+          <div class="mt-2 flex items-center gap-3">
+            <input v-model="form.color" type="color" class="h-10 w-14 rounded-lg border border-surface-700 bg-surface-900 p-1" />
+            <Input v-model="form.color" label="" placeholder="#3498db" class="flex-1" />
+          </div>
+        </div>
         <label class="flex items-center gap-2 text-sm text-surface-300">
           <input type="checkbox" v-model="form.enabled" class="h-4 w-4 rounded border-surface-600 bg-surface-800" />
           Enabled

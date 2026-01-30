@@ -14,11 +14,14 @@ def create_webhooks_blueprint(
     docker_manager,
     limiter,
     container_service,
+    csrf=None,
     sanitize_string,
     logger,
 ):
     """Create webhook routes with injected dependencies."""
     blueprint = Blueprint('webhooks', __name__)
+    if csrf is not None:
+        csrf.exempt(blueprint)
     from app.utils.validators import sanitize_string as sanitize_string_fn
 
     @blueprint.route('/webhook/<token>', methods=['POST', 'GET'])

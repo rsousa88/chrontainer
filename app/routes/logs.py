@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, render_template, send_from_directory
 from flask_login import login_required
 
 
-def create_logs_blueprint(app_log_repo, version: str):
+def create_logs_blueprint(app_log_repo, host_repo, version: str):
     """Create logs routes with injected dependencies."""
     blueprint = Blueprint('logs', __name__)
     dist_dir = Path(__file__).resolve().parents[3] / 'frontend' / 'dist'
@@ -25,13 +25,18 @@ def create_logs_blueprint(app_log_repo, version: str):
         """Return recent application logs."""
         try:
             logs_data = app_log_repo.list_recent(100)
+            hosts = {row[0]: row[1] for row in host_repo.list_all()}
             payload = [
                 {
                     'id': row[0],
-                    'timestamp': row[1],
-                    'level': row[2],
-                    'message': row[3],
-                    'details': row[4],
+                    'schedule_id': row[1],
+                    'host_id': row[2],
+                    'host_name': hosts.get(row[2]),
+                    'container_name': row[3],
+                    'action': row[4],
+                    'status': row[5],
+                    'message': row[6],
+                    'timestamp': row[7],
                 }
                 for row in logs_data
             ]

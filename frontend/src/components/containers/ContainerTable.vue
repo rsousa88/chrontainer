@@ -11,15 +11,25 @@
     </template>
     <tr v-for="container in containers" :key="container.id">
       <td class="px-4 py-4 text-sm font-semibold text-surface-50">{{ container.name }}</td>
-      <td class="px-4 py-4 text-sm text-surface-300">{{ container.host || container.host_name || '—' }}</td>
+      <td class="px-4 py-4">
+        <span
+          class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
+          :style="{
+            backgroundColor: container.host_color || '#2c3542',
+            color: container.host_text_color || '#f8fafc'
+          }"
+        >
+          {{ container.host || container.host_name || '—' }}
+        </span>
+      </td>
       <td class="px-4 py-4">
         <Badge :tone="statusTone(container.status)">{{ container.status }}</Badge>
       </td>
       <td class="px-4 py-4 text-sm text-surface-200">{{ container.cpu }}</td>
       <td class="px-4 py-4 text-sm text-surface-200">{{ container.memory }}</td>
       <td class="px-4 py-4 text-sm text-surface-200">{{ container.image }}</td>
-      <td class="px-4 py-4">
-        <ContainerActions :container="container" />
+      <td class="px-4 py-4 text-right">
+        <ContainerActions :container="container" align="right" />
       </td>
     </tr>
   </Table>

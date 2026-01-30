@@ -105,6 +105,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import Table from '../components/ui/Table.vue'
 import Button from '../components/ui/Button.vue'
 import Badge from '../components/ui/Badge.vue'
@@ -119,6 +120,8 @@ import { useToastStore } from '../stores/useToastStore'
 const store = useScheduleStore()
 const hostStore = useHostStore()
 const toastStore = useToastStore()
+const route = useRoute()
+const router = useRouter()
 const refresh = () => store.fetchSchedules()
 
 const modalOpen = ref(false)
@@ -244,5 +247,12 @@ const toggle = async (schedule) => {
 onMounted(() => {
   hostStore.fetchHosts()
   store.fetchSchedules()
+  if (route.query.container_id || route.query.container_name) {
+    openCreate()
+    form.containerId = route.query.container_id || ''
+    form.containerName = route.query.container_name || ''
+    form.hostId = Number(route.query.host_id || hostStore.items[0]?.id || 1)
+    router.replace({ query: {} })
+  }
 })
 </script>

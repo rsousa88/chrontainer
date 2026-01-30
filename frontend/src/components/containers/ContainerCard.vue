@@ -2,8 +2,16 @@
   <Card>
     <div class="flex items-center justify-between">
       <div>
-        <p class="text-sm text-surface-400">{{ container.host || container.host_name || '—' }}</p>
-        <h3 class="text-lg font-semibold text-surface-50">{{ container.name }}</h3>
+        <span
+          class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
+          :style="{
+            backgroundColor: container.host_color || '#2c3542',
+            color: container.host_text_color || '#f8fafc'
+          }"
+        >
+          {{ container.host || container.host_name || '—' }}
+        </span>
+        <h3 class="mt-2 text-lg font-semibold text-surface-50">{{ container.name }}</h3>
       </div>
       <Badge :tone="statusTone">{{ container.status }}</Badge>
     </div>

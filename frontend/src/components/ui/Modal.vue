@@ -2,7 +2,7 @@
   <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center">
     <div class="absolute inset-0 bg-black/70" @click="onClose" />
     <div
-      class="relative z-10 w-full rounded-2xl border border-surface-800 bg-surface-900 p-6"
+      class="relative z-10 rounded-2xl border border-surface-800 bg-surface-900 p-6"
       :class="panelClass"
     >
       <div class="flex items-start justify-between">
@@ -35,7 +35,7 @@ const props = defineProps({
   subtitle: String,
   panelClass: {
     type: String,
-    default: 'max-w-lg',
+    default: 'w-full max-w-lg',
   },
   bodyClass: {
     type: String,

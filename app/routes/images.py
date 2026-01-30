@@ -11,13 +11,17 @@ def create_images_blueprint(
     clear_image_usage_cache,
     fetch_all_images,
     docker_manager,
+    csrf=None,
     sanitize_string,
     validate_host_id,
     logger,
+    logs_repo=None,
     version: str,
 ):
     """Create image routes with injected dependencies."""
     blueprint = Blueprint('images', __name__)
+    if csrf is not None:
+        csrf.exempt(blueprint)
     dist_dir = Path(__file__).resolve().parents[3] / 'frontend' / 'dist'
 
     @blueprint.route('/images')
@@ -66,9 +70,13 @@ def create_images_blueprint(
                 return jsonify({'error': 'Cannot connect to Docker host'}), 500
 
             client.images.pull(image_ref)
+            if logs_repo:
+                logs_repo.insert_action_log(None, image_ref, 'image_pull', 'success', f'Pulled {image_ref}', host_id)
             return jsonify({'success': True, 'message': f'Pulled {image_ref} successfully'})
         except Exception as e:
             logger.error(f"Failed to pull image {image_ref} on host {host_id}: {e}")
+            if logs_repo:
+                logs_repo.insert_action_log(None, image_ref, 'image_pull', 'error', str(e), host_id)
             return jsonify({'error': 'Failed to pull image'}), 500
 
     @blueprint.route('/api/images/<image_id>', methods=['DELETE'])
@@ -95,9 +103,13 @@ def create_images_blueprint(
                 return jsonify({'error': 'Cannot connect to Docker host'}), 500
 
             client.images.remove(image_id, force=force)
+            if logs_repo:
+                logs_repo.insert_action_log(None, image_id, 'image_delete', 'success', 'Image removed', host_id)
             return jsonify({'success': True, 'message': 'Image removed'})
         except Exception as e:
             logger.error(f"Failed to delete image {image_id} on host {host_id}: {e}")
+            if logs_repo:
+                logs_repo.insert_action_log(None, image_id, 'image_delete', 'error', str(e), host_id)
             return jsonify({'error': 'Failed to delete image'}), 500
 
     @blueprint.route('/api/images/prune', methods=['POST'])
@@ -122,6 +134,9 @@ def create_images_blueprint(
 
             filters = {'dangling': True} if dangling_only else None
             result = client.images.prune(filters=filters)
+            if logs_repo:
+                reclaimed = result.get('SpaceReclaimed', 0)
+                logs_repo.insert_action_log(None, 'images', 'image_prune', 'success', f'Reclaimed {reclaimed} bytes', host_id)
             return jsonify({
                 'success': True,
                 'reclaimed': result.get('SpaceReclaimed', 0),
@@ -129,6 +144,8 @@ def create_images_blueprint(
             })
         except Exception as e:
             logger.error(f"Failed to prune images on host {host_id}: {e}")
+            if logs_repo:
+                logs_repo.insert_action_log(None, 'images', 'image_prune', 'error', str(e), host_id)
             return jsonify({'error': 'Failed to prune images'}), 500
 
     return blueprint

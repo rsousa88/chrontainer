@@ -521,7 +521,7 @@ def create_app():
     )
     app.register_blueprint(auth_blueprint)
 
-    logs_blueprint = create_logs_blueprint(app_log_repo=app_log_repo, version=VERSION)
+    logs_blueprint = create_logs_blueprint(app_log_repo=app_log_repo, host_repo=host_repo, version=VERSION)
     app.register_blueprint(logs_blueprint)
 
     settings_blueprint = create_settings_blueprint(
@@ -544,6 +544,7 @@ def create_app():
         api_key_repo=api_key_repo,
         generate_api_key=generate_api_key,
         hash_api_key=hash_api_key,
+        csrf=csrf,
         sanitize_string=sanitize_string,
         logger=logger,
     )
@@ -554,6 +555,7 @@ def create_app():
         docker_manager=docker_manager,
         limiter=limiter,
         container_service=container_service,
+        csrf=csrf,
         sanitize_string=sanitize_string,
         logger=logger,
     )
@@ -564,9 +566,11 @@ def create_app():
         clear_image_usage_cache=image_service.clear_image_usage_cache,
         fetch_all_images=image_service.fetch_all_images,
         docker_manager=docker_manager,
+        csrf=csrf,
         sanitize_string=sanitize_string,
         validate_host_id=validate_host_id,
         logger=logger,
+        logs_repo=logs_repo,
         version=VERSION,
     )
     app.register_blueprint(images_blueprint)
@@ -609,6 +613,8 @@ def create_app():
         webui_url_repo=webui_url_repo,
         schedule_view_repo=schedule_view_repo,
         version=VERSION,
+        csrf=csrf,
+        logs_repo=logs_repo,
     )
     app.register_blueprint(containers_blueprint)
 
@@ -618,6 +624,7 @@ def create_app():
         schedule_repo=schedule_repo,
         scheduler=scheduler,
         container_service=container_service,
+        csrf=csrf,
         validate_action=validate_action,
         validate_container_id=validate_container_id,
         validate_container_name=validate_container_name,
@@ -631,6 +638,7 @@ def create_app():
     tags_blueprint = create_tags_blueprint(
         api_key_or_login_required=api_key_or_login_required,
         tag_repo=tag_repo,
+        csrf=csrf,
         sanitize_string=sanitize_string,
         validate_color=validate_color,
         host_default_color=HOST_DEFAULT_COLOR,

@@ -11,11 +11,14 @@ def create_api_keys_blueprint(
     api_key_repo,
     generate_api_key,
     hash_api_key,
+    csrf=None,
     sanitize_string,
     logger,
 ):
     """Create API key routes with injected dependencies."""
     blueprint = Blueprint('api_keys', __name__)
+    if csrf is not None:
+        csrf.exempt(blueprint)
 
     @blueprint.route('/api/keys', methods=['GET'])
     @login_required
