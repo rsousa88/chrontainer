@@ -144,6 +144,8 @@ const props = defineProps({
   },
 })
 
+const emit = defineEmits(['update:updateStatus'])
+
 const toastStore = useToastStore()
 const router = useRouter()
 
@@ -184,12 +186,12 @@ const runAction = async (action) => {
 
   try {
     const { data } = await api.post(`/container/${id}/${action}`, containerPayload.value)
-    if (data?.success === false) {
+    if (!data?.success) {
       toastStore.push({ title: 'Action failed', message: data?.message || 'Request failed.', tone: 'danger' })
       return
     }
-    if (action === 'update' && props.container) {
-      props.container.update_status = { ...(props.container.update_status || {}), has_update: false }
+    if (action === 'update') {
+      emit('update:updateStatus', { has_update: false })
     }
     toastStore.push({ title: 'Action queued', message: data?.message || `${action} request sent.` })
   } catch (err) {
@@ -210,16 +212,12 @@ const checkUpdates = async () => {
   try {
     const { data } = await api.get(`/container/${id}/check-update`, { params: { host_id: hostId } })
     if (data?.has_update) {
-      if (props.container) {
-        props.container.update_status = { ...(props.container.update_status || {}), has_update: true }
-      }
+      emit('update:updateStatus', { has_update: true })
       toastStore.push({ title: 'Update available', message: 'A newer image is available.' })
     } else if (data?.error) {
       toastStore.push({ title: 'Update check failed', message: data.error, tone: 'danger' })
     } else {
-      if (props.container) {
-        props.container.update_status = { ...(props.container.update_status || {}), has_update: false }
-      }
+      emit('update:updateStatus', { has_update: false })
       toastStore.push({ title: 'Up to date', message: 'No updates found.' })
     }
   } catch (err) {

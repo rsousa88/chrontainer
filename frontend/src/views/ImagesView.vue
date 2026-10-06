@@ -96,9 +96,7 @@ const toastStore = useToastStore()
 const imageStore = useImageStore()
 const hostStore = useHostStore()
 
-const refreshing = ref(false)
-const pendingCounts = computed(() => imageStore.loadingStage === 'loading' || refreshing.value)
-const controlsDisabled = computed(() => imageStore.loadingStage !== 'idle' || imageStore.pruning || pendingCounts.value)
+const controlsDisabled = computed(() => imageStore.loadingStage !== 'idle')
 const isHostEnabled = (host) => host.enabled !== false && host.enabled !== 0 && host.enabled !== '0'
 const availableHosts = computed(() => hostStore.items.filter((host) => isHostEnabled(host)))
 const showSpinner = computed(() => imageStore.loadingStage === 'loading' || imageStore.pruning)
@@ -142,23 +140,22 @@ const formatSize = (bytes) => {
 }
 
 const displayCount = (image) => {
-  if (refreshing.value) return '-'
+  // Show '-' if still loading data for this specific host
   if (imageStore.loadingStage === 'loading') {
     const status = imageStore.hostStatus[Number(image?.host_id)]
     if (status !== 'done') return '-'
   }
+  // Show '-' if container count is still being calculated
   if (image?.containers_pending) return '-'
+  // Return actual count
   return image.containers ?? image.containers_count ?? 0
 }
 
 const refresh = async () => {
   const hostIds = availableHosts.value.map((host) => host.id)
-  refreshing.value = true
-  try {
-    await imageStore.fetchImagesForHosts(hostIds, true, true)
-  } finally {
-    refreshing.value = false
-  }
+  // Clear cache to force fresh fetch
+  imageStore.clearCache()
+  await imageStore.fetchImagesForHosts(hostIds, true, false)
 }
 
 const notify = async () => {
@@ -178,7 +175,9 @@ const notify = async () => {
         message: `Removed ${deleted.length} image(s), reclaimed ${formatSize(reclaimed)}.`,
       })
     }
-    refresh()
+    // Clear cache and refresh to show updated state
+    imageStore.clearCache(pruneHostId.value)
+    await refresh()
   } catch (err) {
     toastStore.push({ title: 'Prune failed', message: 'Unable to prune images.' })
   }
@@ -188,7 +187,9 @@ const deleteImage = async (image) => {
   try {
     await imageStore.deleteImage(image.id, image.host_id || 1, false)
     toastStore.push({ title: 'Image deleted', message: 'Image removed successfully.' })
-    refresh()
+    // Clear cache for this host and refresh
+    imageStore.clearCache(image.host_id)
+    await refresh()
   } catch (err) {
     toastStore.push({ title: 'Delete failed', message: 'Unable to remove image.' })
   }
@@ -197,27 +198,23 @@ const deleteImage = async (image) => {
 onMounted(async () => {
   await hostStore.fetchHosts()
   const hostIds = availableHosts.value.map((host) => host.id)
-  refreshing.value = true
-  try {
-    await imageStore.fetchImagesForHosts(hostIds, false)
-  } finally {
-    refreshing.value = false
-  }
+  // fetchImagesForHosts will use cache if available (30s timeout)
+  await imageStore.fetchImagesForHosts(hostIds, false, false)
 })
 
 watch(
   availableHosts,
   (hosts) => {
+    // Clear host filter if selected host is no longer available
     if (filters.value.host && !hosts.find((host) => String(host.id) === filters.value.host)) {
       filters.value.host = ''
     }
+    // Skip if no hosts, already have items, or already loading
     if (!hosts.length) return
     if (imageStore.items.length) return
-    if (imageStore.loading || refreshing.value) return
-    refreshing.value = true
-    imageStore.fetchImagesForHosts(hosts.map((host) => host.id), false).finally(() => {
-      refreshing.value = false
-    })
+    if (imageStore.loading) return
+    // Fetch images for all available hosts
+    imageStore.fetchImagesForHosts(hosts.map((host) => host.id), false, false)
   },
   { immediate: true }
 )

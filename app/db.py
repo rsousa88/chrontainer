@@ -22,13 +22,18 @@ def _get_database_path() -> str:
 
 
 def get_db() -> sqlite3.Connection:
-    """Get database connection."""
-    return sqlite3.connect(_get_database_path())
+    """Get database connection with WAL mode enabled."""
+    conn = sqlite3.connect(_get_database_path(), timeout=30.0)
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA busy_timeout=30000')  # 30 second timeout for lock waits
+    return conn
 
 
 def init_db() -> None:
-    """Initialize SQLite database."""
-    conn = sqlite3.connect(_get_database_path())
+    """Initialize SQLite database with WAL mode enabled."""
+    conn = sqlite3.connect(_get_database_path(), timeout=30.0)
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA busy_timeout=30000')  # 30 second timeout for lock waits
     cursor = conn.cursor()
 
     # Create hosts table

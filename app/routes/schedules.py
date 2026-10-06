@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.triggers.cron import CronTrigger
 from flask import Blueprint, jsonify, request
@@ -31,7 +31,7 @@ def create_schedules_blueprint(
     @api_key_or_login_required
     def add_schedule():
         """Add a new schedule."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         data = request.json or {}
         container_id = sanitize_string(data.get('container_id', ''), max_length=64)
@@ -66,8 +66,9 @@ def create_schedules_blueprint(
                 return jsonify({'error': 'run_at is required for one-time schedules'}), 400
             try:
                 run_at_dt = datetime.fromisoformat(run_at.replace('Z', '+00:00'))
-                if run_at_dt <= datetime.now(run_at_dt.tzinfo):
-                    return jsonify({'error': 'run_at must be in the future'}), 400
+                grace_period = timedelta(seconds=30)
+                if run_at_dt < datetime.now(run_at_dt.tzinfo) - grace_period:
+                    return jsonify({'error': 'run_at must be in the future (or within 30 seconds)'}), 400
             except ValueError:
                 return jsonify({'error': 'Invalid run_at format. Use ISO format.'}), 400
         else:
@@ -177,7 +178,7 @@ def create_schedules_blueprint(
     @api_key_or_login_required
     def update_schedule(schedule_id):
         """Update an existing schedule."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         data = request.json or {}
         container_id = sanitize_string(data.get('container_id', ''), max_length=64)
@@ -213,8 +214,9 @@ def create_schedules_blueprint(
                 return jsonify({'error': 'run_at is required for one-time schedules'}), 400
             try:
                 run_at_dt = datetime.fromisoformat(run_at.replace('Z', '+00:00'))
-                if run_at_dt <= datetime.now(run_at_dt.tzinfo):
-                    return jsonify({'error': 'run_at must be in the future'}), 400
+                grace_period = timedelta(seconds=30)
+                if run_at_dt < datetime.now(run_at_dt.tzinfo) - grace_period:
+                    return jsonify({'error': 'run_at must be in the future (or within 30 seconds)'}), 400
             except ValueError:
                 return jsonify({'error': 'Invalid run_at format. Use ISO format.'}), 400
         else:
@@ -304,7 +306,7 @@ def create_schedules_blueprint(
     @api_key_or_login_required
     def delete_schedule(schedule_id):
         """Delete a schedule."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         try:
             try:
@@ -324,7 +326,7 @@ def create_schedules_blueprint(
     @api_key_or_login_required
     def toggle_schedule(schedule_id):
         """Enable/disable a schedule."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         try:
             result = schedule_repo.get_by_id(schedule_id)
@@ -354,8 +356,10 @@ def create_schedules_blueprint(
                     from apscheduler.triggers.date import DateTrigger
                     run_at_dt = datetime.fromisoformat(run_at) if isinstance(run_at, str) else run_at
 
-                    if run_at_dt <= datetime.now():
-                        return jsonify({'error': 'run_at must be in the future'}), 400
+                    grace_period = timedelta(seconds=30)
+                    now = datetime.now(run_at_dt.tzinfo) if run_at_dt.tzinfo else datetime.now()
+                    if run_at_dt < now - grace_period:
+                        return jsonify({'error': 'run_at must be in the future (or within 30 seconds)'}), 400
 
                     trigger = DateTrigger(run_date=run_at_dt)
 

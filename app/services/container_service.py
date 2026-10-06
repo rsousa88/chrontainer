@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Tuple
+import logging
 
 import docker
 
 from app.repositories import ContainerTagRepository, LogsRepository, ScheduleRepository, WebuiUrlRepository
 from app.services.docker_service import DockerService
 from app.services.notification_service import NotificationService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,8 +43,10 @@ class ContainerService:
         try:
             return docker_client.containers.get(container_id), False
         except docker.errors.NotFound:
+            # Expected - container not found by ID, will try by name
             pass
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error resolving container by ID {container_id}: {e}")
             pass
 
         if not container_name:
@@ -54,7 +59,8 @@ class ContainerService:
                     return candidate, True
             if len(matches) == 1:
                 return matches[0], True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error resolving container by name {container_name}: {e}")
             return None, False
 
         return None, False
@@ -64,19 +70,22 @@ class ContainerService:
             return
         try:
             self._schedule_repo.update_container_id(schedule_id, container_id)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to update schedule {schedule_id} container ID: {e}")
             return
 
     def update_schedule_container_name(self, host_id: int, container_id: str, old_name: str, new_name: str) -> int:
         try:
             return self._schedule_repo.update_container_name(host_id, container_id, old_name, new_name)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to update schedule container name for {container_id}: {e}")
             return 0
 
     def disable_container_schedules(self, container_id: str, container_name: str, host_id: int) -> int:
         try:
             return self._schedule_repo.disable_by_container(host_id, container_id, container_name)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to disable schedules for container {container_id}: {e}")
             return 0
 
     def update_schedule_last_run(self, schedule_id: Optional[int]) -> None:
@@ -84,7 +93,8 @@ class ContainerService:
             return
         try:
             self._schedule_repo.update_last_run(schedule_id, datetime.now())
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to update last run for schedule {schedule_id}: {e}")
             return
 
     def log_action(self, schedule_id, container_name, action, status, message, host_id):
@@ -97,7 +107,8 @@ class ContainerService:
                 message=message,
                 host_id=host_id,
             )
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to log action for container {container_name}: {e}")
             return
 
     def _notify(self, container_name, action, status, message, schedule_id):
@@ -398,10 +409,29 @@ class ContainerService:
                 mounts=mounts or None,
             )
 
-            container.stop(timeout=10)
-            container.remove()
+            # Pull new image BEFORE stopping container to avoid losing the container if pull fails
+            try:
+                logger.info(f"Pulling new image {image_name} before updating container {container.name}")
+                docker_client.images.pull(image_name)
+            except Exception as pull_error:
+                logger.error(f"Failed to pull image {image_name}: {pull_error}")
+                raise Exception(f"Cannot update: failed to pull new image {image_name}: {pull_error}")
 
-            docker_client.images.pull(image_name)
+            # Stop container with longer timeout and force if needed
+            try:
+                container.stop(timeout=30)
+                container.reload()
+                if container.status != 'exited':
+                    logger.warning(f"Container {container.name} didn't stop gracefully, forcing...")
+                    container.kill()
+                container.remove(force=True)
+            except Exception as stop_error:
+                logger.error(f"Failed to stop/remove container {container.name}: {stop_error}")
+                # Attempt force removal as last resort
+                try:
+                    container.remove(force=True)
+                except Exception as remove_error:
+                    raise Exception(f"Cannot update: old container won't stop/remove: {stop_error}, {remove_error}")
 
             create_kwargs = {
                 'image': image_name,

@@ -167,14 +167,15 @@ class ScheduleRepository:
         conn = self._db_factory()
         try:
             cursor = conn.cursor()
+            # Only match by container_id to prevent updating wrong schedules
             cursor.execute(
                 '''
                 UPDATE schedules
                 SET container_name = ?
                 WHERE host_id = ?
-                  AND (container_id = ? OR container_id = ? OR container_name = ?)
+                  AND (container_id = ? OR container_id = ?)
                 ''',
-                (new_name, host_id, container_id, short_id, old_name)
+                (new_name, host_id, container_id, short_id)
             )
             affected = cursor.rowcount
             conn.commit()
@@ -187,14 +188,15 @@ class ScheduleRepository:
         conn = self._db_factory()
         try:
             cursor = conn.cursor()
+            # Only match by container_id to prevent disabling wrong schedules
             cursor.execute(
                 '''
                 UPDATE schedules
                 SET enabled = 0
                 WHERE host_id = ?
-                  AND (container_id = ? OR container_id = ? OR container_name = ?)
+                  AND (container_id = ? OR container_id = ?)
                 ''',
-                (host_id, container_id, short_id, container_name)
+                (host_id, container_id, short_id)
             )
             affected = cursor.rowcount
             conn.commit()

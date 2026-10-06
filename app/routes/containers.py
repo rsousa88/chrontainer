@@ -99,12 +99,15 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = data.get('name', 'unknown')
+        container_name = data.get('name', '').strip()
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         is_valid, error_msg = validate_host_id(host_id)
         if not is_valid:
@@ -122,12 +125,15 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = data.get('name', 'unknown')
+        container_name = data.get('name', '').strip()
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         is_valid, error_msg = validate_host_id(host_id)
         if not is_valid:
@@ -145,12 +151,15 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = data.get('name', 'unknown')
+        container_name = data.get('name', '').strip()
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         is_valid, error_msg = validate_host_id(host_id)
         if not is_valid:
@@ -168,12 +177,15 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = data.get('name', 'unknown')
+        container_name = data.get('name', '').strip()
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         is_valid, error_msg = validate_host_id(host_id)
         if not is_valid:
@@ -191,12 +203,15 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = data.get('name', 'unknown')
+        container_name = data.get('name', '').strip()
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         is_valid, error_msg = validate_host_id(host_id)
         if not is_valid:
@@ -214,14 +229,17 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = sanitize_string(data.get('name', 'unknown'), max_length=255)
+        container_name = sanitize_string(data.get('name', ''), max_length=255).strip()
         host_id = data.get('host_id', 1)
         remove_volumes = bool(data.get('remove_volumes', False))
         force = bool(data.get('force', False))
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         is_valid, error_msg = validate_host_id(host_id)
         if not is_valid:
@@ -271,13 +289,16 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = sanitize_string(data.get('name', 'unknown'), max_length=255)
-        new_name = sanitize_string(data.get('new_name', ''), max_length=255)
+        container_name = sanitize_string(data.get('name', ''), max_length=255).strip()
+        new_name = sanitize_string(data.get('new_name', ''), max_length=255).strip()
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         if not new_name:
             return jsonify({'error': 'New name is required'}), 400
@@ -302,14 +323,17 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = sanitize_string(data.get('name', 'unknown'), max_length=255)
-        new_name = sanitize_string(data.get('new_name', ''), max_length=255)
+        container_name = sanitize_string(data.get('name', ''), max_length=255).strip()
+        new_name = sanitize_string(data.get('new_name', ''), max_length=255).strip()
         start_after = bool(data.get('start_after', True))
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         if not new_name:
             return jsonify({'error': 'New name is required'}), 400
@@ -333,9 +357,24 @@ def create_containers_blueprint(
         return jsonify({'success': success, 'message': message})
 
     @blueprint.route('/api/container/<container_id>/check-update', methods=['GET'])
+    @api_key_or_login_required
     def api_check_container_update(container_id):
         """API endpoint to check if a container has an update available."""
         host_id = request.args.get('host_id', 1, type=int)
+        force_check = request.args.get('force', '0') == '1'
+
+        # Check cache first unless force=1
+        if not force_check:
+            cached_status = update_service.get_cached_update_status(container_id, host_id)
+            if cached_status:
+                logger.info(f"Returning cached update status for {container_id} on host {host_id}")
+                return jsonify({
+                    'has_update': cached_status.get('has_update', False),
+                    'remote_digest': cached_status.get('remote_digest'),
+                    'note': cached_status.get('note'),
+                    'checked_at': cached_status.get('checked_at'),
+                    'cached': True,
+                })
 
         try:
             client = docker_manager.get_client(host_id)
@@ -443,12 +482,15 @@ def create_containers_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
-        container_name = data.get('name', 'unknown')
+        container_name = data.get('name', '').strip()
         host_id = data.get('host_id', 1)
+
+        if not container_name:
+            return jsonify({'error': 'Container name is required'}), 400
 
         is_valid, error_msg = validate_host_id(host_id)
         if not is_valid:
@@ -464,6 +506,7 @@ def create_containers_blueprint(
             return jsonify({'success': False, 'message': f'Update failed: {str(e)}'}), 500
 
     @blueprint.route('/api/container/<container_id>/logs', methods=['GET'])
+    @api_key_or_login_required
     def api_get_container_logs(container_id):
         """API endpoint to get container logs."""
         host_id = request.args.get('host_id', 1, type=int)
@@ -650,7 +693,7 @@ def create_containers_blueprint(
     @api_key_or_login_required
     def add_container_tag(container_id, host_id):
         """Add a tag to a container."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         try:
             data = request.json or {}
@@ -669,7 +712,7 @@ def create_containers_blueprint(
     @api_key_or_login_required
     def remove_container_tag(container_id, host_id, tag_id):
         """Remove a tag from a container."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         try:
             container_tag_repo.remove(container_id, host_id, tag_id)

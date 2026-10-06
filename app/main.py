@@ -2,7 +2,6 @@
 Chrontainer - Docker Container Scheduler
 Main Flask application
 """
-import time
 import sqlite3
 import bcrypt
 import secrets
@@ -11,7 +10,7 @@ import hmac
 import threading
 from flask import Flask, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_required, current_user
-from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_wtf.csrf import CSRFProtect
 from flask_talisman import Talisman
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -124,10 +123,6 @@ class ApiV1RewriteMiddleware:
         return self.app(environ, start_response)
 
 
-
-
-
-
 # Helper function to generate image registry and documentation links
 def get_image_links(image_name):
     """Generate registry, GitHub, and docs links from image name"""
@@ -165,7 +160,6 @@ def get_image_links(image_name):
             links['registry'] = f'https://gcr.io/{namespace}/{repo}'
 
         # Generate GitHub link for known publishers
-        linuxserver_images = ['plex', 'sonarr', 'radarr', 'jellyfin', 'homeassistant', 'nginx', 'swag']
         if namespace == 'linuxserver':
             links['github'] = f'https://github.com/linuxserver/docker-{repo}'
             links['docs'] = f'https://docs.linuxserver.io/images/docker-{repo}'
@@ -178,9 +172,6 @@ def get_image_links(image_name):
         logger.debug(f"Failed to parse image name {image_name}: {e}")
 
     return links
-
-HOST_DEFAULT_COLOR = '#e8f4f8'
-UPDATE_CHECK_CRON_DEFAULT = '*/30 * * * *'
 
 def get_contrast_text_color(color, default='#2c3e50'):
     if not color or not re.match(r'^#[0-9a-fA-F]{6}$', color):
@@ -254,8 +245,6 @@ class User(UserMixin):
         self.id = id
         self.username = username
         self.role = role
-
-
 
 
 # Role-based access control decorator
@@ -680,20 +669,32 @@ def load_schedules():
 
             if one_time and run_at:
                 from apscheduler.triggers.date import DateTrigger
+                from datetime import timedelta
                 run_at_dt = datetime.fromisoformat(run_at) if isinstance(run_at, str) else run_at
 
-                if run_at_dt <= datetime.now():
+                # Use < instead of <= and add 30-second grace period
+                grace_period = timedelta(seconds=30)
+                if run_at_dt < (datetime.now() - grace_period):
                     logger.info(f"Skipping past one-time schedule {schedule_id}")
                     continue
 
                 trigger = DateTrigger(run_date=run_at_dt)
 
                 def one_time_action(cid, cname, sid, hid, func=action_func):
-                    func(cid, cname, sid, hid)
-                    try:
-                        schedule_repo.delete(sid)
-                    except Exception as e:
-                        logger.error(f"Failed to delete one-time schedule {sid}: {e}")
+                    result = func(cid, cname, sid, hid)
+                    # Only delete schedule if action succeeded
+                    if result and hasattr(result, 'success') and result.success:
+                        try:
+                            schedule_repo.delete(sid)
+                            logger.info(f"One-time schedule {sid} completed and deleted")
+                        except Exception as e:
+                            logger.error(f"Failed to delete one-time schedule {sid}: {e}")
+                    else:
+                        logger.error(f"One-time schedule {sid} failed, keeping for manual review")
+                        try:
+                            schedule_repo.set_enabled(sid, 0)  # Disable failed schedule
+                        except Exception as e:
+                            logger.error(f"Failed to disable one-time schedule {sid}: {e}")
 
                 scheduler.add_job(
                     one_time_action,

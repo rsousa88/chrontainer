@@ -37,7 +37,7 @@ def create_tags_blueprint(
     @api_key_or_login_required
     def create_tag():
         """Create a new tag."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         try:
             data = request.json or {}
@@ -64,7 +64,7 @@ def create_tags_blueprint(
     @api_key_or_login_required
     def delete_tag(tag_id):
         """Delete a tag."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
         try:
             tag_repo.delete(tag_id)

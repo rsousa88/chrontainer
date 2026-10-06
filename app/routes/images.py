@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from flask import Blueprint, jsonify, render_template, request, send_from_directory
 from flask_login import login_required
@@ -51,7 +52,7 @@ def create_images_blueprint(
     @api_key_or_login_required
     def pull_image():
         """Pull a Docker image."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
@@ -65,26 +66,33 @@ def create_images_blueprint(
         if not is_valid:
             return jsonify({'error': error_msg}), 400
 
-        try:
-            client = docker_manager.get_client(host_id)
-            if not client:
-                return jsonify({'error': 'Cannot connect to Docker host'}), 500
+        client = docker_manager.get_client(host_id)
+        if not client:
+            return jsonify({'error': 'Cannot connect to Docker host'}), 500
 
-            client.images.pull(image_ref)
-            if logs_repo:
-                logs_repo.insert_action_log(None, image_ref, 'image_pull', 'success', f'Pulled {image_ref}', host_id)
-            return jsonify({'success': True, 'message': f'Pulled {image_ref} successfully'})
-        except Exception as e:
-            logger.error(f"Failed to pull image {image_ref} on host {host_id}: {e}")
-            if logs_repo:
-                logs_repo.insert_action_log(None, image_ref, 'image_pull', 'error', str(e), host_id)
-            return jsonify({'error': 'Failed to pull image'}), 500
+        def pull_in_background():
+            """Pull image in background thread to avoid blocking HTTP request."""
+            try:
+                client.images.pull(image_ref)
+                if logs_repo:
+                    logs_repo.insert_action_log(None, image_ref, 'image_pull', 'success', f'Pulled {image_ref}', host_id)
+                logger.info(f"Successfully pulled image {image_ref} on host {host_id}")
+            except Exception as e:
+                logger.error(f"Failed to pull image {image_ref} on host {host_id}: {e}")
+                if logs_repo:
+                    logs_repo.insert_action_log(None, image_ref, 'image_pull', 'error', str(e), host_id)
+
+        # Start pull in background thread
+        thread = threading.Thread(target=pull_in_background, daemon=True)
+        thread.start()
+
+        return jsonify({'success': True, 'message': f'Pulling {image_ref}... Check logs for completion status.'})
 
     @blueprint.route('/api/images/<image_id>', methods=['DELETE'])
     @api_key_or_login_required
     def delete_image(image_id):
         """Delete a Docker image."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         host_id = request.args.get('host_id', 1, type=int)
@@ -117,7 +125,7 @@ def create_images_blueprint(
     @api_key_or_login_required
     def prune_images():
         """Prune unused images."""
-        if getattr(request, 'api_key_auth', False) and request.api_key_permissions == 'read':
+        if getattr(request, 'api_key_auth', False) and request.api_key_permissions not in ['write', 'admin']:
             return jsonify({'error': 'API key does not have write permission'}), 403
 
         data = request.json or {}
@@ -134,18 +142,65 @@ def create_images_blueprint(
                 return jsonify({'error': 'Cannot connect to Docker host. Check the host URL and socket availability.'}), 400
 
             if dangling_only:
-                filters = {'dangling': ['true']}
+                # Only prune dangling images (untagged) using Docker's native prune
+                result = client.images.prune(filters={'dangling': True})
+                if logs_repo:
+                    reclaimed = result.get('SpaceReclaimed', 0)
+                    logs_repo.insert_action_log(None, 'images', 'image_prune', 'success', f'Reclaimed {reclaimed} bytes', host_id)
+                return jsonify({
+                    'success': True,
+                    'reclaimed': result.get('SpaceReclaimed', 0),
+                    'images_deleted': result.get('ImagesDeleted', []) or [],
+                })
             else:
-                filters = {'dangling': ['false']}
-            result = client.images.prune(filters=filters)
-            if logs_repo:
-                reclaimed = result.get('SpaceReclaimed', 0)
-                logs_repo.insert_action_log(None, 'images', 'image_prune', 'success', f'Reclaimed {reclaimed} bytes', host_id)
-            return jsonify({
-                'success': True,
-                'reclaimed': result.get('SpaceReclaimed', 0),
-                'images_deleted': result.get('ImagesDeleted', []) or [],
-            })
+                # Prune ALL unused images (including tagged images with 0 containers)
+                # Docker's prune() API only handles dangling images, so we implement custom logic
+                images_deleted = []
+                total_reclaimed = 0
+
+                # Get all images with container counts
+                all_images = fetch_all_images(host_id)
+
+                # Find images with 0 containers
+                unused_images = [img for img in all_images if img.get('containers') == 0]
+
+                logger.info(f"Found {len(unused_images)} unused images on host {host_id}")
+
+                # Delete each unused image
+                for img in unused_images:
+                    image_id = img.get('id') or img.get('image_id')
+                    image_name = f"{img.get('repository', 'unknown')}:{img.get('tag', 'unknown')}"
+
+                    if not image_id:
+                        continue
+
+                    try:
+                        # Try to remove the image
+                        client.images.remove(image_id, force=False)
+                        size = img.get('size_bytes', 0) or 0
+                        total_reclaimed += size
+                        images_deleted.append({'Deleted': image_id})
+                        logger.info(f"Deleted unused image {image_name} ({image_id[:12]})")
+                    except Exception as remove_error:
+                        # Image might be in use or have dependencies - skip it
+                        logger.debug(f"Could not remove image {image_name}: {remove_error}")
+                        continue
+
+                if logs_repo:
+                    logs_repo.insert_action_log(
+                        None,
+                        'images',
+                        'image_prune',
+                        'success',
+                        f'Removed {len(images_deleted)} images, reclaimed {total_reclaimed} bytes',
+                        host_id
+                    )
+
+                return jsonify({
+                    'success': True,
+                    'reclaimed': total_reclaimed,
+                    'images_deleted': images_deleted,
+                })
         except Exception as e:
             logger.error(f"Failed to prune images on host {host_id}: {e}")
             if logs_repo:
